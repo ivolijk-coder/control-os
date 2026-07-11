@@ -77,7 +77,7 @@ O deploy é configurado automaticamente por `apps/web/vercel.json` — não é n
 | Install Command | `corepack enable && corepack prepare pnpm@9.7.0 --activate && cd ../.. && pnpm install --no-frozen-lockfile` | `apps/web/vercel.json` |
 | Build Command | `cd ../.. && pnpm turbo run build --filter=./apps/web` | `apps/web/vercel.json` |
 | Output Directory | `.next` | `apps/web/vercel.json` |
-| Node.js | 20.x | `engines.node` em `package.json` (raiz e `apps/web`) |
+| Node.js | 22.x | `engines.node` em `package.json` (raiz e `apps/web`) |
 | pnpm | 9.7.0 (pin exato via corepack) | `packageManager` em `package.json` (raiz e `apps/web`) |
 
 O `installCommand` ativa a versão correta do pnpm via Corepack antes de instalar — isso evita o erro `ERR_PNPM_UNSUPPORTED_ENGINE` que ocorre quando a Vercel usa sua versão padrão (mais antiga) de pnpm em vez da versão fixada no projeto.
