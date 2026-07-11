@@ -68,23 +68,21 @@ docker compose -f database/docker-compose.yml up -d
 
 ## Deploy na Vercel
 
-O deploy é configurado automaticamente por `apps/web/vercel.json` — não é necessário digitar comandos manualmente na Vercel. O único campo que precisa ser definido na tela de import é o **Root Directory**.
+O framework, o build command e o output directory são configurados automaticamente por `apps/web/vercel.json`. O install command **não é sobrescrito** — a Vercel usa o próprio install padrão dela, que já ativa a versão correta do pnpm sozinha a partir do campo `packageManager` do `package.json`. O único campo que precisa ser definido na tela de import é o **Root Directory**.
 
 | Campo | Valor | Origem |
 |---|---|---|
 | Root Directory | `apps/web` | definido manualmente no import (único passo manual) |
 | Framework Preset | Next.js | detectado via `apps/web/vercel.json` (`framework: "nextjs"`) |
-| Install Command | `corepack enable && corepack prepare pnpm@9.7.0 --activate && cd ../.. && pnpm install --no-frozen-lockfile` | `apps/web/vercel.json` |
+| Install Command | padrão da Vercel (não sobrescrito) | — |
 | Build Command | `cd ../.. && pnpm turbo run build --filter=./apps/web` | `apps/web/vercel.json` |
 | Output Directory | `.next` | `apps/web/vercel.json` |
 | Node.js | 22.x | `engines.node` em `package.json` (raiz e `apps/web`) |
-| pnpm | 9.7.0 (pin exato via corepack) | `packageManager` em `package.json` (raiz e `apps/web`) |
-
-O `installCommand` ativa a versão correta do pnpm via Corepack antes de instalar — isso evita o erro `ERR_PNPM_UNSUPPORTED_ENGINE` que ocorre quando a Vercel usa sua versão padrão (mais antiga) de pnpm em vez da versão fixada no projeto.
+| pnpm | 9.7.0 | `packageManager` em `package.json` (raiz e `apps/web`) — a Vercel lê este campo e ativa a versão certa do pnpm automaticamente via Corepack, sem precisar de install command customizado |
 
 `apps/api` (FastAPI) não faz parte deste deploy na Vercel — é uma aplicação Python separada, hospedada independentemente (Docker, Railway, Render, etc.), fora do escopo deste `vercel.json`.
 
-Se você já criou o projeto na Vercel antes deste ajuste e configurou comandos manualmente na interface (Project Settings → Build & Development Settings), desative os toggles de "Override" desses campos para que os valores de `vercel.json` voltem a ser usados.
+Se você já criou o projeto na Vercel antes deste ajuste e configurou comandos manualmente na interface (Project Settings → Build & Development Settings), desative os toggles de "Override" desses campos para que os valores de `vercel.json` (e o comportamento padrão da Vercel, no caso do install) voltem a valer.
 
 ## Fases
 
