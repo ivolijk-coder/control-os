@@ -32,7 +32,7 @@ export function CadastroForm() {
 
   const requirementsMet = PASSWORD_REQUIREMENTS.every((req) => req.test(password));
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
 
@@ -78,7 +78,7 @@ export function CadastroForm() {
               id="name"
               autoComplete="name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
               placeholder="Seu nome"
             />
           </div>
@@ -90,7 +90,7 @@ export function CadastroForm() {
               type="email"
               autoComplete="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
               placeholder="voce@empresa.com"
             />
           </div>
@@ -102,7 +102,7 @@ export function CadastroForm() {
               type="password"
               autoComplete="new-password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
               placeholder="••••••••"
             />
             <ul className="mt-1 flex flex-col gap-1">
