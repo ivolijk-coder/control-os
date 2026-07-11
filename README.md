@@ -78,7 +78,9 @@ O framework, o build command e o output directory são configurados automaticame
 | Build Command | `cd ../.. && pnpm turbo run build --filter=./apps/web` | `apps/web/vercel.json` |
 | Output Directory | `.next` | `apps/web/vercel.json` |
 | Node.js | 22.x | `engines.node` em `package.json` (raiz e `apps/web`) |
-| pnpm | 9.7.0 | `packageManager` em `package.json` (raiz e `apps/web`) — a Vercel lê este campo e ativa a versão certa do pnpm automaticamente via Corepack, sem precisar de install command customizado |
+| pnpm | 9.7.0 | `packageManager` em `package.json` (raiz e `apps/web`) — a Vercel lê este campo (via Corepack) e ativa a versão certa do pnpm automaticamente |
+
+Importante: `engines.pnpm` **não** é definido em nenhum `package.json`. Se existisse, o pnpm antigo que a Vercel usa internamente antes de trocar de versão (6.35.1) leria esse campo e travaria com `ERR_PNPM_UNSUPPORTED_ENGINE` antes mesmo do Corepack conseguir assumir. Só `packageManager` é seguro para pin de versão de pnpm neste fluxo; `engines.node` continua normal, pois não sofre desse problema.
 
 `apps/api` (FastAPI) não faz parte deste deploy na Vercel — é uma aplicação Python separada, hospedada independentemente (Docker, Railway, Render, etc.), fora do escopo deste `vercel.json`.
 
