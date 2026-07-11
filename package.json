@@ -3,19 +3,23 @@
   "private": true,
   "version": "0.1.0",
   "description": "CONTROL OS — Operational Intelligence Platform. Monorepo raiz.",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "packageManager": "pnpm@9.7.0",
   "scripts": {
-    "dev:web": "npm run dev --workspace=apps/web",
-    "build:web": "npm run build --workspace=apps/web",
-    "lint:web": "npm run lint --workspace=apps/web",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "dev": "turbo run dev --filter=./apps/web",
+    "dev:web": "turbo run dev --filter=./apps/web",
     "dev:api": "cd apps/api && uvicorn app.main:app --reload --port 8000",
+    "build": "turbo run build --filter=./apps/web",
+    "build:web": "turbo run build --filter=./apps/web",
+    "lint": "turbo run lint",
+    "lint:web": "turbo run lint --filter=./apps/web",
+    "typecheck": "turbo run typecheck",
     "db:up": "docker compose -f database/docker-compose.yml up -d"
   },
+  "devDependencies": {
+    "turbo": "^2.1.2"
+  },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
   }
 }
