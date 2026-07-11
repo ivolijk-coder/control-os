@@ -1,0 +1,21 @@
+{
+  "name": "control-os",
+  "private": true,
+  "version": "0.1.0",
+  "description": "CONTROL OS — Operational Intelligence Platform. Monorepo raiz.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=apps/web",
+    "build:web": "npm run build --workspace=apps/web",
+    "lint:web": "npm run lint --workspace=apps/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "dev:api": "cd apps/api && uvicorn app.main:app --reload --port 8000",
+    "db:up": "docker compose -f database/docker-compose.yml up -d"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

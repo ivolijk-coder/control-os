@@ -1,0 +1,91 @@
+/**
+ * Tipos compartilhados do CONTROL OS.
+ *
+ * Estes tipos espelham os conceitos definidos na documentação de produto
+ * (Etapas 1–6): Control Spaces™, Missões™, Timeline Inteligente, Nova™.
+ * Fase 1: usados apenas para tipar dados mockados no frontend. Quando
+ * apps/api ganhar os schemas Pydantic reais (Fase 2+), estes tipos devem
+ * continuar espelhando `apps/api/app/schemas`.
+ */
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl?: string;
+  role: string;
+  company?: string;
+  plan: 'starter' | 'pro' | 'enterprise';
+  createdAt: string;
+}
+
+/** Control Spaces™ — unidades de contexto (ex.: "Minha Vida", "Minha Empresa"). */
+export interface ControlSpace {
+  id: string;
+  name: string;
+  icon: string;
+  color: 'green' | 'blue' | 'purple' | 'red';
+  missionsCount: number;
+  isActive: boolean;
+}
+
+export type MissionStatus = 'planejamento' | 'em_andamento' | 'em_risco' | 'concluida';
+
+/** Missão™ — unidade central de trabalho (Intenção → Missão → Objetivos → Execuções → Resultados). */
+export interface Mission {
+  id: string;
+  title: string;
+  spaceId: string;
+  status: MissionStatus;
+  progress: number; // 0–100
+  dueDate?: string;
+  objectivesTotal: number;
+  objectivesDone: number;
+}
+
+export type TimelineEventType =
+  | 'missao_criada'
+  | 'missao_concluida'
+  | 'execucao'
+  | 'mensagem_nova'
+  | 'documento'
+  | 'financeiro'
+  | 'sistema';
+
+/** Evento da Timeline Inteligente (Control Feed™). */
+export interface TimelineEvent {
+  id: string;
+  type: TimelineEventType;
+  title: string;
+  description?: string;
+  timestamp: string;
+  spaceId?: string;
+  actor: 'user' | 'nova' | 'sistema';
+}
+
+/** Mensagem trocada com a Nova™ no AI Workspace. */
+export interface NovaMessage {
+  id: string;
+  role: 'user' | 'nova';
+  content: string;
+  timestamp: string;
+}
+
+/** Cartão de estatística do Dashboard Vivo™. */
+export interface DashboardStat {
+  id: string;
+  label: string;
+  value: string;
+  delta?: string;
+  trend?: 'up' | 'down' | 'neutral';
+  accent: 'green' | 'blue' | 'purple' | 'red';
+}
+
+/** Item de navegação da Sidebar. */
+export interface NavItem {
+  id: string;
+  label: string;
+  href: string;
+  icon: string;
+  badge?: number;
+}

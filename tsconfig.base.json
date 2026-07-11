@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "baseUrl": ".",
+    "paths": {
+      "@control-os/ui": ["../../packages/ui/src"],
+      "@control-os/ui/*": ["../../packages/ui/src/*"],
+      "@control-os/types": ["../../packages/types/src"],
+      "@control-os/types/*": ["../../packages/types/src/*"],
+      "@control-os/hooks": ["../../packages/hooks/src"],
+      "@control-os/hooks/*": ["../../packages/hooks/src/*"],
+      "@control-os/utils": ["../../packages/utils/src"],
+      "@control-os/utils/*": ["../../packages/utils/src/*"]
+    }
+  }
+}
