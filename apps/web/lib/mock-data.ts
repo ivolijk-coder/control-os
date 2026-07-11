@@ -137,7 +137,7 @@ export const MOCK_TIMELINE: TimelineEvent[] = [
   },
 ];
 
-export const MOCK_NOVA_MESSAGES: NovaMessage[] = [
+export const MOCK_NOVA_MESSAGES: [NovaMessage, ...NovaMessage[]] = [
   {
     id: 'nv_001',
     role: 'nova',
