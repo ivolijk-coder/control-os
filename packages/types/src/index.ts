@@ -19,11 +19,39 @@ export interface User {
   createdAt: string;
 }
 
+/**
+ * Nomes válidos de ícone, sincronizados manualmente com as chaves de
+ * `ICON_MAP` em `apps/web/components/layout/icon-map.tsx`. Mantido aqui
+ * (em vez de `typeof ICON_MAP` importado do app) porque `packages/types`
+ * não depende do React/lucide-react — é consumido também por `apps/api`
+ * como referência de contrato.
+ */
+export type IconName =
+  | 'LayoutGrid'
+  | 'Sparkles'
+  | 'Activity'
+  | 'Target'
+  | 'FolderKanban'
+  | 'FileText'
+  | 'BookOpen'
+  | 'Wallet'
+  | 'User'
+  | 'Building2'
+  | 'Users'
+  | 'ChevronsLeft'
+  | 'ChevronsRight'
+  | 'Search'
+  | 'Bell'
+  | 'Command'
+  | 'Plus'
+  | 'LogOut'
+  | 'Settings';
+
 /** Control Spaces™ — unidades de contexto (ex.: "Minha Vida", "Minha Empresa"). */
 export interface ControlSpace {
   id: string;
   name: string;
-  icon: string;
+  icon: IconName;
   color: 'green' | 'blue' | 'purple' | 'red';
   missionsCount: number;
   isActive: boolean;
@@ -86,6 +114,6 @@ export interface NavItem {
   id: string;
   label: string;
   href: string;
-  icon: string;
+  icon: IconName;
   badge?: number;
 }
