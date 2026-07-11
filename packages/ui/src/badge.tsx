@@ -18,8 +18,15 @@ const badgeVariants = cva(
   }
 );
 
+/**
+ * `ComponentPropsWithoutRef<'div'>` (não `HTMLAttributes<HTMLDivElement>`) —
+ * é o tipo que o próprio React usa para as props de um elemento JSX `<div>`
+ * (via `JSX.IntrinsicElements['div']`), então toda prop nativa do elemento
+ * renderizado (className, style, id, onClick, data-*, aria-*, etc.) é
+ * preservada automaticamente, sem precisar redeclará-las aqui.
+ */
 export interface BadgeProps
-  extends React.HTMLAttributes<HTMLDivElement>,
+  extends React.ComponentPropsWithoutRef<'div'>,
     VariantProps<typeof badgeVariants> {
   children?: React.ReactNode;
 }

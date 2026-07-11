@@ -1,27 +1,34 @@
 import * as React from 'react';
 import { cn } from '@control-os/utils';
 
-export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+/**
+ * Todas as interfaces abaixo usam `ComponentPropsWithoutRef<'tag'>` (o tipo
+ * que o próprio React usa para as props do elemento JSX correspondente),
+ * em vez de `HTMLAttributes<...>`. Isso preserva automaticamente toda prop
+ * nativa do elemento renderizado (className, style, id, onClick, data-*,
+ * aria-*, etc.) sem precisar redeclará-las manualmente.
+ */
+export interface CardProps extends React.ComponentPropsWithoutRef<'div'> {
   children?: React.ReactNode;
 }
 
-export interface CardHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface CardHeaderProps extends React.ComponentPropsWithoutRef<'div'> {
   children?: React.ReactNode;
 }
 
-export interface CardTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {
+export interface CardTitleProps extends React.ComponentPropsWithoutRef<'h3'> {
   children?: React.ReactNode;
 }
 
-export interface CardDescriptionProps extends React.HTMLAttributes<HTMLParagraphElement> {
+export interface CardDescriptionProps extends React.ComponentPropsWithoutRef<'p'> {
   children?: React.ReactNode;
 }
 
-export interface CardContentProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface CardContentProps extends React.ComponentPropsWithoutRef<'div'> {
   children?: React.ReactNode;
 }
 
-export interface CardFooterProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface CardFooterProps extends React.ComponentPropsWithoutRef<'div'> {
   children?: React.ReactNode;
 }
 
@@ -44,7 +51,7 @@ export const CardHeader = React.forwardRef<HTMLDivElement, CardHeaderProps>(
 );
 CardHeader.displayName = 'CardHeader';
 
-export const CardTitle = React.forwardRef<HTMLParagraphElement, CardTitleProps>(
+export const CardTitle = React.forwardRef<HTMLHeadingElement, CardTitleProps>(
   ({ className, ...props }, ref) => (
     <h3 ref={ref} className={cn('text-sm font-medium text-text-primary', className)} {...props} />
   )

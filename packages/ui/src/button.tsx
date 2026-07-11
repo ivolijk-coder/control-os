@@ -35,8 +35,13 @@ const buttonVariants = cva(
   }
 );
 
+/**
+ * `ComponentPropsWithoutRef<'button'>` — mesmo padrão do Badge: preserva
+ * toda prop nativa de `<button>` (className, type, disabled, onClick, etc.)
+ * automaticamente via o tipo que o próprio React usa para JSX.
+ */
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+  extends React.ComponentPropsWithoutRef<'button'>,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean;
   loading?: boolean;
