@@ -50,6 +50,16 @@ export const TOOL_REGISTRY: readonly NovaToolDescriptor[] = [
     description: 'Cria uma missão de projeto.',
   },
   {
+    kind: 'registrar_divida',
+    label: 'Registrar dívida',
+    description: 'Cria uma dívida (com parcelas) e atualiza o Histórico.',
+  },
+  {
+    kind: 'consultar_dividas',
+    label: 'Consultar dívidas',
+    description: 'Responde com um resumo das dívidas em aberto — não cria nem altera dados.',
+  },
+  {
     kind: 'desconhecido',
     label: 'Conversa livre',
     description: 'Nenhuma ação executável identificada — a Nova apenas responde.',

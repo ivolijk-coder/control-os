@@ -43,6 +43,14 @@ export function buildPlan(intent: NovaIntent): NovaAction[] {
         { kind: 'criar_missao', label: 'Criar projeto' },
         { kind: 'registrar_timeline', label: 'Adicionar ao histórico' },
       ];
+    case 'registrar_divida':
+      return [
+        { kind: 'criar_divida', label: 'Registrar dívida' },
+        { kind: 'registrar_timeline', label: 'Atualizar Financeiro' },
+      ];
+    case 'consultar_dividas':
+      // Leitura, não gera checklist de execução — tratada direto em `conversation/`.
+      return [];
     case 'desconhecido':
       return [];
   }

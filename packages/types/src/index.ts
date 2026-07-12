@@ -91,6 +91,24 @@ export interface FinanceEntry {
 }
 
 /**
+ * Dívida (CONTROL OS — Etapa 3, Financeiro avançado). Diferente de
+ * `FinanceEntry` (um lançamento pontual), uma dívida tem ciclo de vida
+ * próprio — saldo que diminui a cada parcela paga. Criada tanto por
+ * conversa com a Nova ("Tenho uma dívida de R$ 3.000 em 10x") quanto
+ * manualmente no módulo Financeiro; mesma fonte de dados nos dois casos.
+ */
+export interface Debt {
+  id: string;
+  description: string;
+  totalAmount: number;
+  remainingAmount: number;
+  installmentsTotal: number;
+  installmentsPaid: number;
+  category: string;
+  spaceId?: string;
+}
+
+/**
  * Compromisso de agenda (CONTROL OS 3.0 / NOVA). `linkedMissionId` permite
  * que um compromisso criado em conversa (ex.: "Tenho reunião amanhã às 15h")
  * também gere um lembrete via Missão, sem duplicar o conceito — a Missão

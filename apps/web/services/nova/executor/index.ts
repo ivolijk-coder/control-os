@@ -1,5 +1,13 @@
 import type { NovaActionResult, NovaContext, NovaIntent } from '../interfaces';
-import { createExpense, createRevenue, createAgendaEvent, createGoal, createProject, createReminder } from '../actions';
+import {
+  createExpense,
+  createRevenue,
+  createAgendaEvent,
+  createGoal,
+  createProject,
+  createReminder,
+  createDebt,
+} from '../actions';
 
 /**
  * Executa de fato uma intenção contra `useDataStore` (via `ctx.actions`),
@@ -21,6 +29,11 @@ export function runIntent(ctx: NovaContext, intent: NovaIntent): NovaActionResul
       return createGoal(ctx, intent);
     case 'criar_projeto':
       return createProject(ctx, intent);
+    case 'registrar_divida':
+      return createDebt(ctx, intent);
+    case 'consultar_dividas':
+      // Leitura — tratada direto em `conversation/`, sem passar por aqui.
+      return [];
     case 'desconhecido':
       return [];
   }

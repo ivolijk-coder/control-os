@@ -1,4 +1,4 @@
-import type { AgendaEvent, FinanceEntry, Mission, TimelineEvent } from '@control-os/types';
+import type { AgendaEvent, Debt, FinanceEntry, Mission, TimelineEvent } from '@control-os/types';
 
 /**
  * Contratos do NOVA Operating System (CONTROL OS 3.0).
@@ -19,6 +19,8 @@ export type NovaIntentKind =
   | 'criar_agenda'
   | 'criar_objetivo'
   | 'criar_projeto'
+  | 'registrar_divida'
+  | 'consultar_dividas'
   | 'desconhecido';
 
 interface NovaIntentBase {
@@ -58,6 +60,18 @@ export interface ProjectIntent extends NovaIntentBase {
   title: string;
 }
 
+export interface DebtIntent extends NovaIntentBase {
+  kind: 'registrar_divida';
+  totalAmount: number;
+  installments: number;
+  description: string;
+}
+
+/** "Quanto eu devo?" / "minhas dívidas" — intenção de leitura, sem passos de execução. */
+export interface ConsultDebtsIntent extends NovaIntentBase {
+  kind: 'consultar_dividas';
+}
+
 export interface UnknownIntent extends NovaIntentBase {
   kind: 'desconhecido';
 }
@@ -70,6 +84,8 @@ export type NovaIntent =
   | AgendaIntent
   | GoalIntent
   | ProjectIntent
+  | DebtIntent
+  | ConsultDebtsIntent
   | UnknownIntent;
 
 export type NovaActionKind =
@@ -77,6 +93,7 @@ export type NovaActionKind =
   | 'criar_receita'
   | 'criar_missao'
   | 'criar_evento_agenda'
+  | 'criar_divida'
   | 'registrar_timeline';
 
 /** Um passo do plano (checklist) — declarativo, ainda sem execução. */
@@ -99,12 +116,20 @@ export interface NovaDataActions {
   addTimelineEvent: (event: Omit<TimelineEvent, 'id'>) => TimelineEvent;
   addFinanceEntry: (entry: Omit<FinanceEntry, 'id'>) => FinanceEntry;
   addAgendaEvent: (event: Omit<AgendaEvent, 'id'>) => AgendaEvent;
+  addDebt: (debt: Omit<Debt, 'id'>) => Debt;
 }
 
 export interface NovaContext {
   actions: NovaDataActions;
   /** Space padrão para lançamentos criados por conversa (Fase 1: fixo, sem seleção manual ainda). */
   defaultSpaceId: string;
+  /**
+   * Snapshot somente-leitura para intents de consulta (ex.: "quanto eu
+   * devo?"). Diferente de `actions` (que sempre escreve em `useDataStore`),
+   * isto é passado pelo chamador (`NovaWorkspace`) a cada turno — mesmo
+   * princípio de "sem estado próprio dentro de services/nova".
+   */
+  debts: Debt[];
 }
 
 export type NovaStatus = 'pensando' | 'executando' | 'concluido' | 'erro';

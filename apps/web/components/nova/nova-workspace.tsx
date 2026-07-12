@@ -96,16 +96,20 @@ export function NovaWorkspace({
   const addTimelineEvent = useDataStore((state) => state.addTimelineEvent);
   const addFinanceEntry = useDataStore((state) => state.addFinanceEntry);
   const addAgendaEvent = useDataStore((state) => state.addAgendaEvent);
+  const addDebt = useDataStore((state) => state.addDebt);
+  const debts = useDataStore((state) => state.debts);
 
-  // As actions do Zustand são referências estáveis entre renders — este
-  // memo praticamente só roda uma vez, sem recriar o contexto a cada
-  // digitação do usuário.
+  // As actions do Zustand são referências estáveis entre renders. `debts`
+  // já não é — muda a cada dívida criada/paga — então este memo passa a
+  // recalcular nesses momentos (correto: intents de consulta como
+  // "quanto eu devo" precisam sempre do snapshot mais recente).
   const novaContext: NovaContext = React.useMemo(
     () => ({
-      actions: { addMission, updateMission, addTimelineEvent, addFinanceEntry, addAgendaEvent },
+      actions: { addMission, updateMission, addTimelineEvent, addFinanceEntry, addAgendaEvent, addDebt },
       defaultSpaceId: DEFAULT_SPACE_ID,
+      debts,
     }),
-    [addMission, updateMission, addTimelineEvent, addFinanceEntry, addAgendaEvent]
+    [addMission, updateMission, addTimelineEvent, addFinanceEntry, addAgendaEvent, addDebt, debts]
   );
 
   const handleSend = React.useCallback(

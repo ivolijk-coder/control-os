@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge } from '@control-os/ui';
+import { Badge, Button, Progress } from '@control-os/ui';
 import { FadeIn } from '@/components/dashboard/fade-in';
 import { GlassCard } from '@/components/ui/glass-card';
 import { useDataStore } from '@/lib/data-store';
@@ -20,6 +20,8 @@ function formatEntryDate(date: string): string {
  */
 export default function FinanceiroPage() {
   const financeEntries = useDataStore((state) => state.financeEntries);
+  const debts = useDataStore((state) => state.debts);
+  const payDebtInstallment = useDataStore((state) => state.payDebtInstallment);
 
   const receitaTotal = financeEntries
     .filter((entry) => entry.type === 'receita')
@@ -28,6 +30,7 @@ export default function FinanceiroPage() {
     .filter((entry) => entry.type === 'despesa')
     .reduce((sum, entry) => sum + entry.amount, 0);
   const saldo = receitaTotal - gastosTotal;
+  const dividasTotal = debts.reduce((sum, debt) => sum + debt.remainingAmount, 0);
 
   const sortedEntries = [...financeEntries].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
@@ -40,7 +43,7 @@ export default function FinanceiroPage() {
       </FadeIn>
 
       <FadeIn delay={0.05}>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
           <GlassCard interactive={false} glow="blue" className="p-5">
             <p className="text-xs text-text-tertiary">Receita</p>
             <p className="mt-1 text-xl font-semibold text-text-primary">{formatCurrency(receitaTotal)}</p>
@@ -53,6 +56,57 @@ export default function FinanceiroPage() {
             <p className="text-xs text-text-tertiary">Saldo</p>
             <p className="mt-1 text-xl font-semibold text-text-primary">{formatCurrency(saldo)}</p>
           </GlassCard>
+          <GlassCard interactive={false} glow={dividasTotal > 0 ? 'red' : 'green'} className="p-5">
+            <p className="text-xs text-text-tertiary">Dívidas em aberto</p>
+            <p className="mt-1 text-xl font-semibold text-text-primary">{formatCurrency(dividasTotal)}</p>
+          </GlassCard>
+        </div>
+      </FadeIn>
+
+      <FadeIn delay={0.08}>
+        <div className="flex flex-col gap-3">
+          <h2 className="text-sm font-medium text-text-primary">Dívidas</h2>
+
+          {debts.length === 0 && (
+            <GlassCard interactive={false} className="p-8 text-center text-sm text-text-secondary">
+              Nenhuma dívida registrada. Conte para a Nova, ex.: &quot;Tenho uma dívida de R$ 3.000 em 10x&quot;.
+            </GlassCard>
+          )}
+
+          <div className="flex flex-col gap-2">
+            {debts.map((debt) => {
+              const quitada = debt.remainingAmount <= 0;
+              const progress = (debt.installmentsPaid / debt.installmentsTotal) * 100;
+              return (
+                <GlassCard key={debt.id} interactive={false} className="p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex min-w-0 flex-col">
+                      <p className="truncate text-sm text-text-primary">{debt.description}</p>
+                      <p className="text-xs text-text-tertiary">
+                        {debt.category} · {debt.installmentsPaid}/{debt.installmentsTotal} parcelas
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <span className="font-mono text-sm text-accent-red">
+                        {formatCurrency(debt.remainingAmount)}
+                      </span>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={quitada}
+                        onClick={() => payDebtInstallment(debt.id)}
+                      >
+                        {quitada ? 'Quitada' : 'Pagar parcela'}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <Progress value={progress} />
+                  </div>
+                </GlassCard>
+              );
+            })}
+          </div>
         </div>
       </FadeIn>
 

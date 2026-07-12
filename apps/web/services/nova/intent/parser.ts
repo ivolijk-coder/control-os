@@ -17,6 +17,12 @@ const REMINDER_PATTERN = /\b(lembrar de|lembra de|n[ãa]o esquecer de)\b/;
 const AGENDA_PATTERN = /\b(reuni[ãa]o|compromisso|agendar)\b/;
 const GOAL_PATTERN = /\b(quero faturar|minha meta [ée]|meu objetivo [ée]|quero alcan[çc]ar)\b/;
 const PROJECT_PATTERN = /\b(vou viajar|novo projeto|quero criar um projeto|vou criar)\b/;
+// Checada antes de DEBT_PATTERN — "quanto eu devo" também contém "devo".
+const CONSULT_DEBT_PATTERN = /\b(quanto (eu )?devo|minhas d[íi]vidas|como est[ãa]o (as )?minhas d[íi]vidas)\b/;
+// `\bdevo\b\s*(r\$|\d)` fica fora do grupo com `\b` final — depois de "r$"
+// (símbolo, não letra) o `\b` de fechamento nunca bateria.
+const DEBT_PATTERN = /\b(tenho uma d[íi]vida|financiei|parcelei)\b|\bdevo\b\s*(r\$|\d)/;
+const INSTALLMENTS_PATTERN = /(\d{1,2})\s*(?:x\b|vezes)/i;
 
 /** Normaliza um valor em formato pt-BR ("2.500,50", "2.500", "35") para número. */
 function parseAmount(text: string): number | null {
@@ -44,6 +50,14 @@ function parseTime(text: string): string | undefined {
   if (!hour) return undefined;
   const minute = match?.[2] ?? '00';
   return `${hour.padStart(2, '0')}:${minute}`;
+}
+
+/** Extrai o número de parcelas de expressões como "em 10x" ou "12 vezes" — padrão 1x (à vista) se ausente. */
+function parseInstallments(text: string): number {
+  const match = INSTALLMENTS_PATTERN.exec(text);
+  const rawValue = match?.[1];
+  const parsed = rawValue ? Number(rawValue) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 }
 
 /** Usa o texto original como título/descrição — capitaliza e remove pontuação final. */
@@ -85,6 +99,23 @@ export function parseIntent(text: string): NovaIntent {
 
   if (PROJECT_PATTERN.test(lower)) {
     return { kind: 'criar_projeto', raw, title: describeEntry(raw) };
+  }
+
+  if (CONSULT_DEBT_PATTERN.test(lower)) {
+    return { kind: 'consultar_dividas', raw };
+  }
+
+  if (DEBT_PATTERN.test(lower)) {
+    const amount = parseAmount(raw);
+    if (amount !== null) {
+      return {
+        kind: 'registrar_divida',
+        raw,
+        totalAmount: amount,
+        installments: parseInstallments(raw),
+        description: describeEntry(raw),
+      };
+    }
   }
 
   return { kind: 'desconhecido', raw };

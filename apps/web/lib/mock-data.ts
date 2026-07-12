@@ -2,6 +2,7 @@ import type {
   AgendaEvent,
   ControlSpace,
   DashboardStat,
+  Debt,
   FinanceEntry,
   Mission,
   NavItem,
@@ -186,6 +187,33 @@ export const MOCK_FINANCE_ENTRIES: FinanceEntry[] = [
     amount: 186,
     category: 'Alimentação',
     date: '2026-07-08T12:20:00Z',
+    spaceId: 'sp_empresa',
+  },
+];
+
+/**
+ * Dívidas (CONTROL OS — Etapa 3, Financeiro avançado). `remainingAmount`
+ * já reflete `installmentsPaid` — não precisa ser recalculado na leitura.
+ */
+export const MOCK_DEBTS: Debt[] = [
+  {
+    id: 'db_001',
+    description: 'Financiamento do carro',
+    totalAmount: 48000,
+    remainingAmount: 33000,
+    installmentsTotal: 48,
+    installmentsPaid: 15,
+    category: 'Veículo',
+    spaceId: 'sp_vida',
+  },
+  {
+    id: 'db_002',
+    description: 'Cartão de crédito — notebook parcelado',
+    totalAmount: 4800,
+    remainingAmount: 2400,
+    installmentsTotal: 10,
+    installmentsPaid: 5,
+    category: 'Cartão',
     spaceId: 'sp_empresa',
   },
 ];

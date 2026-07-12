@@ -1,7 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AgendaEvent, FinanceEntry, Mission, TimelineEvent } from '@control-os/types';
-import { MOCK_AGENDA_EVENTS, MOCK_FINANCE_ENTRIES, MOCK_MISSIONS, MOCK_TIMELINE } from './mock-data';
+import type { AgendaEvent, Debt, FinanceEntry, Mission, TimelineEvent } from '@control-os/types';
+import {
+  MOCK_AGENDA_EVENTS,
+  MOCK_DEBTS,
+  MOCK_FINANCE_ENTRIES,
+  MOCK_MISSIONS,
+  MOCK_TIMELINE,
+} from './mock-data';
 
 /**
  * Fonte única de dados de domínio do CONTROL OS (CONTROL OS 3.0).
@@ -29,6 +35,7 @@ interface DataState {
   timeline: TimelineEvent[];
   financeEntries: FinanceEntry[];
   agendaEvents: AgendaEvent[];
+  debts: Debt[];
 
   addMission: (mission: Omit<Mission, 'id'>) => Mission;
   updateMission: (id: string, patch: Partial<Omit<Mission, 'id'>>) => void;
@@ -38,6 +45,10 @@ interface DataState {
   addFinanceEntry: (entry: Omit<FinanceEntry, 'id'>) => FinanceEntry;
 
   addAgendaEvent: (event: Omit<AgendaEvent, 'id'>) => AgendaEvent;
+
+  addDebt: (debt: Omit<Debt, 'id'>) => Debt;
+  /** Paga 1 parcela: soma 1 a `installmentsPaid` e reduz `remainingAmount` proporcionalmente. Não faz nada se já quitada. */
+  payDebtInstallment: (id: string) => void;
 }
 
 export const useDataStore = create<DataState>()(
@@ -47,6 +58,7 @@ export const useDataStore = create<DataState>()(
       timeline: MOCK_TIMELINE,
       financeEntries: MOCK_FINANCE_ENTRIES,
       agendaEvents: MOCK_AGENDA_EVENTS,
+      debts: MOCK_DEBTS,
 
       addMission: (mission) => {
         const created: Mission = { ...mission, id: nextId('ms') };
@@ -77,6 +89,23 @@ export const useDataStore = create<DataState>()(
         const created: AgendaEvent = { ...event, id: nextId('ag') };
         set((state) => ({ agendaEvents: [created, ...state.agendaEvents] }));
         return created;
+      },
+
+      addDebt: (debt) => {
+        const created: Debt = { ...debt, id: nextId('db') };
+        set((state) => ({ debts: [created, ...state.debts] }));
+        return created;
+      },
+      payDebtInstallment: (id) => {
+        set((state) => ({
+          debts: state.debts.map((debt) => {
+            if (debt.id !== id || debt.installmentsPaid >= debt.installmentsTotal) return debt;
+            const perInstallment = debt.totalAmount / debt.installmentsTotal;
+            const installmentsPaid = debt.installmentsPaid + 1;
+            const remainingAmount = Math.max(0, debt.remainingAmount - perInstallment);
+            return { ...debt, installmentsPaid, remainingAmount };
+          }),
+        }));
       },
     }),
     {
