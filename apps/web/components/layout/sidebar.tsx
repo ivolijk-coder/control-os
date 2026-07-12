@@ -8,7 +8,8 @@ import { useMediaQuery } from '@control-os/hooks';
 import { Avatar, AvatarFallback, Badge, Separator } from '@control-os/ui';
 import { cn, getInitials } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
-import { MOCK_NAV_ITEMS, MOCK_SPACES, MOCK_USER } from '@/lib/mock-data';
+import type { NavItem } from '@control-os/types';
+import { MOCK_NAV_ITEMS_EMPRESA, MOCK_NAV_ITEMS_VIDA, MOCK_SPACES, MOCK_USER } from '@/lib/mock-data';
 import { ICON_MAP } from './icon-map';
 
 // Abaixo de 768px (breakpoint `md` do Tailwind) a Sidebar vira um drawer
@@ -25,6 +26,64 @@ const SPACE_COLOR_CLASSES: Record<string, string> = {
   purple: 'bg-accent-purple/15 text-accent-purple',
   red: 'bg-accent-red/15 text-accent-red',
 };
+
+/**
+ * Um grupo de itens de navegação com rótulo — usado para separar "Minha
+ * Vida" (destaque) de "Empresa" (secundário) na Sidebar (CONTROL OS —
+ * Etapa 3, Sistema Operacional Pessoal).
+ */
+function NavGroup({
+  label,
+  items,
+  pathname,
+  collapsed,
+}: {
+  label: string;
+  items: NavItem[];
+  pathname: string | null;
+  collapsed: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      {!collapsed && (
+        <span className="px-2 pb-2 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
+          {label}
+        </span>
+      )}
+      {items.map((item) => {
+        const Icon = ICON_MAP[item.icon] ?? ICON_MAP.LayoutGrid;
+        const isActive = pathname?.startsWith(item.href);
+        return (
+          <Link
+            key={item.id}
+            href={item.href}
+            className={cn(
+              'group relative flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-all duration-fast ease-out hover:scale-[1.01] active:scale-[0.98]',
+              isActive
+                ? 'bg-white/[0.08] text-text-primary'
+                : 'text-text-secondary hover:bg-white/[0.04] hover:text-text-primary'
+            )}
+          >
+            {isActive && (
+              <motion.span
+                layoutId="sidebar-active-indicator"
+                className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-accent-purple"
+                transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              />
+            )}
+            <Icon className="h-4 w-4 shrink-0" />
+            {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+            {!collapsed && item.badge ? (
+              <Badge variant="purple" className="ml-auto">
+                {item.badge}
+              </Badge>
+            ) : null}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
 
 /**
  * Sidebar — navegação principal do CONTROL OS.
@@ -148,44 +207,11 @@ export function Sidebar() {
 
       <Separator />
 
-      {/* Navegação global */}
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
-        {!effectiveCollapsed && (
-          <span className="px-2 pb-2 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
-            Navegação
-          </span>
-        )}
-        {MOCK_NAV_ITEMS.map((item) => {
-          const Icon = ICON_MAP[item.icon] ?? ICON_MAP.LayoutGrid;
-          const isActive = pathname?.startsWith(item.href);
-          return (
-            <Link
-              key={item.id}
-              href={item.href}
-              className={cn(
-                'group relative flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-all duration-fast ease-out hover:scale-[1.01] active:scale-[0.98]',
-                isActive
-                  ? 'bg-white/[0.08] text-text-primary'
-                  : 'text-text-secondary hover:bg-white/[0.04] hover:text-text-primary'
-              )}
-            >
-              {isActive && (
-                <motion.span
-                  layoutId="sidebar-active-indicator"
-                  className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-accent-purple"
-                  transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                />
-              )}
-              <Icon className="h-4 w-4 shrink-0" />
-              {!effectiveCollapsed && <span className="flex-1 truncate">{item.label}</span>}
-              {!effectiveCollapsed && item.badge ? (
-                <Badge variant="purple" className="ml-auto">
-                  {item.badge}
-                </Badge>
-              ) : null}
-            </Link>
-          );
-        })}
+      {/* Navegação global — "Minha Vida" em destaque, "Empresa" logo abaixo,
+          secundária (CONTROL OS — Etapa 3: o foco deixa de ser empresa). */}
+      <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 py-4">
+        <NavGroup label="Minha Vida" items={MOCK_NAV_ITEMS_VIDA} pathname={pathname} collapsed={effectiveCollapsed} />
+        <NavGroup label="Empresa" items={MOCK_NAV_ITEMS_EMPRESA} pathname={pathname} collapsed={effectiveCollapsed} />
       </nav>
 
       <Separator />

@@ -46,7 +46,13 @@ export type IconName =
   | 'Plus'
   | 'LogOut'
   | 'Settings'
-  | 'Menu';
+  | 'Menu'
+  | 'CalendarClock'
+  | 'Trophy'
+  | 'Repeat'
+  | 'Landmark'
+  | 'Plane'
+  | 'NotebookText';
 
 /** Control Spaces™ — unidades de contexto (ex.: "Minha Vida", "Minha Empresa"). */
 export interface ControlSpace {

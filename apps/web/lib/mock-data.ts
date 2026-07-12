@@ -36,15 +36,27 @@ export const MOCK_SPACES: ControlSpace[] = [
   { id: 'sp_clientes', name: 'Clientes', icon: 'Users', color: 'green', missionsCount: 6, isActive: false },
 ];
 
-export const MOCK_NAV_ITEMS: NavItem[] = [
-  { id: 'nav_dashboard', label: 'Dashboard', href: '/dashboard', icon: 'LayoutGrid' },
+/**
+ * Navegação da Sidebar (CONTROL OS — Etapa 3, Sistema Operacional Pessoal).
+ *
+ * Dividida em 2 grupos — reflete a mudança de foco pedida pelo usuário: "o
+ * foco deixa de ser empresa, passa a ser organização da vida". "Minha Vida"
+ * aparece primeiro e concentra os módulos pessoais; "Empresa" continua
+ * existindo, só que em segundo plano, sem sumir. `nav_projetos` e
+ * `nav_knowledge` (que nunca tiveram página construída — só existiam como
+ * item de menu quebrado desde a Fase 1) foram removidos daqui; cada módulo
+ * novo só entra nesta lista no mesmo momento em que sua página é criada,
+ * pra nunca existir um link morto no meio do caminho.
+ */
+export const MOCK_NAV_ITEMS_VIDA: NavItem[] = [
   { id: 'nav_nova', label: 'Nova', href: '/nova', icon: 'Sparkles' },
-  { id: 'nav_timeline', label: 'Timeline', href: '/timeline', icon: 'Activity', badge: 3 },
-  { id: 'nav_missoes', label: 'Missões', href: '/missoes', icon: 'Target', badge: 5 },
-  { id: 'nav_projetos', label: 'Projetos', href: '/projetos', icon: 'FolderKanban' },
-  { id: 'nav_documentos', label: 'Documentos', href: '/documentos', icon: 'FileText' },
-  { id: 'nav_knowledge', label: 'Knowledge', href: '/knowledge', icon: 'BookOpen' },
   { id: 'nav_financeiro', label: 'Financeiro', href: '/financeiro', icon: 'Wallet' },
+  { id: 'nav_missoes', label: 'Missões', href: '/missoes', icon: 'Target', badge: 5 },
+];
+
+export const MOCK_NAV_ITEMS_EMPRESA: NavItem[] = [
+  { id: 'nav_dashboard', label: 'Dashboard', href: '/dashboard', icon: 'LayoutGrid' },
+  { id: 'nav_timeline', label: 'Timeline', href: '/timeline', icon: 'Activity', badge: 3 },
 ];
 
 export const MOCK_STATS: DashboardStat[] = [
