@@ -49,7 +49,7 @@ export function CadastroForm() {
     setIsSubmitting(true);
     try {
       await login(email, password);
-      router.push('/dashboard');
+      router.push('/nova');
     } finally {
       setIsSubmitting(false);
     }

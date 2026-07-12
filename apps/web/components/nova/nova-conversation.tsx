@@ -3,22 +3,25 @@
 import * as React from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { NovaMessageBubble, type ConversationMessage } from './nova-message-bubble';
-import { NovaThinking } from './nova-thinking';
+import { NovaThinking, type NovaThinkingStatus } from './nova-thinking';
 
 export interface NovaConversationProps {
   messages: ConversationMessage[];
   isThinking: boolean;
+  /** "Pensando" (interpretando) vs. "Executando" (rodando ações reais no useDataStore). */
+  thinkingStatus?: NovaThinkingStatus;
 }
 
 /**
- * NovaConversation — Modo de Conversa (Nova Experience — Fase 2).
+ * NovaConversation — Modo de Conversa (Nova Experience — Fase 2, estendida
+ * no CONTROL OS 3.0 com os estados "Pensando"/"Executando").
  *
  * Renderiza as mensagens trocadas com a NOVA nesta sessão (estado local,
  * não persistido, sem abrir novas telas). Some por completo quando não há
  * nenhuma mensagem ainda, para não ocupar espaço na Home antes da primeira
  * interação.
  */
-export function NovaConversation({ messages, isThinking }: NovaConversationProps) {
+export function NovaConversation({ messages, isThinking, thinkingStatus }: NovaConversationProps) {
   if (messages.length === 0 && !isThinking) return null;
 
   return (
@@ -27,7 +30,7 @@ export function NovaConversation({ messages, isThinking }: NovaConversationProps
         {messages.map((message) => (
           <NovaMessageBubble key={message.id} message={message} />
         ))}
-        {isThinking && <NovaThinking key="thinking" />}
+        {isThinking && <NovaThinking key="thinking" status={thinkingStatus} />}
       </AnimatePresence>
     </div>
   );

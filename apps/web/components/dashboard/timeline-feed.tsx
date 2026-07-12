@@ -1,4 +1,4 @@
-import { Activity, Bot, CheckCircle2, FileText, Wallet } from 'lucide-react';
+import { Activity, Bot, CalendarClock, CheckCircle2, FileText, Wallet } from 'lucide-react';
 import { Card } from '@control-os/ui';
 import { cn, formatRelativeTime } from '@/lib/utils';
 import type { TimelineEvent, TimelineEventType } from '@control-os/types';
@@ -10,6 +10,7 @@ const TYPE_ICON: Record<TimelineEventType, typeof Activity> = {
   mensagem_nova: Bot,
   documento: FileText,
   financeiro: Wallet,
+  agenda_criada: CalendarClock,
   sistema: Activity,
 };
 

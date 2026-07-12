@@ -1,6 +1,8 @@
 import type {
+  AgendaEvent,
   ControlSpace,
   DashboardStat,
+  FinanceEntry,
   Mission,
   NavItem,
   NovaMessage,
@@ -149,6 +151,65 @@ export const MOCK_TIMELINE: TimelineEvent[] = [
     timestamp: '2026-07-10T11:15:00Z',
     spaceId: 'sp_clientes',
     actor: 'user',
+  },
+];
+
+/**
+ * Seed inicial do `useDataStore` (CONTROL OS 3.0). A partir daqui esses
+ * dados passam a viver no store reativo — este array só define o estado
+ * inicial na primeira carga (equivalente ao que `MOCK_MISSIONS` já fazia
+ * para o Dashboard antes do 3.0).
+ */
+export const MOCK_FINANCE_ENTRIES: FinanceEntry[] = [
+  {
+    id: 'fn_001',
+    type: 'receita',
+    description: 'Pagamento cliente Atlas — parcela 2/3',
+    amount: 18500,
+    category: 'Serviços',
+    date: '2026-07-10T14:00:00Z',
+    spaceId: 'sp_empresa',
+  },
+  {
+    id: 'fn_002',
+    type: 'despesa',
+    description: 'Assinatura ferramentas de design',
+    amount: 349,
+    category: 'Software',
+    date: '2026-07-09T09:30:00Z',
+    spaceId: 'sp_empresa',
+  },
+  {
+    id: 'fn_003',
+    type: 'despesa',
+    description: 'Almoço com equipe comercial',
+    amount: 186,
+    category: 'Alimentação',
+    date: '2026-07-08T12:20:00Z',
+    spaceId: 'sp_empresa',
+  },
+];
+
+export const MOCK_AGENDA_EVENTS: AgendaEvent[] = [
+  {
+    id: 'ag_001',
+    title: 'Reunião de alinhamento — cliente Atlas',
+    date: '2026-07-12',
+    time: '15:00',
+    spaceId: 'sp_clientes',
+  },
+  {
+    id: 'ag_002',
+    title: 'Revisão financeira mensal',
+    date: '2026-07-13',
+    time: '10:00',
+    spaceId: 'sp_empresa',
+  },
+  {
+    id: 'ag_003',
+    title: 'Vencimento do DAS',
+    date: '2026-07-16',
+    spaceId: 'sp_empresa',
   },
 ];
 

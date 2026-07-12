@@ -72,6 +72,40 @@ export interface Mission {
   objectivesDone: number;
 }
 
+export type FinanceEntryType = 'receita' | 'despesa';
+
+/**
+ * Lançamento financeiro (CONTROL OS 3.0 / NOVA). Cobre tanto registros
+ * criados via navegação manual (módulo Financeiro) quanto os criados pela
+ * Nova em conversa (ex.: "Gastei R$ 35 no almoço") — mesma fonte de dados,
+ * sem duplicação de tipo entre os dois modos.
+ */
+export interface FinanceEntry {
+  id: string;
+  type: FinanceEntryType;
+  description: string;
+  amount: number;
+  category: string;
+  date: string;
+  spaceId?: string;
+}
+
+/**
+ * Compromisso de agenda (CONTROL OS 3.0 / NOVA). `linkedMissionId` permite
+ * que um compromisso criado em conversa (ex.: "Tenho reunião amanhã às 15h")
+ * também gere um lembrete via Missão, sem duplicar o conceito — a Missão
+ * continua sendo a unidade central de lembretes/metas/projetos.
+ */
+export interface AgendaEvent {
+  id: string;
+  title: string;
+  date: string;
+  time?: string;
+  location?: string;
+  spaceId?: string;
+  linkedMissionId?: string;
+}
+
 export type TimelineEventType =
   | 'missao_criada'
   | 'missao_concluida'
@@ -79,6 +113,7 @@ export type TimelineEventType =
   | 'mensagem_nova'
   | 'documento'
   | 'financeiro'
+  | 'agenda_criada'
   | 'sistema';
 
 /** Evento da Timeline Inteligente (Control Feed™). */

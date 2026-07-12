@@ -83,14 +83,18 @@ export function Sidebar() {
           isMobile ? 'fixed inset-y-0 left-0 z-50 shadow-e5' : 'relative'
         )}
       >
-        {/* Cabeçalho / marca */}
+        {/* Cabeçalho / marca — leva para a Home conversacional (/nova) */}
         <div className="flex h-16 items-center gap-3 px-5">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white text-xs font-bold text-black">
-            C
-          </div>
-          {!effectiveCollapsed && (
-            <span className="text-sm font-semibold tracking-tight text-text-primary">CONTROL OS</span>
-          )}
+          <Link href="/nova" className="flex min-w-0 flex-1 items-center gap-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white text-xs font-bold text-black">
+              C
+            </span>
+            {!effectiveCollapsed && (
+              <span className="truncate text-sm font-semibold tracking-tight text-text-primary">
+                CONTROL OS
+              </span>
+            )}
+          </Link>
           {isMobile && (
             <button
               onClick={() => setMobileNavOpen(false)}
