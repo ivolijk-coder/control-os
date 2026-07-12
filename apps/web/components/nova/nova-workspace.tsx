@@ -14,7 +14,7 @@ import { IntelligentPanel } from '@/components/home/intelligent-panel';
 import { processNovaTurn } from '@/services/nova';
 import type { NovaContext } from '@/services/nova';
 import { useDataStore } from '@/lib/data-store';
-import { transitionOut } from '@/lib/motion';
+import { transitionOut, transitionSpring } from '@/lib/motion';
 
 // Canvas é inerentemente client-only — mesmo tratamento do BackgroundNetwork.
 const NovaOrb = dynamic(() => import('@/components/nova/nova-orb').then((mod) => mod.NovaOrb), {
@@ -50,7 +50,7 @@ function wait(ms: number): Promise<void> {
 }
 
 export interface NovaWorkspaceProps {
-  /** Mostra o Painel Inteligente (métricas agregadas) abaixo da conversa. */
+  /** Mostra o Painel Inteligente (métricas agregadas) abaixo da conversa. Padrão: escondido — a Home prioriza a esfera, limpa. */
   showIntelligentPanel?: boolean;
   /**
    * `'inline'` (padrão): fluxo normal, usado dentro do `NovaFloatingPanel`
@@ -60,21 +60,22 @@ export interface NovaWorkspaceProps {
    * enviada pelo usuário.
    */
   variant?: 'inline' | 'docked';
-  /** Só usado no modo `docked` — conteúdo (saudação, resumo, cards) acima da conversa, dentro da mesma área rolável. */
+  /** Só usado no modo `docked`, e só antes da primeira mensagem — some assim que a conversa começa, para deixar a esfera como protagonista. */
   topContent?: React.ReactNode;
 }
 
 /**
- * NovaWorkspace — orquestra o Modo de Conversa + Painel inteligente
- * (Nova Experience — Fase 2), executando ações reais contra `useDataStore`
- * via `processNovaTurn` (CONTROL OS 3.0/Etapa 3) em vez de um gerador de
- * respostas mockado local.
+ * NovaWorkspace — orquestra o Modo de Conversa (Nova Experience — Fase 2),
+ * executando ações reais contra `useDataStore` via `processNovaTurn`
+ * (CONTROL OS 3.0/Etapa 3) em vez de um gerador de respostas mockado local.
  *
- * Reaproveitado em dois lugares (CONTROL OS — Etapa 3): a Home em `/nova`
- * (`variant="docked"`, `showIntelligentPanel` true) e o `NovaFloatingPanel`,
- * aberto por cima de qualquer módulo (`variant="inline"`,
- * `showIntelligentPanel` false — a página de origem já mostra os dados
- * dela, evita duplicar).
+ * A Home (`variant="docked"`) é propositalmente limpa — objetivo declarado
+ * pelo usuário: "só a bola no meio", sem painéis, sensação de estar
+ * conversando com alguém. A `NovaOrb` fica sempre visível (não some depois
+ * da primeira mensagem) e cresce (`scale`) conforme o estado da conversa —
+ * pensando/executando —, como se estivesse reagindo. Reaproveitado também
+ * pelo `NovaFloatingPanel` (`variant="inline"`, sem esfera — painel pequeno
+ * demais para o efeito valer a pena).
  *
  * Estado local (não persistido): mensagens da sessão e o estado da Nova
  * (pensando/executando). "Primeiro faz. Depois responde." — o
@@ -82,7 +83,7 @@ export interface NovaWorkspaceProps {
  * texto aparecer.
  */
 export function NovaWorkspace({
-  showIntelligentPanel = true,
+  showIntelligentPanel = false,
   variant = 'inline',
   topContent,
 }: NovaWorkspaceProps) {
@@ -139,6 +140,9 @@ export function NovaWorkspace({
   );
 
   const orbStatus: NovaOrbStatus = isThinking ? thinkingStatus : 'idle';
+  // A esfera "cresce" enquanto a NOVA pensa/executa — a reação visual que
+  // substitui, por enquanto, uma resposta em voz real.
+  const orbScale = orbStatus === 'executando' ? 1.18 : orbStatus === 'pensando' ? 1.08 : 1;
 
   const inputRow = (
     <div className="mx-auto w-full max-w-2xl">
@@ -158,12 +162,6 @@ export function NovaWorkspace({
 
   const conversationArea = (
     <>
-      {variant === 'docked' && messages.length === 0 && (
-        <div className="mx-auto flex h-56 w-56 items-center justify-center sm:h-72 sm:w-72">
-          <NovaOrb status={orbStatus} />
-        </div>
-      )}
-
       <div className="mx-auto w-full max-w-2xl">
         <NovaConversation messages={messages} isThinking={isThinking} thinkingStatus={thinkingStatus} />
       </div>
@@ -184,9 +182,20 @@ export function NovaWorkspace({
     return (
       <div className="flex h-[calc(100vh-4rem)] flex-col">
         <div className="flex-1 overflow-y-auto px-6 py-8">
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-            {topContent}
-            {conversationArea}
+          <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-6">
+            {messages.length === 0 && topContent}
+
+            {/* Tamanho do container é fixo — só o `scale` muda — pra não
+                forçar o canvas a recalcular resolução a cada resposta. */}
+            <motion.div
+              animate={{ scale: orbScale }}
+              transition={transitionSpring}
+              className="flex h-64 w-64 shrink-0 items-center justify-center sm:h-80 sm:w-80"
+            >
+              <NovaOrb status={orbStatus} />
+            </motion.div>
+
+            <div className="flex w-full flex-col gap-6">{conversationArea}</div>
           </div>
         </div>
         <div className="shrink-0 border-t border-white/[0.08] bg-bg/70 px-6 py-4 backdrop-blur-xl">

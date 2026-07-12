@@ -6,9 +6,10 @@ import type { AgendaEvent, FinanceEntry, Mission } from '@control-os/types';
  * financeiros recentes e se os gastos já superaram a receita registrada.
  * Nunca inventa sinais de domínios que ainda não existem (ex.: hábitos,
  * orçamento planejado) — só o que dá pra calcular com os dados reais de
- * hoje. Usado tanto pela Home (`TodaySummary`, lista visual) quanto por
- * `buildDailyCheckIn` (mensagem em texto, para canais sem UI como o
- * WhatsApp).
+ * hoje. Base de `buildDailyCheckIn` (mensagem em texto, para canais sem UI
+ * como o futuro adapter de WhatsApp). A Home (`/nova`) não usa mais este
+ * resumo em texto — ficou propositalmente limpa, só a `NovaOrb` e a
+ * conversa (pedido explícito do usuário).
  */
 export function buildTodayHighlights(
   missions: Mission[],
