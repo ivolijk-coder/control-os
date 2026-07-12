@@ -1,18 +1,25 @@
 'use client';
 
 import * as React from 'react';
+import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
 import { Activity, CalendarClock, Flag, Target, Wallet } from 'lucide-react';
 import { NovaInput } from '@/components/nova/nova-input';
 import { NovaConversation } from '@/components/nova/nova-conversation';
 import type { ConversationMessage } from '@/components/nova/nova-message-bubble';
 import type { NovaThinkingStatus } from '@/components/nova/nova-thinking';
+import type { NovaOrbStatus } from '@/components/nova/nova-orb';
 import { QuickAction } from '@/components/ui/quick-action';
 import { IntelligentPanel } from '@/components/home/intelligent-panel';
 import { processNovaTurn } from '@/services/nova';
 import type { NovaContext } from '@/services/nova';
 import { useDataStore } from '@/lib/data-store';
 import { transitionOut } from '@/lib/motion';
+
+// Canvas é inerentemente client-only — mesmo tratamento do BackgroundNetwork.
+const NovaOrb = dynamic(() => import('@/components/nova/nova-orb').then((mod) => mod.NovaOrb), {
+  ssr: false,
+});
 
 const QUICK_ACTIONS = [
   { icon: Target, label: 'Organize meu dia' },
@@ -42,6 +49,21 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+export interface NovaWorkspaceProps {
+  /** Mostra o Painel Inteligente (métricas agregadas) abaixo da conversa. */
+  showIntelligentPanel?: boolean;
+  /**
+   * `'inline'` (padrão): fluxo normal, usado dentro do `NovaFloatingPanel`
+   * (um modal, já com seu próprio scroll). `'docked'`: layout de tela
+   * inteira com o campo da NOVA fixo no rodapé e o resto rolando por trás
+   * — usado só na Home (`/nova`), estilo inspirado em referência visual
+   * enviada pelo usuário.
+   */
+  variant?: 'inline' | 'docked';
+  /** Só usado no modo `docked` — conteúdo (saudação, resumo, cards) acima da conversa, dentro da mesma área rolável. */
+  topContent?: React.ReactNode;
+}
+
 /**
  * NovaWorkspace — orquestra o Modo de Conversa + Painel inteligente
  * (Nova Experience — Fase 2), executando ações reais contra `useDataStore`
@@ -49,17 +71,21 @@ function wait(ms: number): Promise<void> {
  * respostas mockado local.
  *
  * Reaproveitado em dois lugares (CONTROL OS — Etapa 3): a Home em `/nova`
- * (`showIntelligentPanel` true — o painel de indicadores faz parte da
- * estrutura da Home) e o `NovaFloatingPanel`, aberto por cima de qualquer
- * módulo (`showIntelligentPanel` false — a página de origem já mostra os
- * dados dela, evita duplicar).
+ * (`variant="docked"`, `showIntelligentPanel` true) e o `NovaFloatingPanel`,
+ * aberto por cima de qualquer módulo (`variant="inline"`,
+ * `showIntelligentPanel` false — a página de origem já mostra os dados
+ * dela, evita duplicar).
  *
  * Estado local (não persistido): mensagens da sessão e o estado da Nova
  * (pensando/executando). "Primeiro faz. Depois responde." — o
  * plano/checklist e a execução real sempre rodam antes da resposta em
  * texto aparecer.
  */
-export function NovaWorkspace({ showIntelligentPanel = true }: { showIntelligentPanel?: boolean }) {
+export function NovaWorkspace({
+  showIntelligentPanel = true,
+  variant = 'inline',
+  topContent,
+}: NovaWorkspaceProps) {
   const [messages, setMessages] = React.useState<ConversationMessage[]>([]);
   const [isThinking, setIsThinking] = React.useState(false);
   const [thinkingStatus, setThinkingStatus] = React.useState<NovaThinkingStatus>('pensando');
@@ -112,21 +138,31 @@ export function NovaWorkspace({ showIntelligentPanel = true }: { showIntelligent
     [novaContext]
   );
 
-  return (
-    <div className="flex w-full flex-col gap-6">
-      <div className="mx-auto w-full max-w-2xl">
-        <NovaInput onSubmit={handleSend} disabled={isThinking} />
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-          {QUICK_ACTIONS.map((action) => (
-            <QuickAction
-              key={action.label}
-              icon={action.icon}
-              label={action.label}
-              onClick={() => handleSend(action.label)}
-            />
-          ))}
-        </div>
+  const orbStatus: NovaOrbStatus = isThinking ? thinkingStatus : 'idle';
+
+  const inputRow = (
+    <div className="mx-auto w-full max-w-2xl">
+      <NovaInput onSubmit={handleSend} disabled={isThinking} />
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+        {QUICK_ACTIONS.map((action) => (
+          <QuickAction
+            key={action.label}
+            icon={action.icon}
+            label={action.label}
+            onClick={() => handleSend(action.label)}
+          />
+        ))}
       </div>
+    </div>
+  );
+
+  const conversationArea = (
+    <>
+      {variant === 'docked' && messages.length === 0 && (
+        <div className="mx-auto flex h-56 w-56 items-center justify-center sm:h-72 sm:w-72">
+          <NovaOrb status={orbStatus} />
+        </div>
+      )}
 
       <div className="mx-auto w-full max-w-2xl">
         <NovaConversation messages={messages} isThinking={isThinking} thinkingStatus={thinkingStatus} />
@@ -141,6 +177,29 @@ export function NovaWorkspace({ showIntelligentPanel = true }: { showIntelligent
           <IntelligentPanel />
         </motion.div>
       )}
+    </>
+  );
+
+  if (variant === 'docked') {
+    return (
+      <div className="flex h-[calc(100vh-4rem)] flex-col">
+        <div className="flex-1 overflow-y-auto px-6 py-8">
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+            {topContent}
+            {conversationArea}
+          </div>
+        </div>
+        <div className="shrink-0 border-t border-white/[0.08] bg-bg/70 px-6 py-4 backdrop-blur-xl">
+          {inputRow}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex w-full flex-col gap-6">
+      {inputRow}
+      {conversationArea}
     </div>
   );
 }

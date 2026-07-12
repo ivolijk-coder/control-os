@@ -70,15 +70,34 @@ export function NovaInput({ className, onSubmit, disabled = false }: NovaInputPr
   const showOverlay = value.length === 0 && !focused;
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className={cn(
-        'group relative flex items-center gap-3 rounded-2xl border bg-card/60 px-5 py-4 shadow-e4 backdrop-blur-xl transition-colors duration-base ease-out',
-        focused ? 'border-accent-purple/40' : 'border-white/[0.08] hover:border-white/[0.14]',
-        className
-      )}
-    >
-      <Sparkles className="h-5 w-5 shrink-0 text-accent-purple" aria-hidden />
+    <div className="relative w-full">
+      {/* Legenda ao vivo: bolha acima do campo espelhando o que está sendo
+          digitado — mesma linguagem visual de legendas de voz em tempo real,
+          só que honesta sobre não termos captura de voz real ainda. */}
+      <AnimatePresence>
+        {value.length > 0 && (
+          <motion.div
+            key="live-caption"
+            initial={{ opacity: 0, y: 6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 6, scale: 0.98 }}
+            transition={transitionOut(0.2)}
+            className="absolute bottom-full left-1/2 mb-3 max-w-[90%] -translate-x-1/2 rounded-2xl bg-white px-4 py-2 text-sm font-medium text-black shadow-e4"
+          >
+            {value}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <form
+        onSubmit={handleSubmit}
+        className={cn(
+          'group relative flex items-center gap-3 rounded-2xl border bg-card/60 px-5 py-4 shadow-e4 backdrop-blur-xl transition-colors duration-base ease-out',
+          focused ? 'border-accent-purple/40' : 'border-white/[0.08] hover:border-white/[0.14]',
+          className
+        )}
+      >
+        <Sparkles className="h-5 w-5 shrink-0 text-accent-purple" aria-hidden />
 
       <div className="relative flex-1">
         <input
@@ -126,6 +145,7 @@ export function NovaInput({ className, onSubmit, disabled = false }: NovaInputPr
       >
         {justSent ? <Check className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
       </motion.button>
-    </form>
+      </form>
+    </div>
   );
 }
