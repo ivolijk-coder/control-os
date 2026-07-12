@@ -7,7 +7,7 @@ import { Topbar } from './topbar';
 
 // Canvas + randomização de posição são inerentemente client-only. `ssr:
 // false` evita mismatch de hidratação e mantém o SSR/streaming do restante
-// da página intacto (Fase 2: Nova Experience — requisito de Performance).
+// da página intacto (Nova Experience — Fase 1 — requisito de Performance).
 const BackgroundNetwork = dynamic(
   () => import('@/components/backgrounds/background-network').then((mod) => mod.BackgroundNetwork),
   { ssr: false }

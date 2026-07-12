@@ -7,7 +7,7 @@ import { hoverLift, scaleIn } from '@/lib/motion';
 
 export interface GlassCardProps extends HTMLMotionProps<'div'> {
   children?: React.ReactNode;
-  /** Ativa hover/tap lift (Fase 2: Nova Experience). Padrão: true. */
+  /** Ativa hover/tap lift (Nova Experience — Fase 1). Padrão: true. */
   interactive?: boolean;
   /** Cor do glow ambiente atrás do card (blob desfocado no canto superior). */
   glow?: 'purple' | 'blue' | 'green' | 'red' | 'none';
@@ -22,7 +22,7 @@ const GLOW_CLASSES: Record<NonNullable<GlassCardProps['glow']>, string> = {
 };
 
 /**
- * GlassCard — superfície de vidro interativa (Fase 2: Nova Experience).
+ * GlassCard — superfície de vidro interativa (Nova Experience — Fase 1).
  *
  * Diferente do `Card` de `@control-os/ui` (superfície estática de exibição
  * de dados), o `GlassCard` é feito para contextos hero/CTA que respondem ao

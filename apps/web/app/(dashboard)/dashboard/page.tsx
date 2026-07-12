@@ -4,16 +4,18 @@ import { MissionCard } from '@/components/dashboard/mission-card';
 import { TimelineFeed } from '@/components/dashboard/timeline-feed';
 import { NovaSuggestionCard } from '@/components/dashboard/nova-suggestion-card';
 import { HomeHero } from '@/components/home/home-hero';
+import { NovaWorkspace } from '@/components/nova/nova-workspace';
 import { MOCK_MISSIONS, MOCK_NOVA_MESSAGES, MOCK_STATS, MOCK_TIMELINE, MOCK_USER } from '@/lib/mock-data';
 
 /**
- * Home viva do CONTROL OS — Fase 2: Nova Experience.
+ * Home viva do CONTROL OS — Nova Experience.
  *
- * Substitui o antigo "dashboard tradicional" por uma tela viva: saudação +
- * campo central da NOVA no topo (`HomeHero`), seguidos pelo conteúdo
- * existente (sugestão da Nova, métricas, missões, timeline) em superfícies
- * de vidro. Dados mockados de lib/mock-data.ts — nenhuma chamada de IA,
- * banco de dados ou WhatsApp acontece aqui ainda.
+ * Substitui o antigo "dashboard tradicional" por uma tela viva: saudação
+ * (`HomeHero`, Fase 1) + Modo de Conversa e Painel inteligente
+ * (`NovaWorkspace`, Fase 2), seguidos pelo conteúdo existente (sugestão da
+ * Nova, métricas, missões, timeline) em superfícies de vidro. Dados
+ * mockados de lib/mock-data.ts — nenhuma chamada de IA real, banco de dados
+ * ou WhatsApp acontece aqui ainda.
  */
 export default function DashboardPage() {
   const firstName = MOCK_USER.name.split(' ')[0] ?? MOCK_USER.name;
@@ -21,6 +23,7 @@ export default function DashboardPage() {
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
       <HomeHero firstName={firstName} />
+      <NovaWorkspace />
 
       <FadeIn>
         <NovaSuggestionCard message={MOCK_NOVA_MESSAGES[0]} />

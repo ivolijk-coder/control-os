@@ -11,7 +11,7 @@ const ACCENT_CLASSES: Record<DashboardStat['accent'], string> = {
 };
 
 /**
- * MetricCard — substitui o antigo `StatCard` (Fase 2: Nova Experience).
+ * MetricCard — substitui o antigo `StatCard` (Nova Experience — Fase 1).
  * Superfície de vidro interativa (`GlassCard`) com glow ambiente na cor do
  * acento e leve elevação no hover. Mesmos dados mockados de `MOCK_STATS`,
  * nenhuma lógica nova.

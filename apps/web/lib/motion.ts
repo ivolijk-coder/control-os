@@ -1,7 +1,7 @@
 import type { Easing, Transition, Variants } from 'framer-motion';
 
 /**
- * Motion System — CONTROL OS (Fase 2: Nova Experience).
+ * Motion System — CONTROL OS (Nova Experience — Fase 1).
  *
  * Presets únicos de animação reutilizados por toda a experiência "viva".
  * Todas as curvas usam os mesmos tokens de `tailwind.config.ts` /

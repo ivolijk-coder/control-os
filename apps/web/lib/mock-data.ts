@@ -51,6 +51,21 @@ export const MOCK_STATS: DashboardStat[] = [
   { id: 'st_receita', label: 'Receita do mês', value: 'R$ 84.200', delta: '+9,4%', trend: 'up', accent: 'blue' },
 ];
 
+/**
+ * Painel inteligente (Nova Experience — Fase 2) — resumo "Hoje" revelado
+ * após a primeira interação com a NOVA no `NovaWorkspace`. Reaproveita o
+ * tipo `DashboardStat` (mesmo formato dos cartões do topo da Home) em vez
+ * de criar um tipo novo só para isso.
+ */
+export const MOCK_PAINEL_HOJE: DashboardStat[] = [
+  { id: 'painel_receita', label: 'Receita prevista', value: 'R$ 92.400', delta: '+8% vs. mês passado', trend: 'up', accent: 'blue' },
+  { id: 'painel_gastos', label: 'Gastos', value: 'R$ 31.150', delta: '-4% vs. mês passado', trend: 'down', accent: 'red' },
+  { id: 'painel_clientes', label: 'Clientes', value: '18 ativos', delta: '+2 esta semana', trend: 'up', accent: 'green' },
+  { id: 'painel_projetos', label: 'Projetos', value: '6 em andamento', accent: 'purple' },
+  { id: 'painel_missoes', label: 'Missões', value: '12 ativas', accent: 'purple' },
+  { id: 'painel_agenda', label: 'Agenda', value: '3 compromissos hoje', accent: 'blue' },
+];
+
 export const MOCK_MISSIONS: Mission[] = [
   {
     id: 'ms_001',

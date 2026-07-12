@@ -14,7 +14,7 @@ export interface QuickActionProps {
 }
 
 /**
- * QuickAction — pill de sugestão reutilizável (Fase 2: Nova Experience).
+ * QuickAction — pill de sugestão reutilizável (Nova Experience — Fase 1).
  * Usada abaixo do `NovaInput` para exemplificar comandos ("Organizar meu
  * dia", "Ver financeiro"). Puramente visual/local — `onClick` é opcional e
  * não dispara nenhuma chamada real ainda.
