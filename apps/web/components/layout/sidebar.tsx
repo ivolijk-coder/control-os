@@ -37,7 +37,7 @@ export function Sidebar() {
       initial={false}
       animate={{ width: collapsed ? 76 : 264 }}
       transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
-      className="relative flex h-screen flex-col border-r border-white/[0.08] bg-[#08080a]"
+      className="relative flex h-screen flex-col border-r border-white/[0.08] bg-white/[0.02] backdrop-blur-xl"
     >
       {/* Cabeçalho / marca */}
       <div className="flex h-16 items-center gap-3 px-5">
@@ -64,7 +64,7 @@ export function Sidebar() {
             <button
               key={space.id}
               className={cn(
-                'group flex items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors duration-fast ease-out',
+                'group flex items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-all duration-fast ease-out hover:scale-[1.01] active:scale-[0.98]',
                 space.isActive
                   ? 'bg-white/[0.06] text-text-primary'
                   : 'text-text-secondary hover:bg-white/[0.04] hover:text-text-primary'
@@ -106,7 +106,7 @@ export function Sidebar() {
               key={item.id}
               href={item.href}
               className={cn(
-                'group relative flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-colors duration-fast ease-out',
+                'group relative flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-all duration-fast ease-out hover:scale-[1.01] active:scale-[0.98]',
                 isActive
                   ? 'bg-white/[0.08] text-text-primary'
                   : 'text-text-secondary hover:bg-white/[0.04] hover:text-text-primary'
@@ -147,7 +147,7 @@ export function Sidebar() {
         <button
           onClick={toggleSidebar}
           aria-label={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-tertiary transition-colors duration-fast ease-out hover:bg-white/[0.06] hover:text-text-primary"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-tertiary transition-all duration-fast ease-out hover:scale-110 hover:bg-white/[0.06] hover:text-text-primary active:scale-95"
         >
           {collapsed ? (
             <ICON_MAP.ChevronsRight className="h-4 w-4" />

@@ -32,12 +32,20 @@ export interface CardFooterProps extends React.ComponentPropsWithoutRef<'div'> {
   children?: React.ReactNode;
 }
 
-/** Cartão base do CONTROL OS — superfície elevada sobre o fundo #050505. */
+/**
+ * Cartão base do CONTROL OS — superfície de vidro elevada sobre o fundo
+ * #050505. `bg-card/80` + `backdrop-blur-sm` deixam o Background vivo (Fase
+ * 2: Nova Experience) sutilmente visível através da superfície, mantendo
+ * legibilidade total do conteúdo.
+ */
 export const Card = React.forwardRef<HTMLDivElement, CardProps>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn('rounded-lg border border-white/[0.08] bg-card shadow-e2', className)}
+      className={cn(
+        'rounded-lg border border-white/[0.08] bg-card/80 shadow-e2 backdrop-blur-sm transition-colors duration-base ease-out',
+        className
+      )}
       {...props}
     />
   )

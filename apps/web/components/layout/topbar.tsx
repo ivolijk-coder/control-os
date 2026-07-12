@@ -21,14 +21,14 @@ export function Topbar() {
   const title = pageTitleFromPath(pathname);
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/[0.08] bg-bg/80 px-6 backdrop-blur-md">
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/[0.08] bg-bg/60 px-6 backdrop-blur-xl">
       <div className="flex items-center gap-3">
         <h1 className="text-sm font-semibold text-text-primary">{title}</h1>
       </div>
 
       <div className="flex flex-1 items-center justify-center px-8">
         <button
-          className="flex w-full max-w-md items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-text-tertiary transition-colors duration-fast ease-out hover:border-white/20 hover:bg-white/[0.05]"
+          className="flex w-full max-w-md items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-text-tertiary backdrop-blur-sm transition-all duration-fast ease-out hover:scale-[1.01] hover:border-white/20 hover:bg-white/[0.05] active:scale-[0.99]"
           aria-label="Busca universal"
         >
           <ICON_MAP.Search className="h-4 w-4" />
@@ -46,12 +46,12 @@ export function Topbar() {
         </Button>
         <button
           aria-label="Notificações"
-          className="relative flex h-9 w-9 items-center justify-center rounded-md text-text-secondary transition-colors duration-fast ease-out hover:bg-white/[0.06] hover:text-text-primary"
+          className="relative flex h-9 w-9 items-center justify-center rounded-md text-text-secondary transition-all duration-fast ease-out hover:scale-110 hover:bg-white/[0.06] hover:text-text-primary active:scale-95"
         >
           <ICON_MAP.Bell className="h-4 w-4" />
           <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-accent-red" />
         </button>
-        <Avatar className="h-8 w-8 cursor-pointer">
+        <Avatar className="h-8 w-8 cursor-pointer transition-transform duration-fast ease-out hover:scale-105 active:scale-95">
           <AvatarFallback>{getInitials(MOCK_USER.name)}</AvatarFallback>
         </Avatar>
       </div>

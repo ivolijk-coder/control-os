@@ -2,8 +2,9 @@
 
 import * as React from 'react';
 import { motion } from 'framer-motion';
+import { fadeUp, transitionOut } from '@/lib/motion';
 
-/** Entrada suave usada para escalonar (stagger) os blocos do Dashboard. */
+/** Entrada suave usada para escalonar (stagger) os blocos da Home. */
 export function FadeIn({
   children,
   delay = 0,
@@ -15,9 +16,10 @@ export function FadeIn({
 }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.26, delay, ease: [0.16, 1, 0.3, 1] }}
+      initial="hidden"
+      animate="visible"
+      variants={fadeUp}
+      transition={transitionOut(undefined, delay)}
       className={className}
     >
       {children}
