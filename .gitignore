@@ -32,3 +32,6 @@ postgres-data/
 *.log
 .turbo/
 coverage/
+
+# typescript incremental build info
+*.tsbuildinfo
