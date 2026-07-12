@@ -14,8 +14,8 @@ const TIME_PATTERN = /(\d{1,2})[h:](\d{2})?/;
 const EXPENSE_PATTERN = /\b(gastei|paguei|comprei)\b/;
 const REVENUE_PATTERN = /\b(recebi|faturei|caiu|entrou)\b/;
 const REMINDER_PATTERN = /\b(lembrar de|lembra de|n[ãa]o esquecer de)\b/;
-const AGENDA_PATTERN = /\b(reuni[ãa]o|compromisso|agendar)\b/;
-const GOAL_PATTERN = /\b(quero faturar|minha meta [ée]|meu objetivo [ée]|quero alcan[çc]ar)\b/;
+const AGENDA_PATTERN = /\b(reuni[ãa]o|compromisso|agendar|consulta|dentista|m[ée]dico)\b/;
+const GOAL_PATTERN = /\b(quero faturar|minha meta [ée]|meu objetivo [ée]|quero alcan[çc]ar|quero economizar|quero emagrecer|quero perder)\b/;
 const PROJECT_PATTERN = /\b(vou viajar|novo projeto|quero criar um projeto|vou criar)\b/;
 // Checada antes de DEBT_PATTERN — "quanto eu devo" também contém "devo".
 const CONSULT_DEBT_PATTERN = /\b(quanto (eu )?devo|minhas d[íi]vidas|como est[ãa]o (as )?minhas d[íi]vidas)\b/;
@@ -23,6 +23,8 @@ const CONSULT_DEBT_PATTERN = /\b(quanto (eu )?devo|minhas d[íi]vidas|como est[�
 // (símbolo, não letra) o `\b` de fechamento nunca bateria.
 const DEBT_PATTERN = /\b(tenho uma d[íi]vida|financiei|parcelei)\b|\bdevo\b\s*(r\$|\d)/;
 const INSTALLMENTS_PATTERN = /(\d{1,2})\s*(?:x\b|vezes)/i;
+const DAY_PLAN_PATTERN =
+  /\b(o que (eu )?preciso fazer hoje|organize meu dia|como est[áa] meu dia|plano do dia|meu dia hoje)\b/;
 
 /** Normaliza um valor em formato pt-BR ("2.500,50", "2.500", "35") para número. */
 function parseAmount(text: string): number | null {
@@ -70,6 +72,10 @@ function describeEntry(raw: string): string {
 export function parseIntent(text: string): NovaIntent {
   const raw = text.trim();
   const lower = raw.toLowerCase();
+
+  if (DAY_PLAN_PATTERN.test(lower)) {
+    return { kind: 'consultar_dia', raw };
+  }
 
   if (EXPENSE_PATTERN.test(lower)) {
     const amount = parseAmount(raw);

@@ -1,9 +1,10 @@
-import type { Mission, MissionStatus } from '@control-os/types';
+import type { Mission, MissionKind, MissionStatus } from '@control-os/types';
 import type { GoalIntent, NovaActionResult, NovaContext, ProjectIntent, ReminderIntent } from '../interfaces';
 
 interface MissionBlueprint {
   title: string;
   status: MissionStatus;
+  kind: MissionKind;
 }
 
 /**
@@ -22,6 +23,7 @@ function createMissionFromBlueprint(
     progress: 0,
     objectivesTotal: 1,
     objectivesDone: 0,
+    kind: blueprint.kind,
   });
 
   const timelineEvent = ctx.actions.addTimelineEvent({
@@ -43,18 +45,18 @@ function createMissionFromBlueprint(
 
 /** "Lembrar de pagar o DAS" → Criar missão → Criar lembrete → Adicionar calendário. */
 export function createReminder(ctx: NovaContext, intent: ReminderIntent): NovaActionResult[] {
-  const { results } = createMissionFromBlueprint(ctx, { title: intent.title, status: 'planejamento' });
+  const { results } = createMissionFromBlueprint(ctx, { title: intent.title, status: 'planejamento', kind: 'lembrete' });
   return results;
 }
 
-/** "Quero faturar R$ 500 mil" → Criar objetivo → Criar indicadores → Criar plano. */
+/** "Quero faturar R$ 500 mil" / "Quero economizar R$ 500" → Criar objetivo → Criar indicadores → Criar plano. */
 export function createGoal(ctx: NovaContext, intent: GoalIntent): NovaActionResult[] {
-  const { results } = createMissionFromBlueprint(ctx, { title: intent.title, status: 'planejamento' });
+  const { results } = createMissionFromBlueprint(ctx, { title: intent.title, status: 'planejamento', kind: 'meta' });
   return results;
 }
 
 /** "Vou viajar em novembro" → Criar projeto → Checklist → Orçamento → Lembretes. */
 export function createProject(ctx: NovaContext, intent: ProjectIntent): NovaActionResult[] {
-  const { results } = createMissionFromBlueprint(ctx, { title: intent.title, status: 'planejamento' });
+  const { results } = createMissionFromBlueprint(ctx, { title: intent.title, status: 'planejamento', kind: 'projeto' });
   return results;
 }

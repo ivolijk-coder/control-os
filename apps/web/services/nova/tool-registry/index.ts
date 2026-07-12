@@ -60,6 +60,11 @@ export const TOOL_REGISTRY: readonly NovaToolDescriptor[] = [
     description: 'Responde com um resumo das dívidas em aberto — não cria nem altera dados.',
   },
   {
+    kind: 'consultar_dia',
+    label: 'Consultar plano do dia',
+    description: 'Responde com um resumo do dia (compromissos, missões em risco, hábitos pendentes, financeiro) — não cria nem altera dados.',
+  },
+  {
     kind: 'desconhecido',
     label: 'Conversa livre',
     description: 'Nenhuma ação executável identificada — a Nova apenas responde.',

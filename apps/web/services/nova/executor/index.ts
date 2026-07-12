@@ -32,6 +32,7 @@ export function runIntent(ctx: NovaContext, intent: NovaIntent): NovaActionResul
     case 'registrar_divida':
       return createDebt(ctx, intent);
     case 'consultar_dividas':
+    case 'consultar_dia':
       // Leitura — tratada direto em `conversation/`, sem passar por aqui.
       return [];
     case 'desconhecido':

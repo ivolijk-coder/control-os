@@ -1,13 +1,18 @@
 import type {
   AgendaEvent,
+  Asset,
   ControlSpace,
   DashboardStat,
   Debt,
   FinanceEntry,
+  Habit,
   Mission,
   NavItem,
   NovaMessage,
+  Note,
+  PersonalDocument,
   TimelineEvent,
+  Trip,
   User,
 } from '@control-os/types';
 
@@ -51,6 +56,13 @@ export const MOCK_SPACES: ControlSpace[] = [
 export const MOCK_NAV_ITEMS_VIDA: NavItem[] = [
   { id: 'nav_nova', label: 'Nova', href: '/nova', icon: 'Sparkles' },
   { id: 'nav_financeiro', label: 'Financeiro', href: '/financeiro', icon: 'Wallet' },
+  { id: 'nav_agenda', label: 'Agenda', href: '/agenda', icon: 'CalendarClock' },
+  { id: 'nav_metas', label: 'Metas', href: '/metas', icon: 'Trophy' },
+  { id: 'nav_habitos', label: 'Hábitos', href: '/habitos', icon: 'Repeat' },
+  { id: 'nav_documentos', label: 'Documentos', href: '/documentos', icon: 'FileText' },
+  { id: 'nav_patrimonio', label: 'Patrimônio', href: '/patrimonio', icon: 'Landmark' },
+  { id: 'nav_viagens', label: 'Viagens', href: '/viagens', icon: 'Plane' },
+  { id: 'nav_notas', label: 'Notas', href: '/notas', icon: 'NotebookText' },
   { id: 'nav_missoes', label: 'Missões', href: '/missoes', icon: 'Target', badge: 5 },
 ];
 
@@ -91,6 +103,7 @@ export const MOCK_MISSIONS: Mission[] = [
     dueDate: '2026-07-28',
     objectivesTotal: 8,
     objectivesDone: 5,
+    kind: 'projeto',
   },
   {
     id: 'ms_002',
@@ -101,6 +114,7 @@ export const MOCK_MISSIONS: Mission[] = [
     dueDate: '2026-07-20',
     objectivesTotal: 5,
     objectivesDone: 2,
+    kind: 'meta',
   },
   {
     id: 'ms_003',
@@ -110,6 +124,7 @@ export const MOCK_MISSIONS: Mission[] = [
     progress: 10,
     objectivesTotal: 4,
     objectivesDone: 0,
+    kind: 'meta',
   },
   {
     id: 'ms_004',
@@ -120,6 +135,7 @@ export const MOCK_MISSIONS: Mission[] = [
     dueDate: '2026-07-05',
     objectivesTotal: 6,
     objectivesDone: 6,
+    kind: 'projeto',
   },
 ];
 
@@ -227,6 +243,116 @@ export const MOCK_DEBTS: Debt[] = [
     installmentsPaid: 5,
     category: 'Cartão',
     spaceId: 'sp_empresa',
+  },
+];
+
+/** Hábitos (CONTROL OS — Sistema Operacional Pessoal). */
+export const MOCK_HABITS: Habit[] = [
+  {
+    id: 'hb_001',
+    title: 'Beber água',
+    category: 'Saúde',
+    streakDays: 6,
+    completedToday: true,
+    last7Days: [true, true, false, true, true, true, true],
+    spaceId: 'sp_vida',
+  },
+  {
+    id: 'hb_002',
+    title: 'Dormir 8h',
+    category: 'Sono',
+    streakDays: 2,
+    completedToday: false,
+    last7Days: [false, true, true, false, true, true, false],
+    spaceId: 'sp_vida',
+  },
+  {
+    id: 'hb_003',
+    title: 'Academia',
+    category: 'Academia',
+    streakDays: 4,
+    completedToday: true,
+    last7Days: [false, true, true, true, true, false, true],
+    spaceId: 'sp_vida',
+  },
+  {
+    id: 'hb_004',
+    title: 'Ler 20 páginas',
+    category: 'Leitura',
+    streakDays: 0,
+    completedToday: false,
+    last7Days: [true, true, false, false, false, false, false],
+    spaceId: 'sp_vida',
+  },
+  {
+    id: 'hb_005',
+    title: 'Meditar',
+    category: 'Meditação',
+    streakDays: 9,
+    completedToday: true,
+    last7Days: [true, true, true, true, true, true, true],
+    spaceId: 'sp_vida',
+  },
+];
+
+/** Documentos pessoais (CONTROL OS — Sistema Operacional Pessoal). */
+export const MOCK_DOCUMENTS: PersonalDocument[] = [
+  { id: 'doc_001', title: 'CNH', category: 'Identificação', addedAt: '2024-03-10', expiresAt: '2029-03-10', spaceId: 'sp_vida' },
+  { id: 'doc_002', title: 'RG', category: 'Identificação', addedAt: '2022-01-15', spaceId: 'sp_vida' },
+  { id: 'doc_003', title: 'Passaporte', category: 'Identificação', addedAt: '2023-06-01', expiresAt: '2033-06-01', spaceId: 'sp_vida' },
+  { id: 'doc_004', title: 'Garantia — Notebook Dell', category: 'Garantia', addedAt: '2025-11-20', expiresAt: '2026-11-20', spaceId: 'sp_vida' },
+  { id: 'doc_005', title: 'Contrato de aluguel', category: 'Contrato', addedAt: '2025-08-01', spaceId: 'sp_vida' },
+];
+
+/** Patrimônio (CONTROL OS — Sistema Operacional Pessoal). */
+export const MOCK_ASSETS: Asset[] = [
+  { id: 'as_001', name: 'Honda Civic 2022', category: 'Carro', estimatedValue: 135000, purchaseDate: '2022-05-10', spaceId: 'sp_vida' },
+  { id: 'as_002', name: 'Apartamento — Zona Sul', category: 'Casa', estimatedValue: 620000, purchaseDate: '2021-02-01', spaceId: 'sp_vida' },
+  { id: 'as_003', name: 'MacBook Pro 14"', category: 'Computador', estimatedValue: 18000, purchaseDate: '2025-11-20', warrantyUntil: '2026-11-20', spaceId: 'sp_vida' },
+  { id: 'as_004', name: 'iPhone 16 Pro', category: 'Celular', estimatedValue: 8500, purchaseDate: '2025-09-15', warrantyUntil: '2026-09-15', spaceId: 'sp_vida' },
+];
+
+/** Viagens (CONTROL OS — Sistema Operacional Pessoal). */
+export const MOCK_TRIPS: Trip[] = [
+  {
+    id: 'tr_001',
+    destination: 'Lisboa, Portugal',
+    startDate: '2026-09-10',
+    endDate: '2026-09-20',
+    budget: 15000,
+    spaceId: 'sp_vida',
+    checklist: [
+      { id: 'tr_001_1', label: 'Comprar passagem', done: true },
+      { id: 'tr_001_2', label: 'Reservar hotel', done: true },
+      { id: 'tr_001_3', label: 'Verificar validade do passaporte', done: false },
+      { id: 'tr_001_4', label: 'Contratar seguro viagem', done: false },
+    ],
+  },
+];
+
+/** Notas (CONTROL OS — Sistema Operacional Pessoal). */
+export const MOCK_NOTES: Note[] = [
+  {
+    id: 'nt_001',
+    title: 'Ideias para o aniversário da Ana',
+    type: 'texto',
+    category: 'Pessoal',
+    createdAt: '2026-07-08T10:00:00Z',
+    content: 'Reservar restaurante, chamar os amigos próximos, comprar o presente que ela comentou.',
+    spaceId: 'sp_vida',
+  },
+  {
+    id: 'nt_002',
+    title: 'Compras do mês',
+    type: 'checklist',
+    category: 'Casa',
+    createdAt: '2026-07-10T09:00:00Z',
+    spaceId: 'sp_vida',
+    checklistItems: [
+      { id: 'nt_002_1', label: 'Filtro de água', done: false },
+      { id: 'nt_002_2', label: 'Lâmpadas', done: true },
+      { id: 'nt_002_3', label: 'Pilhas', done: false },
+    ],
   },
 ];
 

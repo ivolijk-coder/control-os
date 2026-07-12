@@ -1,4 +1,4 @@
-import type { AgendaEvent, Debt, FinanceEntry, Mission, TimelineEvent } from '@control-os/types';
+import type { AgendaEvent, Debt, FinanceEntry, Habit, Mission, TimelineEvent } from '@control-os/types';
 
 /**
  * Contratos do NOVA Operating System (CONTROL OS 3.0).
@@ -21,6 +21,7 @@ export type NovaIntentKind =
   | 'criar_projeto'
   | 'registrar_divida'
   | 'consultar_dividas'
+  | 'consultar_dia'
   | 'desconhecido';
 
 interface NovaIntentBase {
@@ -72,6 +73,11 @@ export interface ConsultDebtsIntent extends NovaIntentBase {
   kind: 'consultar_dividas';
 }
 
+/** "O que preciso fazer hoje?" / "Organize meu dia" — intenção de leitura, sem passos de execução. */
+export interface ConsultDayPlanIntent extends NovaIntentBase {
+  kind: 'consultar_dia';
+}
+
 export interface UnknownIntent extends NovaIntentBase {
   kind: 'desconhecido';
 }
@@ -86,6 +92,7 @@ export type NovaIntent =
   | ProjectIntent
   | DebtIntent
   | ConsultDebtsIntent
+  | ConsultDayPlanIntent
   | UnknownIntent;
 
 export type NovaActionKind =
@@ -125,11 +132,16 @@ export interface NovaContext {
   defaultSpaceId: string;
   /**
    * Snapshot somente-leitura para intents de consulta (ex.: "quanto eu
-   * devo?"). Diferente de `actions` (que sempre escreve em `useDataStore`),
-   * isto é passado pelo chamador (`NovaWorkspace`) a cada turno — mesmo
-   * princípio de "sem estado próprio dentro de services/nova".
+   * devo?", "o que preciso fazer hoje?"). Diferente de `actions` (que
+   * sempre escreve em `useDataStore`), isto é passado pelo chamador
+   * (`NovaWorkspace`) a cada turno — mesmo princípio de "sem estado próprio
+   * dentro de services/nova".
    */
   debts: Debt[];
+  missions: Mission[];
+  agendaEvents: AgendaEvent[];
+  financeEntries: FinanceEntry[];
+  habits: Habit[];
 }
 
 export type NovaStatus = 'pensando' | 'executando' | 'concluido' | 'erro';

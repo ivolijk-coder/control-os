@@ -49,6 +49,7 @@ export function buildPlan(intent: NovaIntent): NovaAction[] {
         { kind: 'registrar_timeline', label: 'Atualizar Financeiro' },
       ];
     case 'consultar_dividas':
+    case 'consultar_dia':
       // Leitura, não gera checklist de execução — tratada direto em `conversation/`.
       return [];
     case 'desconhecido':

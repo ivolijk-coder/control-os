@@ -66,6 +66,14 @@ export interface ControlSpace {
 
 export type MissionStatus = 'planejamento' | 'em_andamento' | 'em_risco' | 'concluida';
 
+/**
+ * Diferencia a intenção original que criou a Missão — sem duplicar o tipo.
+ * Opcional porque Missão existe desde antes deste campo (CONTROL OS 3.0);
+ * usado hoje pela página Metas (`kind === 'meta'`), que reaproveita a mesma
+ * fonte de dados de Missões em vez de criar um tipo `Goal` à parte.
+ */
+export type MissionKind = 'lembrete' | 'meta' | 'projeto';
+
 /** Missão™ — unidade central de trabalho (Intenção → Missão → Objetivos → Execuções → Resultados). */
 export interface Mission {
   id: string;
@@ -76,6 +84,7 @@ export interface Mission {
   dueDate?: string;
   objectivesTotal: number;
   objectivesDone: number;
+  kind?: MissionKind;
 }
 
 export type FinanceEntryType = 'receita' | 'despesa';
@@ -111,6 +120,83 @@ export interface Debt {
   installmentsTotal: number;
   installmentsPaid: number;
   category: string;
+  spaceId?: string;
+}
+
+/**
+ * Hábito (CONTROL OS — Sistema Operacional Pessoal). `last7Days` guarda os
+ * últimos 7 dias (do mais antigo pro mais recente, índice 6 = hoje) — dá
+ * pra desenhar o "acompanhamento visual" pedido sem precisar de um log de
+ * datas completo nesta fase (ainda toda mockada).
+ */
+export interface Habit {
+  id: string;
+  title: string;
+  category: string;
+  streakDays: number;
+  completedToday: boolean;
+  last7Days: boolean[];
+  spaceId?: string;
+}
+
+/**
+ * Documento pessoal (CONTROL OS — Sistema Operacional Pessoal). Chamado
+ * `PersonalDocument`, não `Document` — esse nome já é o tipo global do DOM
+ * em TypeScript, usado em outros pontos do app (ex.: `NovaOrb`).
+ */
+export interface PersonalDocument {
+  id: string;
+  title: string;
+  category: string;
+  addedAt: string;
+  expiresAt?: string;
+  spaceId?: string;
+}
+
+/** Bem patrimonial (CONTROL OS — Sistema Operacional Pessoal). */
+export interface Asset {
+  id: string;
+  name: string;
+  category: string;
+  estimatedValue: number;
+  purchaseDate?: string;
+  warrantyUntil?: string;
+  spaceId?: string;
+}
+
+/** Item de checklist genérico — reaproveitado por Viagens e Notas (tipo checklist). */
+export interface ChecklistItem {
+  id: string;
+  label: string;
+  done: boolean;
+}
+
+/** Viagem (CONTROL OS — Sistema Operacional Pessoal). */
+export interface Trip {
+  id: string;
+  destination: string;
+  startDate: string;
+  endDate: string;
+  budget?: number;
+  checklist: ChecklistItem[];
+  spaceId?: string;
+}
+
+export type NoteType = 'texto' | 'checklist';
+
+/**
+ * Nota pessoal (CONTROL OS — Sistema Operacional Pessoal). `content` é
+ * usado quando `type === 'texto'`; `checklistItems`, quando
+ * `type === 'checklist'` — só um dos dois é preenchido por nota.
+ */
+export interface Note {
+  id: string;
+  title: string;
+  type: NoteType;
+  category: string;
+  createdAt: string;
+  content?: string;
+  checklistItems?: ChecklistItem[];
   spaceId?: string;
 }
 

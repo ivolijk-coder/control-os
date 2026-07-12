@@ -3,6 +3,7 @@ import { buildPlan } from '../planner';
 import { runIntent } from '../executor';
 import { rememberTurn } from '../memory';
 import { buildDebtsSummary } from './debts-summary';
+import { buildDailyCheckIn } from './daily-checkin';
 import type { NovaContext, NovaIntent, NovaTurnResult } from '../interfaces';
 
 const FALLBACK_REPLY =
@@ -30,7 +31,8 @@ function buildReply(intent: NovaIntent, ok: boolean): string {
     case 'registrar_divida':
       return `Prontinho. Registrei a dívida "${intent.description}" — R$ ${intent.totalAmount.toFixed(2)} em ${intent.installments}x — e já atualizei o Financeiro.`;
     case 'consultar_dividas':
-      // Nunca alcançado em runtime — `processNovaTurn` responde direto via `buildDebtsSummary`, sem passar por `runIntent`/`buildReply`.
+    case 'consultar_dia':
+      // Nunca alcançado em runtime — `processNovaTurn` responde direto via `buildDebtsSummary`/`buildDailyCheckIn`, sem passar por `runIntent`/`buildReply`.
       return FALLBACK_REPLY;
     case 'desconhecido':
       return FALLBACK_REPLY;
@@ -58,6 +60,12 @@ export async function processNovaTurn(text: string, ctx: NovaContext): Promise<N
   if (intent.kind === 'consultar_dividas') {
     rememberTurn(text);
     return { status: 'concluido', reply: buildDebtsSummary(ctx.debts), checklist: [], results: [] };
+  }
+
+  if (intent.kind === 'consultar_dia') {
+    rememberTurn(text);
+    const reply = buildDailyCheckIn(ctx.missions, ctx.agendaEvents, ctx.financeEntries, ctx.habits);
+    return { status: 'concluido', reply, checklist: [], results: [] };
   }
 
   const results = runIntent(ctx, intent);

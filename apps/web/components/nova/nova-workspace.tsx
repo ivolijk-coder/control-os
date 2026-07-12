@@ -29,10 +29,12 @@ const QUICK_ACTIONS = [
   { icon: CalendarClock, label: 'Ver meus compromissos' },
 ] as const;
 
-// Fase 1 (arquitetura, CONTROL OS 3.0): sem seletor de Space na conversa
-// ainda — toda ação criada pela Nova cai no Space "Minha Empresa" por
-// padrão, mesmo Space usado nos dados mockados de exemplo.
-const DEFAULT_SPACE_ID = 'sp_empresa';
+// Sem seletor de Space na conversa ainda — toda ação criada pela Nova cai
+// num Space padrão. Trocado de "Minha Empresa" para "Minha Vida" no Sistema
+// Operacional Pessoal: o foco deixa de ser empresa, passa a ser a vida do
+// usuário — reflete isso também nos dados que a Nova cria por conversa,
+// não só na interface.
+const DEFAULT_SPACE_ID = 'sp_vida';
 
 const THINKING_DELAY_MS = 700;
 const EXECUTING_DELAY_MS = 500;
@@ -98,18 +100,40 @@ export function NovaWorkspace({
   const addAgendaEvent = useDataStore((state) => state.addAgendaEvent);
   const addDebt = useDataStore((state) => state.addDebt);
   const debts = useDataStore((state) => state.debts);
+  const missions = useDataStore((state) => state.missions);
+  const agendaEvents = useDataStore((state) => state.agendaEvents);
+  const financeEntries = useDataStore((state) => state.financeEntries);
+  const habits = useDataStore((state) => state.habits);
 
-  // As actions do Zustand são referências estáveis entre renders. `debts`
-  // já não é — muda a cada dívida criada/paga — então este memo passa a
-  // recalcular nesses momentos (correto: intents de consulta como
-  // "quanto eu devo" precisam sempre do snapshot mais recente).
+  // As actions do Zustand são referências estáveis entre renders. Os
+  // snapshots de leitura (debts, missions, agendaEvents, financeEntries,
+  // habits) não são — mudam a cada criação/edição — então este memo passa a
+  // recalcular nesses momentos (correto: intents de consulta como "quanto
+  // eu devo" ou "o que preciso fazer hoje" precisam sempre do snapshot mais
+  // recente).
   const novaContext: NovaContext = React.useMemo(
     () => ({
       actions: { addMission, updateMission, addTimelineEvent, addFinanceEntry, addAgendaEvent, addDebt },
       defaultSpaceId: DEFAULT_SPACE_ID,
       debts,
+      missions,
+      agendaEvents,
+      financeEntries,
+      habits,
     }),
-    [addMission, updateMission, addTimelineEvent, addFinanceEntry, addAgendaEvent, addDebt, debts]
+    [
+      addMission,
+      updateMission,
+      addTimelineEvent,
+      addFinanceEntry,
+      addAgendaEvent,
+      addDebt,
+      debts,
+      missions,
+      agendaEvents,
+      financeEntries,
+      habits,
+    ]
   );
 
   const handleSend = React.useCallback(

@@ -6,7 +6,8 @@ export { processNovaTurn } from './conversation';
 export { buildDailyCheckIn, buildTodayHighlights } from './conversation/daily-checkin';
 export { parseIntent } from './intent/parser';
 export { TOOL_REGISTRY } from './tool-registry';
-export { recallRecent } from './memory';
+export { recallRecent, rememberFact, recallFacts } from './memory';
+export type { NovaFact, NovaFactCategory } from './memory';
 export type {
   NovaAction,
   NovaActionKind,
