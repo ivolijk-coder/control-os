@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { Avatar, AvatarFallback, Button } from '@control-os/ui';
 import { getInitials } from '@/lib/utils';
 import { MOCK_NAV_ITEMS, MOCK_USER } from '@/lib/mock-data';
+import { useAppStore } from '@/lib/store';
 import { ICON_MAP } from './icon-map';
 
 function pageTitleFromPath(pathname: string | null): string {
@@ -19,17 +20,27 @@ function pageTitleFromPath(pathname: string | null): string {
 export function Topbar() {
   const pathname = usePathname();
   const title = pageTitleFromPath(pathname);
+  const setCommandCenterOpen = useAppStore((s) => s.setCommandCenterOpen);
+  const setMobileNavOpen = useAppStore((s) => s.setMobileNavOpen);
 
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/[0.08] bg-bg/60 px-6 backdrop-blur-xl">
       <div className="flex items-center gap-3">
+        <button
+          onClick={() => setMobileNavOpen(true)}
+          aria-label="Abrir menu"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-text-secondary transition-colors duration-fast ease-out hover:bg-white/[0.06] hover:text-text-primary md:hidden"
+        >
+          <ICON_MAP.Menu className="h-4 w-4" />
+        </button>
         <h1 className="text-sm font-semibold text-text-primary">{title}</h1>
       </div>
 
       <div className="flex flex-1 items-center justify-center px-8">
         <button
+          onClick={() => setCommandCenterOpen(true)}
           className="flex w-full max-w-md items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-text-tertiary backdrop-blur-sm transition-all duration-fast ease-out hover:scale-[1.01] hover:border-white/20 hover:bg-white/[0.05] active:scale-[0.99]"
-          aria-label="Busca universal"
+          aria-label="Busca universal (⌘K)"
         >
           <ICON_MAP.Search className="h-4 w-4" />
           <span className="flex-1 text-left">Buscar em tudo...</span>

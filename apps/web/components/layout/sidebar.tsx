@@ -3,12 +3,18 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
+import { useMediaQuery } from '@control-os/hooks';
 import { Avatar, AvatarFallback, Badge, Separator } from '@control-os/ui';
 import { cn, getInitials } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
 import { MOCK_NAV_ITEMS, MOCK_SPACES, MOCK_USER } from '@/lib/mock-data';
 import { ICON_MAP } from './icon-map';
+
+// Abaixo de 768px (breakpoint `md` do Tailwind) a Sidebar vira um drawer
+// off-canvas com backdrop, em vez de espremer o layout (Nova Experience —
+// Fase 3: Responsividade).
+const MOBILE_BREAKPOINT_QUERY = '(max-width: 767px)';
 
 // Tailwind não resolve classes montadas por interpolação de string em tempo
 // de build — por isso os tokens de cor por Space usam um mapa estático de
@@ -31,29 +37,76 @@ export function Sidebar() {
   const pathname = usePathname();
   const collapsed = useAppStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
+  const mobileNavOpen = useAppStore((s) => s.mobileNavOpen);
+  const setMobileNavOpen = useAppStore((s) => s.setMobileNavOpen);
+  const isMobile = useMediaQuery(MOBILE_BREAKPOINT_QUERY);
+
+  // Fecha o drawer automaticamente ao navegar para outra rota (mobile).
+  // `setMobileNavOpen` é uma action do Zustand — referência estável entre
+  // renders, então incluí-la aqui não causa re-execuções extras.
+  React.useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname, setMobileNavOpen]);
+
+  // No drawer mobile não existe modo ícone-apenas — sempre mostra tudo.
+  const effectiveCollapsed = isMobile ? false : collapsed;
 
   return (
-    <motion.aside
-      initial={false}
-      animate={{ width: collapsed ? 76 : 264 }}
-      transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
-      className="relative flex h-screen flex-col border-r border-white/[0.08] bg-white/[0.02] backdrop-blur-xl"
-    >
-      {/* Cabeçalho / marca */}
-      <div className="flex h-16 items-center gap-3 px-5">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white text-xs font-bold text-black">
-          C
-        </div>
-        {!collapsed && (
-          <span className="text-sm font-semibold tracking-tight text-text-primary">CONTROL OS</span>
-        )}
-      </div>
+    <>
+      {isMobile && (
+        <AnimatePresence>
+          {mobileNavOpen && (
+            <motion.div
+              key="sidebar-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setMobileNavOpen(false)}
+              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+              aria-hidden
+            />
+          )}
+        </AnimatePresence>
+      )}
 
-      <Separator />
+      <motion.aside
+        initial={false}
+        animate={
+          isMobile
+            ? { x: mobileNavOpen ? 0 : '-100%', width: 280 }
+            : { x: 0, width: collapsed ? 76 : 264 }
+        }
+        transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+        className={cn(
+          'flex h-screen flex-col border-r border-white/[0.08] bg-white/[0.02] backdrop-blur-xl',
+          isMobile ? 'fixed inset-y-0 left-0 z-50 shadow-e5' : 'relative'
+        )}
+      >
+        {/* Cabeçalho / marca */}
+        <div className="flex h-16 items-center gap-3 px-5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white text-xs font-bold text-black">
+            C
+          </div>
+          {!effectiveCollapsed && (
+            <span className="text-sm font-semibold tracking-tight text-text-primary">CONTROL OS</span>
+          )}
+          {isMobile && (
+            <button
+              onClick={() => setMobileNavOpen(false)}
+              aria-label="Fechar menu"
+              className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-tertiary transition-colors duration-fast ease-out hover:bg-white/[0.06] hover:text-text-primary"
+            >
+              <ICON_MAP.ChevronsLeft className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        <Separator />
 
       {/* Control Spaces */}
       <div className="flex flex-col gap-1 px-3 py-4">
-        {!collapsed && (
+        {!effectiveCollapsed && (
           <span className="px-2 pb-2 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
             Spaces
           </span>
@@ -78,7 +131,7 @@ export function Sidebar() {
               >
                 <Icon className="h-3.5 w-3.5" />
               </span>
-              {!collapsed && (
+              {!effectiveCollapsed && (
                 <>
                   <span className="flex-1 truncate text-left">{space.name}</span>
                   <span className="text-xs text-text-tertiary">{space.missionsCount}</span>
@@ -93,7 +146,7 @@ export function Sidebar() {
 
       {/* Navegação global */}
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
-        {!collapsed && (
+        {!effectiveCollapsed && (
           <span className="px-2 pb-2 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
             Navegação
           </span>
@@ -120,8 +173,8 @@ export function Sidebar() {
                 />
               )}
               <Icon className="h-4 w-4 shrink-0" />
-              {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
-              {!collapsed && item.badge ? (
+              {!effectiveCollapsed && <span className="flex-1 truncate">{item.label}</span>}
+              {!effectiveCollapsed && item.badge ? (
                 <Badge variant="purple" className="ml-auto">
                   {item.badge}
                 </Badge>
@@ -138,24 +191,27 @@ export function Sidebar() {
         <Avatar className="h-8 w-8">
           <AvatarFallback>{getInitials(MOCK_USER.name)}</AvatarFallback>
         </Avatar>
-        {!collapsed && (
+        {!effectiveCollapsed && (
           <div className="flex min-w-0 flex-1 flex-col">
             <span className="truncate text-sm font-medium text-text-primary">{MOCK_USER.name}</span>
             <span className="truncate text-xs text-text-tertiary">{MOCK_USER.company}</span>
           </div>
         )}
-        <button
-          onClick={toggleSidebar}
-          aria-label={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-tertiary transition-all duration-fast ease-out hover:scale-110 hover:bg-white/[0.06] hover:text-text-primary active:scale-95"
-        >
-          {collapsed ? (
-            <ICON_MAP.ChevronsRight className="h-4 w-4" />
-          ) : (
-            <ICON_MAP.ChevronsLeft className="h-4 w-4" />
-          )}
-        </button>
+        {!isMobile && (
+          <button
+            onClick={toggleSidebar}
+            aria-label={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-tertiary transition-all duration-fast ease-out hover:scale-110 hover:bg-white/[0.06] hover:text-text-primary active:scale-95"
+          >
+            {collapsed ? (
+              <ICON_MAP.ChevronsRight className="h-4 w-4" />
+            ) : (
+              <ICON_MAP.ChevronsLeft className="h-4 w-4" />
+            )}
+          </button>
+        )}
       </div>
     </motion.aside>
+    </>
   );
 }

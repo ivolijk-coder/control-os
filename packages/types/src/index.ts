@@ -45,7 +45,8 @@ export type IconName =
   | 'Command'
   | 'Plus'
   | 'LogOut'
-  | 'Settings';
+  | 'Settings'
+  | 'Menu';
 
 /** Control Spaces™ — unidades de contexto (ex.: "Minha Vida", "Minha Empresa"). */
 export interface ControlSpace {

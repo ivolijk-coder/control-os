@@ -10,6 +10,7 @@ import {
   FolderKanban,
   LayoutGrid,
   LogOut,
+  Menu,
   Plus,
   Search,
   Settings,
@@ -55,4 +56,5 @@ export const ICON_MAP = {
   Plus,
   LogOut,
   Settings,
+  Menu,
 } satisfies Record<IconName, LucideIcon>;

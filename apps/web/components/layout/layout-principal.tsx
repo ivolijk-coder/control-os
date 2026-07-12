@@ -4,6 +4,7 @@ import * as React from 'react';
 import dynamic from 'next/dynamic';
 import { Sidebar } from './sidebar';
 import { Topbar } from './topbar';
+import { CommandCenter } from '@/components/command/command-center';
 
 // Canvas + randomização de posição são inerentemente client-only. `ssr:
 // false` evita mismatch de hidratação e mantém o SSR/streaming do restante
@@ -27,6 +28,7 @@ export function LayoutPrincipal({ children }: { children: React.ReactNode }) {
         <Topbar />
         <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
+      <CommandCenter />
     </div>
   );
 }

@@ -23,6 +23,12 @@ interface AppState {
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
 
+  // Sidebar em telas pequenas (drawer off-canvas, Nova Experience — Fase 3).
+  // Estado separado de `sidebarCollapsed` (colapso para ícones, desktop) e
+  // de propósito puramente efêmero de viewport — por isso não é persistido.
+  mobileNavOpen: boolean;
+  setMobileNavOpen: (open: boolean) => void;
+
   // Command Center (⌘K)
   commandCenterOpen: boolean;
   setCommandCenterOpen: (open: boolean) => void;
@@ -42,6 +48,9 @@ export const useAppStore = create<AppState>()(
 
       sidebarCollapsed: false,
       toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+
+      mobileNavOpen: false,
+      setMobileNavOpen: (open) => set({ mobileNavOpen: open }),
 
       commandCenterOpen: false,
       setCommandCenterOpen: (open) => set({ commandCenterOpen: open }),

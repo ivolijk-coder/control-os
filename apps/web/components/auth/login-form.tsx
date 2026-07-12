@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Button, Card, Input, Label } from '@control-os/ui';
+import { FormError } from '@/components/ui/form-error';
 import { useAppStore } from '@/lib/store';
 
 /**
@@ -86,7 +87,7 @@ export function LoginForm() {
             />
           </div>
 
-          {error && <p className="text-xs text-accent-red">{error}</p>}
+          <FormError message={error} />
 
           <Button type="submit" size="lg" className="mt-2 w-full" loading={isSubmitting}>
             Entrar

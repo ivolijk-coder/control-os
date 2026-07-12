@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
 import { Button, Card, Input, Label } from '@control-os/ui';
+import { FormError } from '@/components/ui/form-error';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
 
@@ -131,7 +132,7 @@ export function CadastroForm() {
             </ul>
           </div>
 
-          {error && <p className="text-xs text-accent-red">{error}</p>}
+          <FormError message={error} />
 
           <Button type="submit" size="lg" className="mt-2 w-full" loading={isSubmitting}>
             Criar conta
