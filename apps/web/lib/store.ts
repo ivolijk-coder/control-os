@@ -32,6 +32,12 @@ interface AppState {
   // Command Center (⌘K)
   commandCenterOpen: boolean;
   setCommandCenterOpen: (open: boolean) => void;
+
+  // Painel flutuante da Nova (CONTROL OS — Etapa 3) — aberto de qualquer
+  // módulo pelo `NovaFloatingLauncher`, sem trocar de rota. Efêmero, como
+  // `commandCenterOpen`: não faz sentido reabrir sozinho ao recarregar.
+  novaPanelOpen: boolean;
+  setNovaPanelOpen: (open: boolean) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -54,6 +60,9 @@ export const useAppStore = create<AppState>()(
 
       commandCenterOpen: false,
       setCommandCenterOpen: (open) => set({ commandCenterOpen: open }),
+
+      novaPanelOpen: false,
+      setNovaPanelOpen: (open) => set({ novaPanelOpen: open }),
     }),
     {
       name: 'control-os-app-state',

@@ -9,12 +9,10 @@ import type { ConversationMessage } from '@/components/nova/nova-message-bubble'
 import type { NovaThinkingStatus } from '@/components/nova/nova-thinking';
 import { QuickAction } from '@/components/ui/quick-action';
 import { IntelligentPanel } from '@/components/home/intelligent-panel';
-import { buildDailyCheckIn, processNovaTurn } from '@/services/nova';
+import { processNovaTurn } from '@/services/nova';
 import type { NovaContext } from '@/services/nova';
 import { useDataStore } from '@/lib/data-store';
 import { transitionOut } from '@/lib/motion';
-
-const CHECKIN_STORAGE_KEY = 'control-os-nova-checkin-shown';
 
 const QUICK_ACTIONS = [
   { icon: Target, label: 'Organize meu dia' },
@@ -46,45 +44,31 @@ function wait(ms: number): Promise<void> {
 
 /**
  * NovaWorkspace — orquestra o Modo de Conversa + Painel inteligente
- * (Nova Experience — Fase 2), agora executando ações reais contra
- * `useDataStore` via `processNovaTurn` (CONTROL OS 3.0) em vez de um
- * gerador de respostas mockado local.
+ * (Nova Experience — Fase 2), executando ações reais contra `useDataStore`
+ * via `processNovaTurn` (CONTROL OS 3.0/Etapa 3) em vez de um gerador de
+ * respostas mockado local.
  *
- * Estado local (não persistido): mensagens da sessão, estado da Nova
- * (pensando/executando), e se o usuário já interagiu ao menos uma vez (o
- * que revela o `IntelligentPanel`). "Primeiro faz. Depois responde." — o
+ * Reaproveitado em dois lugares (CONTROL OS — Etapa 3): a Home em `/nova`
+ * (`showIntelligentPanel` true — o painel de indicadores faz parte da
+ * estrutura da Home) e o `NovaFloatingPanel`, aberto por cima de qualquer
+ * módulo (`showIntelligentPanel` false — a página de origem já mostra os
+ * dados dela, evita duplicar).
+ *
+ * Estado local (não persistido): mensagens da sessão e o estado da Nova
+ * (pensando/executando). "Primeiro faz. Depois responde." — o
  * plano/checklist e a execução real sempre rodam antes da resposta em
  * texto aparecer.
- *
- * `dailyCheckIn`: quando `true` (usado só na Home `/nova`), a Nova abre a
- * conversa proativamente com um resumo real do dia — uma vez por sessão do
- * navegador (guardado em `sessionStorage`), não a cada render.
  */
-export function NovaWorkspace({ dailyCheckIn = false }: { dailyCheckIn?: boolean }) {
+export function NovaWorkspace({ showIntelligentPanel = true }: { showIntelligentPanel?: boolean }) {
   const [messages, setMessages] = React.useState<ConversationMessage[]>([]);
   const [isThinking, setIsThinking] = React.useState(false);
   const [thinkingStatus, setThinkingStatus] = React.useState<NovaThinkingStatus>('pensando');
-  const [hasInteracted, setHasInteracted] = React.useState(false);
 
   const addMission = useDataStore((state) => state.addMission);
   const updateMission = useDataStore((state) => state.updateMission);
   const addTimelineEvent = useDataStore((state) => state.addTimelineEvent);
   const addFinanceEntry = useDataStore((state) => state.addFinanceEntry);
   const addAgendaEvent = useDataStore((state) => state.addAgendaEvent);
-
-  React.useEffect(() => {
-    if (!dailyCheckIn) return;
-    if (window.sessionStorage.getItem(CHECKIN_STORAGE_KEY)) return;
-    window.sessionStorage.setItem(CHECKIN_STORAGE_KEY, '1');
-
-    const { missions, agendaEvents, financeEntries } = useDataStore.getState();
-    const summary = buildDailyCheckIn(missions, agendaEvents, financeEntries);
-    setMessages((current) => [
-      ...current,
-      { id: nextMessageId('nova'), role: 'nova', content: summary, status: 'success' },
-    ]);
-    setHasInteracted(true);
-  }, [dailyCheckIn]);
 
   // As actions do Zustand são referências estáveis entre renders — este
   // memo praticamente só roda uma vez, sem recriar o contexto a cada
@@ -107,7 +91,6 @@ export function NovaWorkspace({ dailyCheckIn = false }: { dailyCheckIn?: boolean
       setMessages((current) => [...current, userMessage]);
       setIsThinking(true);
       setThinkingStatus('pensando');
-      setHasInteracted(true);
 
       void (async () => {
         await wait(THINKING_DELAY_MS);
@@ -149,7 +132,7 @@ export function NovaWorkspace({ dailyCheckIn = false }: { dailyCheckIn?: boolean
         <NovaConversation messages={messages} isThinking={isThinking} thinkingStatus={thinkingStatus} />
       </div>
 
-      {hasInteracted && (
+      {showIntelligentPanel && (
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}

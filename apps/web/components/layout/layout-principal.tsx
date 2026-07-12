@@ -5,6 +5,8 @@ import dynamic from 'next/dynamic';
 import { Sidebar } from './sidebar';
 import { Topbar } from './topbar';
 import { CommandCenter } from '@/components/command/command-center';
+import { NovaFloatingLauncher } from '@/components/nova/nova-floating-launcher';
+import { NovaFloatingPanel } from '@/components/nova/nova-floating-panel';
 
 // Canvas + randomização de posição são inerentemente client-only. `ssr:
 // false` evita mismatch de hidratação e mantém o SSR/streaming do restante
@@ -16,8 +18,10 @@ const BackgroundNetwork = dynamic(
 
 /**
  * Layout Principal — casca estrutural de toda área autenticada do CONTROL OS
- * (Background vivo + Sidebar + Topbar + conteúdo). Compartilhado por
- * Dashboard e, nas fases seguintes, por todas as demais telas.
+ * (Background vivo + Sidebar + Topbar + conteúdo). Compartilhado por todas
+ * as telas autenticadas — inclui o `NovaFloatingLauncher` (CONTROL OS —
+ * Etapa 3): a Nova acompanha o usuário em qualquer módulo sem trocar de
+ * página.
  */
 export function LayoutPrincipal({ children }: { children: React.ReactNode }) {
   return (
@@ -29,6 +33,8 @@ export function LayoutPrincipal({ children }: { children: React.ReactNode }) {
         <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
       <CommandCenter />
+      <NovaFloatingLauncher />
+      <NovaFloatingPanel />
     </div>
   );
 }

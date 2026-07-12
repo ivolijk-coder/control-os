@@ -3,7 +3,7 @@
  * (NovaWorkspace, e futuramente o adapter de WhatsApp) importam só daqui.
  */
 export { processNovaTurn } from './conversation';
-export { buildDailyCheckIn } from './conversation/daily-checkin';
+export { buildDailyCheckIn, buildTodayHighlights } from './conversation/daily-checkin';
 export { parseIntent } from './intent/parser';
 export { TOOL_REGISTRY } from './tool-registry';
 export { recallRecent } from './memory';
