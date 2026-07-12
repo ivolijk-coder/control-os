@@ -64,7 +64,7 @@ export async function processNovaTurn(text: string, ctx: NovaContext): Promise<N
 
   if (intent.kind === 'consultar_dia') {
     rememberTurn(text);
-    const reply = buildDailyCheckIn(ctx.missions, ctx.agendaEvents, ctx.financeEntries, ctx.habits);
+    const reply = buildDailyCheckIn(ctx.missions, ctx.agendaEvents, ctx.financeEntries, ctx.habits, ctx.userName);
     return { status: 'concluido', reply, checklist: [], results: [] };
   }
 

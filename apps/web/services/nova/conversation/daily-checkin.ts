@@ -2,16 +2,17 @@ import type { AgendaEvent, FinanceEntry, Habit, Mission } from '@control-os/type
 
 /**
  * Resumo do dia (CONTROL OS — Sistema Operacional Pessoal): destaques reais
- * derivados de `useDataStore` — compromissos de hoje, missões em risco,
- * hábitos pendentes, lançamentos financeiros recentes e se os gastos já
- * superaram a receita registrada. Nunca inventa sinais de domínios que
- * ainda não existem — só o que dá pra calcular com os dados reais de hoje.
- * Base de `buildDailyCheckIn` — usada tanto pelo intent `consultar_dia` da
- * Nova ("O que preciso fazer hoje?", "Organize meu dia") quanto,
- * futuramente, por canais sem UI (ex.: adapter de WhatsApp). A Home
- * (`/nova`) não usa mais este resumo como painel fixo — ficou
- * propositalmente limpa, só a `NovaOrb` e a conversa (pedido explícito do
- * usuário) — mas o texto aparece como resposta quando ele pede.
+ * derivados de `useDataStore` — compromissos de hoje (com horário, um por
+ * linha), missões em risco, hábitos pendentes, lançamentos financeiros
+ * recentes e se os gastos já superaram a receita registrada. Nunca inventa
+ * sinais de domínios que ainda não existem — só o que dá pra calcular com
+ * os dados reais de hoje. Base de `buildDailyCheckIn` — usada tanto pelo
+ * intent `consultar_dia` da Nova ("Oi", "O que preciso fazer hoje?",
+ * "Organize meu dia") quanto, futuramente, por canais sem UI (ex.: adapter
+ * de WhatsApp). A Home (`/nova`) não usa mais este resumo como painel fixo
+ * — ficou propositalmente limpa, só a `NovaOrb` e a conversa (pedido
+ * explícito do usuário) — mas o texto aparece como resposta quando ele pede
+ * ou simplesmente cumprimenta a Nova.
  */
 export function buildTodayHighlights(
   missions: Mission[],
@@ -22,7 +23,9 @@ export function buildTodayHighlights(
   const today = new Date().toISOString().slice(0, 10);
 
   const missionsEmRisco = missions.filter((mission) => mission.status === 'em_risco').length;
-  const compromissosHoje = agendaEvents.filter((event) => event.date === today).length;
+  const eventosHoje = agendaEvents
+    .filter((event) => event.date === today)
+    .sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
   const lancamentosRecentes = financeEntries.length;
   const habitosPendentes = habits.filter((habit) => !habit.completedToday).length;
 
@@ -34,9 +37,11 @@ export function buildTodayHighlights(
     .reduce((sum, entry) => sum + entry.amount, 0);
 
   const highlights: string[] = [];
-  if (compromissosHoje > 0) {
-    highlights.push(`${compromissosHoje} compromisso${compromissosHoje > 1 ? 's' : ''} hoje`);
-  }
+  // Um item por compromisso (com horário) — mais útil do que só a contagem
+  // quando a pergunta é literalmente "o que eu tenho hoje".
+  eventosHoje.forEach((event) => {
+    highlights.push(event.time ? `${event.time} — ${event.title}` : event.title);
+  });
   if (missionsEmRisco > 0) {
     highlights.push(`${missionsEmRisco} missão${missionsEmRisco > 1 ? 'ões' : ''} em risco de prazo`);
   }
@@ -55,21 +60,26 @@ export function buildTodayHighlights(
 
 /**
  * Versão em texto do resumo do dia — resposta ao intent `consultar_dia` da
- * Nova, e mensagem proativa em canais sem interface visual (ex.: adapter
- * de WhatsApp).
+ * Nova (disparado tanto por uma saudação simples — "oi", "bom dia" —
+ * quanto por um pedido explícito — "organize meu dia"), e mensagem
+ * proativa em canais sem interface visual (ex.: adapter de WhatsApp).
+ * `firstName`, quando informado, personaliza a abertura — "Olá, Ivoli!" —
+ * do jeito que o usuário pediu explicitamente.
  */
 export function buildDailyCheckIn(
   missions: Mission[],
   agendaEvents: AgendaEvent[],
   financeEntries: FinanceEntry[],
-  habits: Habit[] = []
+  habits: Habit[] = [],
+  firstName?: string
 ): string {
   const highlights = buildTodayHighlights(missions, agendaEvents, financeEntries, habits);
+  const greeting = firstName ? `Olá, ${firstName}! Vamos planejar seu dia.` : 'Vamos planejar seu dia.';
 
   if (highlights.length === 0) {
-    return 'Não encontrei pendências críticas — seu dia está tranquilo. Quer organizar alguma coisa mesmo assim?';
+    return `${greeting} Não encontrei pendências críticas — está tranquilo. Quer organizar alguma coisa mesmo assim?`;
   }
 
   const bullets = highlights.map((item) => `• ${item}`).join('\n');
-  return `Olhando seu dia, encontrei:\n${bullets}\nPosso organizar alguma dessas coisas?`;
+  return `${greeting} Hoje você tem:\n${bullets}\nPosso organizar alguma dessas coisas?`;
 }

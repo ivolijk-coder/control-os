@@ -142,6 +142,8 @@ export interface NovaContext {
   agendaEvents: AgendaEvent[];
   financeEntries: FinanceEntry[];
   habits: Habit[];
+  /** Primeiro nome do usuário — usado pra personalizar a resposta de "olá"/plano do dia. */
+  userName: string;
 }
 
 export type NovaStatus = 'pensando' | 'executando' | 'concluido' | 'erro';

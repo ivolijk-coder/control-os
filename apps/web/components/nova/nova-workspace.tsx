@@ -14,7 +14,14 @@ import { IntelligentPanel } from '@/components/home/intelligent-panel';
 import { processNovaTurn } from '@/services/nova';
 import type { NovaContext } from '@/services/nova';
 import { useDataStore } from '@/lib/data-store';
+import { MOCK_USER } from '@/lib/mock-data';
 import { transitionOut, transitionSpring } from '@/lib/motion';
+
+// Primeiro nome do usuário — usado pra personalizar a resposta da Nova a
+// uma saudação simples ("oi", "bom dia"). Mesmo cálculo que `HomeHero` já
+// faz em `/nova/page.tsx`; um one-liner não justifica um novo export
+// compartilhado só pra isso.
+const NOVA_USER_FIRST_NAME = MOCK_USER.name.split(' ')[0] ?? MOCK_USER.name;
 
 // Canvas é inerentemente client-only — mesmo tratamento do BackgroundNetwork.
 const NovaOrb = dynamic(() => import('@/components/nova/nova-orb').then((mod) => mod.NovaOrb), {
@@ -120,6 +127,7 @@ export function NovaWorkspace({
       agendaEvents,
       financeEntries,
       habits,
+      userName: NOVA_USER_FIRST_NAME,
     }),
     [
       addMission,

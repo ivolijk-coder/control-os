@@ -25,6 +25,9 @@ const DEBT_PATTERN = /\b(tenho uma d[íi]vida|financiei|parcelei)\b|\bdevo\b\s*(
 const INSTALLMENTS_PATTERN = /(\d{1,2})\s*(?:x\b|vezes)/i;
 const DAY_PLAN_PATTERN =
   /\b(o que (eu )?preciso fazer hoje|organize meu dia|como est[áa] meu dia|plano do dia|meu dia hoje)\b/;
+// Só considera saudação quando é A mensagem inteira (ex.: "oi", "bom dia!")
+// — evita engolir o resto do intent de uma frase como "boa tarde, gastei 50".
+const GREETING_PATTERN = /^(oi+|ol[áa]|bom dia|boa tarde|boa noite|e a[íi]|hey|hello)[\s,!.]*$/i;
 
 /** Normaliza um valor em formato pt-BR ("2.500,50", "2.500", "35") para número. */
 function parseAmount(text: string): number | null {
@@ -73,7 +76,7 @@ export function parseIntent(text: string): NovaIntent {
   const raw = text.trim();
   const lower = raw.toLowerCase();
 
-  if (DAY_PLAN_PATTERN.test(lower)) {
+  if (GREETING_PATTERN.test(raw) || DAY_PLAN_PATTERN.test(lower)) {
     return { kind: 'consultar_dia', raw };
   }
 
