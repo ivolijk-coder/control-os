@@ -1,7 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User } from '@control-os/types';
+import type { ConversationMessage } from '@/components/nova/nova-message-bubble';
 import { MOCK_USER } from './mock-data';
+
+/** Limite de mensagens guardadas — evita crescimento sem fim numa sessão longa. */
+const MAX_NOVA_MESSAGES = 100;
 
 /**
  * Estado global de UI do CONTROL OS (Zustand).
@@ -38,6 +42,20 @@ interface AppState {
   // `commandCenterOpen`: não faz sentido reabrir sozinho ao recarregar.
   novaPanelOpen: boolean;
   setNovaPanelOpen: (open: boolean) => void;
+
+  /**
+   * Histórico da conversa com a NOVA (CONTROL OS — Evolução da experiência
+   * NOVA). Antes vivia num `useState` local dentro de `NovaWorkspace`, que
+   * reseta a cada montagem — como o painel flutuante desmonta o conteúdo ao
+   * fechar (`Dialog.Content` sem `forceMount`), a conversa "esquecia tudo"
+   * toda vez que o usuário fechava e reabria o botão flutuante. Mover para
+   * cá resolve isso: o estado sobrevive a fechar/reabrir o painel e a
+   * navegar entre páginas (é um store singleton), mas ainda é efêmero como
+   * `novaPanelOpen` — não teria sentido reabrir o app amanhã e ver a
+   * conversa de ontem no meio da tela.
+   */
+  novaMessages: ConversationMessage[];
+  addNovaMessage: (message: ConversationMessage) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -63,6 +81,10 @@ export const useAppStore = create<AppState>()(
 
       novaPanelOpen: false,
       setNovaPanelOpen: (open) => set({ novaPanelOpen: open }),
+
+      novaMessages: [],
+      addNovaMessage: (message) =>
+        set((state) => ({ novaMessages: [...state.novaMessages, message].slice(-MAX_NOVA_MESSAGES) })),
     }),
     {
       name: 'control-os-app-state',

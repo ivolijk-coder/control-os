@@ -6,14 +6,15 @@ import { motion } from 'framer-motion';
 import { Activity, CalendarClock, Flag, Target, Wallet } from 'lucide-react';
 import { NovaInput } from '@/components/nova/nova-input';
 import { NovaConversation } from '@/components/nova/nova-conversation';
-import type { ConversationMessage } from '@/components/nova/nova-message-bubble';
+import type { ConversationMessage, ConversationMessageStatus } from '@/components/nova/nova-message-bubble';
 import type { NovaThinkingStatus } from '@/components/nova/nova-thinking';
 import type { NovaOrbStatus } from '@/components/nova/nova-orb';
 import { QuickAction } from '@/components/ui/quick-action';
 import { IntelligentPanel } from '@/components/home/intelligent-panel';
 import { ConversationService } from '@/services/ai';
-import type { NovaContext } from '@/services/nova';
+import type { NovaContext, NovaStatus } from '@/services/nova';
 import { useDataStore } from '@/lib/data-store';
+import { useAppStore } from '@/lib/store';
 import { MOCK_USER } from '@/lib/mock-data';
 import { transitionOut, transitionSpring } from '@/lib/motion';
 
@@ -65,6 +66,18 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+/**
+ * `NovaStatus` (camada de serviço) → `ConversationMessageStatus` (camada de
+ * UI) — dois vocabulários próximos, mas não idênticos:
+ * `'pensando'`/`'executando'` nem chegam aqui (só aparecem via
+ * `isThinking`/`thinkingStatus`, nunca num `NovaTurnResult` já concluído).
+ */
+function resultStatusToMessageStatus(status: NovaStatus): ConversationMessageStatus {
+  if (status === 'erro') return 'error';
+  if (status === 'aguardando_confirmacao') return 'pending_confirmation';
+  return 'success';
+}
+
 export interface NovaWorkspaceProps {
   /** Mostra o Painel Inteligente (métricas agregadas) abaixo da conversa. Padrão: escondido — a Home prioriza a esfera, limpa. */
   showIntelligentPanel?: boolean;
@@ -93,17 +106,23 @@ export interface NovaWorkspaceProps {
  * pelo `NovaFloatingPanel` (`variant="inline"`, sem esfera — painel pequeno
  * demais para o efeito valer a pena).
  *
- * Estado local (não persistido): mensagens da sessão e o estado da Nova
- * (pensando/executando). "Primeiro faz. Depois responde." — o
- * plano/checklist e a execução real sempre rodam antes da resposta em
- * texto aparecer.
+ * Mensagens da conversa vivem no `useAppStore` (`novaMessages`) — sobrevivem
+ * a fechar/reabrir o painel flutuante, ver `lib/store.ts`. O estado da Nova
+ * (pensando/executando) continua local (`useState`), próprio de cada
+ * montagem. "Primeiro faz. Depois responde." — o plano/checklist e a
+ * execução real sempre rodam antes da resposta em texto aparecer. Ações
+ * sensíveis (dívida, valor alto) param em `'aguardando_confirmacao'` até o
+ * usuário confirmar ou cancelar pelos botões na última mensagem.
  */
 export function NovaWorkspace({
   showIntelligentPanel = false,
   variant = 'inline',
   topContent,
 }: NovaWorkspaceProps) {
-  const [messages, setMessages] = React.useState<ConversationMessage[]>([]);
+  // Vive no `useAppStore` (não mais `useState` local) — sobrevive a
+  // fechar/reabrir o painel flutuante. Ver comentário em `lib/store.ts`.
+  const messages = useAppStore((state) => state.novaMessages);
+  const addNovaMessage = useAppStore((state) => state.addNovaMessage);
   const [isThinking, setIsThinking] = React.useState(false);
   const [thinkingStatus, setThinkingStatus] = React.useState<NovaThinkingStatus>('pensando');
 
@@ -180,7 +199,7 @@ export function NovaWorkspace({
         role: 'user',
         content: text,
       };
-      setMessages((current) => [...current, userMessage]);
+      addNovaMessage(userMessage);
       setIsThinking(true);
       setThinkingStatus('pensando');
 
@@ -190,19 +209,46 @@ export function NovaWorkspace({
         await wait(EXECUTING_DELAY_MS);
 
         const result = await conversationService.processTurn(text, novaContext);
-        const novaMessage: ConversationMessage = {
+        addNovaMessage({
           id: nextMessageId('nova'),
           role: 'nova',
           content: result.reply,
           checklist: result.checklist,
-          status: result.status === 'erro' ? 'error' : 'success',
-        };
-        setMessages((current) => [...current, novaMessage]);
+          status: resultStatusToMessageStatus(result.status),
+        });
         setIsThinking(false);
       })();
     },
-    [novaContext]
+    [novaContext, addNovaMessage]
   );
+
+  const handleConfirmPending = React.useCallback(() => {
+    setIsThinking(true);
+    setThinkingStatus('executando');
+
+    void (async () => {
+      await wait(EXECUTING_DELAY_MS);
+      const result = await conversationService.confirmPending(novaContext);
+      addNovaMessage({
+        id: nextMessageId('nova'),
+        role: 'nova',
+        content: result.reply,
+        checklist: result.checklist,
+        status: resultStatusToMessageStatus(result.status),
+      });
+      setIsThinking(false);
+    })();
+  }, [novaContext, addNovaMessage]);
+
+  const handleCancelPending = React.useCallback(() => {
+    const result = conversationService.cancelPending();
+    addNovaMessage({
+      id: nextMessageId('nova'),
+      role: 'nova',
+      content: result.reply,
+      status: resultStatusToMessageStatus(result.status),
+    });
+  }, [addNovaMessage]);
 
   const orbStatus: NovaOrbStatus = isThinking ? thinkingStatus : 'idle';
   // A esfera "cresce" enquanto a NOVA pensa/executa — a reação visual que
@@ -228,7 +274,13 @@ export function NovaWorkspace({
   const conversationArea = (
     <>
       <div className="mx-auto w-full max-w-2xl">
-        <NovaConversation messages={messages} isThinking={isThinking} thinkingStatus={thinkingStatus} />
+        <NovaConversation
+          messages={messages}
+          isThinking={isThinking}
+          thinkingStatus={thinkingStatus}
+          onConfirmPending={handleConfirmPending}
+          onCancelPending={handleCancelPending}
+        />
       </div>
 
       {showIntelligentPanel && (

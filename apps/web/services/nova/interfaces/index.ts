@@ -177,7 +177,14 @@ export interface NovaContext {
   userName: string;
 }
 
-export type NovaStatus = 'pensando' | 'executando' | 'concluido' | 'erro';
+/**
+ * `'aguardando_confirmacao'` (CONTROL OS — Evolução da experiência NOVA):
+ * a intenção já foi identificada, mas é sensível o bastante (valor alto,
+ * cria uma dívida) para não executar sem o usuário confirmar antes. A
+ * `Action` já resolvida fica guardada em `ConversationService` até a
+ * confirmação (ou o cancelamento) chegar.
+ */
+export type NovaStatus = 'pensando' | 'executando' | 'concluido' | 'erro' | 'aguardando_confirmacao';
 
 export interface NovaTurnResult {
   status: NovaStatus;

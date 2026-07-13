@@ -3,11 +3,17 @@
 import * as React from 'react';
 import { motion } from 'framer-motion';
 import { AlertCircle, Check, Sparkles } from 'lucide-react';
+import { Button } from '@control-os/ui';
 import { cn } from '@/lib/utils';
 import { fadeUp, transitionOut } from '@/lib/motion';
 
-/** Status final de uma resposta da NOVA — ver `services/nova/interfaces` (`NovaStatus`). */
-export type ConversationMessageStatus = 'success' | 'error';
+/**
+ * Status final de uma resposta da NOVA — ver `services/nova/interfaces`
+ * (`NovaStatus`). `'pending_confirmation'` (CONTROL OS — Evolução da
+ * experiência NOVA) espera uma ação sensível (dívida, despesa/receita de
+ * valor alto) ser confirmada ou cancelada pelo usuário antes de executar.
+ */
+export type ConversationMessageStatus = 'success' | 'error' | 'pending_confirmation';
 
 export interface ConversationMessage {
   id: string;
@@ -18,16 +24,32 @@ export interface ConversationMessage {
   status?: ConversationMessageStatus;
 }
 
+export interface NovaMessageBubbleProps {
+  message: ConversationMessage;
+  /**
+   * Só passado pela última mensagem da conversa quando ela está
+   * `'pending_confirmation'` (CONTROL OS — Evolução da experiência NOVA) —
+   * mensagens antigas nunca mostram os botões, mesmo que também tenham
+   * ficado com esse status um dia (a pendência anterior já foi resolvida
+   * assim que uma mensagem nova apareceu depois dela).
+   */
+  onConfirm?: () => void;
+  onCancel?: () => void;
+}
+
 /**
  * NovaMessageBubble — uma mensagem do Modo de Conversa (Nova Experience —
- * Fase 2, estendida no CONTROL OS 3.0 com estado de erro). Mensagens da
- * NOVA podem trazer um checklist de confirmação (ex.: "✓ missão criada").
+ * Fase 2, estendida no CONTROL OS 3.0 com estado de erro, e na Evolução da
+ * experiência NOVA com confirmação de ações sensíveis). Mensagens da NOVA
+ * podem trazer um checklist de confirmação (ex.: "✓ missão criada") ou,
+ * quando `status === 'pending_confirmation'`, botões de Confirmar/Cancelar.
  * Quando `status === 'error'`, reaproveita o padrão visual de `FormError`
  * (borda/fundo vermelhos + microinteração de shake).
  */
-export function NovaMessageBubble({ message }: { message: ConversationMessage }) {
+export function NovaMessageBubble({ message, onConfirm, onCancel }: NovaMessageBubbleProps) {
   const isUser = message.role === 'user';
   const isError = message.status === 'error';
+  const isPendingConfirmation = message.status === 'pending_confirmation';
 
   return (
     <motion.div
@@ -67,6 +89,16 @@ export function NovaMessageBubble({ message }: { message: ConversationMessage })
               </li>
             ))}
           </ul>
+        )}
+        {isPendingConfirmation && (onConfirm || onCancel) && (
+          <div className="mt-3 flex items-center gap-2">
+            <Button size="sm" variant="primary" onClick={onConfirm}>
+              Confirmar
+            </Button>
+            <Button size="sm" variant="secondary" onClick={onCancel}>
+              Cancelar
+            </Button>
+          </div>
         )}
       </div>
     </motion.div>
