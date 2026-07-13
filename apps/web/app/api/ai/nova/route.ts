@@ -37,6 +37,15 @@ import type {
  * `previous_response_id` — é ele que faz o loop "OpenAI decide → Tool →
  * ActionExecutor → resultado → OpenAI narra" (ver `ConversationService`).
  *
+ * Etapa 6 — IA-Native: esta rota não ganhou nenhum modo novo nem endpoint
+ * novo. A NOVA CORE virar "o centro do sistema" é uma mudança de
+ * `SystemPrompt` (o que a NOVA entende que pode fazer) e de contexto (o
+ * que ela sabe sobre o usuário), não de infraestrutura — por isso o único
+ * ajuste aqui foi o teto de tokens do modo `'reason'` (ver
+ * `MAX_OUTPUT_TOKENS_BY_MODE` abaixo), pra caber turnos que compõem várias
+ * Tools reais de uma vez (ex.: viagem = criar_viagem + criar_objetivo +
+ * lembretes).
+ *
  * Nota sobre o SDK: o ambiente de build usado para preparar esta etapa não
  * tem acesso à registry do npm para instalar o pacote oficial `openai`.
  * A Responses API é pública, estável e documentada — chamar
@@ -52,13 +61,18 @@ const REQUEST_TIMEOUT_MS = 20_000;
 
 /**
  * Teto de tokens de saída por modo (CONTROL OS — Etapa 4.5: Auditoria de
- * Performance, valores revistos na Etapa 5). Modelos de raciocínio como o
- * GPT-5.5 gastam parte de `max_output_tokens` em tokens de raciocínio
- * internos (não visíveis) antes do texto/tool call final — por isso os
- * limites aqui são mais generosos que um teto "só de texto visível" seria;
- * um valor baixo demais pode truncar a resposta antes do texto aparecer.
+ * Performance, valores revistos na Etapa 5, `'reason'` revisto de novo na
+ * Etapa 6: IA-Native). Modelos de raciocínio como o GPT-5.5 gastam parte
+ * de `max_output_tokens` em tokens de raciocínio internos (não visíveis)
+ * antes do texto/tool call final — por isso os limites aqui são mais
+ * generosos que um teto "só de texto visível" seria; um valor baixo demais
+ * pode truncar a resposta antes do texto aparecer.
  * `'reason'` é o maior porque pode precisar decidir várias tool calls no
- * mesmo turno (ex.: meta + viagem + lembrete).
+ * mesmo turno — a Etapa 6 pede explicitamente que pedidos de vida maiores
+ * ("quero viajar", "quero comprar uma casa") virem várias Tools reais
+ * compostas num único turno (ex.: viagem + meta financeira + 2-3
+ * lembretes), então o teto subiu de 900 pra 1400 pra não truncar esse tipo
+ * de resposta antes de todas as tool calls saírem.
  */
 const MAX_OUTPUT_TOKENS_BY_MODE: Record<NovaAIRequestMode, number> = {
   classify: 400,
@@ -67,7 +81,7 @@ const MAX_OUTPUT_TOKENS_BY_MODE: Record<NovaAIRequestMode, number> = {
   suggest: 500,
   generate: 700,
   chat: 700,
-  reason: 900,
+  reason: 1400,
 };
 
 function isChatMessage(value: unknown): value is ChatMessage {

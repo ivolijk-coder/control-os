@@ -27,13 +27,15 @@ function topExpenseCategoriesThisMonth(ctx: AIConversationContext, monthPrefix: 
 /**
  * Monta o resumo compacto de contexto enviado a um provedor de IA real
  * (CONTROL OS — Etapa 4, enriquecido na Etapa 5 pra sustentar análises
- * pedidas em conversa — ex.: "analise meus gastos"). "Nunca enviar dados
- * desnecessários" — em vez de serializar os arrays inteiros
- * (`financeEntries`, `missions` etc., que podem chegar a centenas de itens
- * numa conta madura), condensa cada domínio em totais/contagens/destaques,
- * como um humano resumiria o próprio dia pra outra pessoa. `MockAIProvider`
- * nunca usa isto — só `OpenAIProvider`, ao montar o payload pra
- * `app/api/ai/nova/route.ts`.
+ * pedidas em conversa — ex.: "analise meus gastos" — e na Etapa 6 pra
+ * cobrir todo o catálogo de domínios da NOVA CORE: financeiro, agenda,
+ * hábitos, metas, projetos, lembretes, dívidas, documentos, patrimônio,
+ * notas, viagens e preferências). "Nunca enviar dados desnecessários" —
+ * em vez de serializar os arrays inteiros (`financeEntries`, `missions`
+ * etc., que podem chegar a centenas de itens numa conta madura), condensa
+ * cada domínio em totais/contagens/destaques, como um humano resumiria o
+ * próprio dia pra outra pessoa. `MockAIProvider` nunca usa isto — só
+ * `OpenAIProvider`, ao montar o payload pra `app/api/ai/nova/route.ts`.
  */
 export function buildModelContextSummary(ctx: AIConversationContext): string {
   const today = new Date().toISOString().slice(0, 10);
@@ -48,6 +50,12 @@ export function buildModelContextSummary(ctx: AIConversationContext): string {
   const totalReceitasMes = receitasMes.reduce((sum, entry) => sum + entry.amount, 0);
   const topCategorias = topExpenseCategoriesThisMonth(ctx, monthPrefix);
   const metasAtivas = ctx.missions.filter((mission) => mission.kind === 'meta' && mission.status !== 'concluida');
+  // CONTROL OS — Etapa 6: `Mission` também cobre 'projeto' e 'lembrete' (mesma fonte de dados,
+  // ver `MissionKind` em packages/types) — sem essas duas linhas, a NOVA "esquecia" de projetos
+  // e lembretes em pedidos de vida compostos (ex.: "quero comprar uma casa" pode virar meta +
+  // projeto + lembretes, e a NOVA precisa saber o que já existe antes de propor mais).
+  const projetosAtivos = ctx.missions.filter((mission) => mission.kind === 'projeto' && mission.status !== 'concluida');
+  const lembretesPendentes = ctx.missions.filter((mission) => mission.kind === 'lembrete' && mission.status !== 'concluida');
   const missõesEmRisco = ctx.missions.filter((mission) => mission.status === 'em_risco');
   const habitosPendentes = ctx.habits.filter((habit) => !habit.completedToday);
   const dividasAbertas = ctx.debts.filter((debt) => debt.remainingAmount > 0);
@@ -70,6 +78,8 @@ export function buildModelContextSummary(ctx: AIConversationContext): string {
 
   lines.push(
     `Metas em andamento: ${metasAtivas.length}${metasAtivas.length > 0 ? ` (ex.: "${metasAtivas[0]?.title}" em ${metasAtivas[0]?.progress}%)` : ''}`,
+    `Projetos ativos: ${projetosAtivos.length}${projetosAtivos.length > 0 ? ` (ex.: "${projetosAtivos[0]?.title}" em ${projetosAtivos[0]?.progress}%)` : ''}`,
+    `Lembretes pendentes: ${lembretesPendentes.length}`,
     `Missões em risco de prazo: ${missõesEmRisco.length}`,
     `Hábitos pendentes hoje: ${habitosPendentes.length} de ${ctx.habits.length}`,
     `Dívidas em aberto: ${dividasAbertas.length}`,
