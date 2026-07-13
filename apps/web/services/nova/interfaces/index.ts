@@ -1,4 +1,15 @@
-import type { AgendaEvent, Debt, FinanceEntry, Habit, Mission, TimelineEvent } from '@control-os/types';
+import type {
+  AgendaEvent,
+  Asset,
+  Debt,
+  FinanceEntry,
+  Habit,
+  Mission,
+  Note,
+  PersonalDocument,
+  TimelineEvent,
+  Trip,
+} from '@control-os/types';
 
 /**
  * Contratos do NOVA Operating System (CONTROL OS 3.0).
@@ -101,6 +112,11 @@ export type NovaActionKind =
   | 'criar_missao'
   | 'criar_evento_agenda'
   | 'criar_divida'
+  | 'criar_habito'
+  | 'criar_viagem'
+  | 'criar_documento'
+  | 'criar_bem'
+  | 'criar_nota'
   | 'registrar_timeline';
 
 /** Um passo do plano (checklist) — declarativo, ainda sem execução. */
@@ -116,7 +132,17 @@ export interface NovaActionResult {
   detail?: string;
 }
 
-/** Subconjunto de ações do `useDataStore` que a Nova precisa para agir. */
+/**
+ * Subconjunto de ações do `useDataStore` que a Nova precisa para agir.
+ *
+ * Estendido (CONTROL OS — Preparação para OpenAI GPT-5.5) com
+ * `addHabit`/`addDocument`/`addAsset`/`addTrip`/`addNote` — usados pelas
+ * novas Actions em `services/ai/actions/` (`CreateHabitAction`,
+ * `CreateDocumentAction`, `CreateAssetAction`, `CreateTripAction`,
+ * `CreateNoteAction`). Extensão aditiva: nada que já consumia
+ * `NovaDataActions` (ex.: `services/nova/executor`) precisa dos novos
+ * campos, então nenhum comportamento existente muda.
+ */
 export interface NovaDataActions {
   addMission: (mission: Omit<Mission, 'id'>) => Mission;
   updateMission: (id: string, patch: Partial<Omit<Mission, 'id'>>) => void;
@@ -124,6 +150,11 @@ export interface NovaDataActions {
   addFinanceEntry: (entry: Omit<FinanceEntry, 'id'>) => FinanceEntry;
   addAgendaEvent: (event: Omit<AgendaEvent, 'id'>) => AgendaEvent;
   addDebt: (debt: Omit<Debt, 'id'>) => Debt;
+  addHabit: (habit: Omit<Habit, 'id'>) => Habit;
+  addDocument: (document: Omit<PersonalDocument, 'id'>) => PersonalDocument;
+  addAsset: (asset: Omit<Asset, 'id'>) => Asset;
+  addTrip: (trip: Omit<Trip, 'id'>) => Trip;
+  addNote: (note: Omit<Note, 'id'>) => Note;
 }
 
 export interface NovaContext {

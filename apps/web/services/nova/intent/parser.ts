@@ -29,8 +29,13 @@ const DAY_PLAN_PATTERN =
 // — evita engolir o resto do intent de uma frase como "boa tarde, gastei 50".
 const GREETING_PATTERN = /^(oi+|ol[áa]|bom dia|boa tarde|boa noite|e a[íi]|hey|hello)[\s,!.]*$/i;
 
-/** Normaliza um valor em formato pt-BR ("2.500,50", "2.500", "35") para número. */
-function parseAmount(text: string): number | null {
+/**
+ * Normaliza um valor em formato pt-BR ("2.500,50", "2.500", "35") para
+ * número. Exportada — reaproveitada por
+ * `services/ai/providers/MockAIProvider.ts` (`extractEntities`) em vez de
+ * duplicar a lógica de parsing de valor monetário.
+ */
+export function parseAmount(text: string): number | null {
   const match = AMOUNT_PATTERN.exec(text);
   const rawValue = match?.[1];
   if (!rawValue) return null;
@@ -48,8 +53,12 @@ function parseAmount(text: string): number | null {
   return Number.isFinite(amount) ? amount : null;
 }
 
-/** Extrai um horário "HH:MM" de expressões como "15h", "15h30" ou "15:30". */
-function parseTime(text: string): string | undefined {
+/**
+ * Extrai um horário "HH:MM" de expressões como "15h", "15h30" ou "15:30".
+ * Exportada pelo mesmo motivo de `parseAmount` — reaproveitada por
+ * `MockAIProvider.extractEntities`.
+ */
+export function parseTime(text: string): string | undefined {
   const match = TIME_PATTERN.exec(text);
   const hour = match?.[1];
   if (!hour) return undefined;

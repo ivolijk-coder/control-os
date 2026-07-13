@@ -71,6 +71,7 @@ interface DataState {
   /** Paga 1 parcela: soma 1 a `installmentsPaid` e reduz `remainingAmount` proporcionalmente. Não faz nada se já quitada. */
   payDebtInstallment: (id: string) => void;
 
+  addHabit: (habit: Omit<Habit, 'id'>) => Habit;
   /** Alterna `completedToday` e ajusta `streakDays`/`last7Days` (hoje = último índice) de acordo. */
   toggleHabitToday: (id: string) => void;
 
@@ -149,6 +150,11 @@ export const useDataStore = create<DataState>()(
         }));
       },
 
+      addHabit: (habit) => {
+        const created: Habit = { ...habit, id: nextId('hb') };
+        set((state) => ({ habits: [created, ...state.habits] }));
+        return created;
+      },
       toggleHabitToday: (id) => {
         set((state) => ({
           habits: state.habits.map((habit) => {

@@ -12,7 +12,12 @@ const FALLBACK_REPLY =
 
 const ERROR_REPLY = 'Encontrei um problema ao executar isso. Pode tentar de novo com mais detalhes?';
 
-function buildReply(intent: NovaIntent, ok: boolean): string {
+/**
+ * Exportada (não só usada localmente) porque a camada de IA
+ * (`services/ai/providers/MockAIProvider.ts`) reaproveita exatamente este
+ * texto de confirmação — em vez de duplicar o `switch` por tipo de intent.
+ */
+export function buildReply(intent: NovaIntent, ok: boolean): string {
   if (!ok) return ERROR_REPLY;
 
   switch (intent.kind) {

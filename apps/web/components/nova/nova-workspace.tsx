@@ -11,7 +11,7 @@ import type { NovaThinkingStatus } from '@/components/nova/nova-thinking';
 import type { NovaOrbStatus } from '@/components/nova/nova-orb';
 import { QuickAction } from '@/components/ui/quick-action';
 import { IntelligentPanel } from '@/components/home/intelligent-panel';
-import { processNovaTurn } from '@/services/nova';
+import { ConversationService } from '@/services/ai';
 import type { NovaContext } from '@/services/nova';
 import { useDataStore } from '@/lib/data-store';
 import { MOCK_USER } from '@/lib/mock-data';
@@ -42,6 +42,13 @@ const QUICK_ACTIONS = [
 // usuário — reflete isso também nos dados que a Nova cria por conversa,
 // não só na interface.
 const DEFAULT_SPACE_ID = 'sp_vida';
+
+// Nenhuma tela acessa a IA diretamente (CONTROL OS — Preparação para OpenAI
+// GPT-5.5): o único jeito de conversar com a NOVA é através do
+// `ConversationService`, que por sua vez decide o `AIProvider` internamente
+// (`services/ai/config.ts`). `ConversationService` é stateless — uma
+// instância única do módulo evita recriá-la a cada turno.
+const conversationService = new ConversationService();
 
 const THINKING_DELAY_MS = 700;
 const EXECUTING_DELAY_MS = 500;
@@ -106,6 +113,11 @@ export function NovaWorkspace({
   const addFinanceEntry = useDataStore((state) => state.addFinanceEntry);
   const addAgendaEvent = useDataStore((state) => state.addAgendaEvent);
   const addDebt = useDataStore((state) => state.addDebt);
+  const addHabit = useDataStore((state) => state.addHabit);
+  const addDocument = useDataStore((state) => state.addDocument);
+  const addAsset = useDataStore((state) => state.addAsset);
+  const addTrip = useDataStore((state) => state.addTrip);
+  const addNote = useDataStore((state) => state.addNote);
   const debts = useDataStore((state) => state.debts);
   const missions = useDataStore((state) => state.missions);
   const agendaEvents = useDataStore((state) => state.agendaEvents);
@@ -120,7 +132,19 @@ export function NovaWorkspace({
   // recente).
   const novaContext: NovaContext = React.useMemo(
     () => ({
-      actions: { addMission, updateMission, addTimelineEvent, addFinanceEntry, addAgendaEvent, addDebt },
+      actions: {
+        addMission,
+        updateMission,
+        addTimelineEvent,
+        addFinanceEntry,
+        addAgendaEvent,
+        addDebt,
+        addHabit,
+        addDocument,
+        addAsset,
+        addTrip,
+        addNote,
+      },
       defaultSpaceId: DEFAULT_SPACE_ID,
       debts,
       missions,
@@ -136,6 +160,11 @@ export function NovaWorkspace({
       addFinanceEntry,
       addAgendaEvent,
       addDebt,
+      addHabit,
+      addDocument,
+      addAsset,
+      addTrip,
+      addNote,
       debts,
       missions,
       agendaEvents,
@@ -160,7 +189,7 @@ export function NovaWorkspace({
         setThinkingStatus('executando');
         await wait(EXECUTING_DELAY_MS);
 
-        const result = await processNovaTurn(text, novaContext);
+        const result = await conversationService.processTurn(text, novaContext);
         const novaMessage: ConversationMessage = {
           id: nextMessageId('nova'),
           role: 'nova',
