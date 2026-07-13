@@ -11,7 +11,7 @@ import type { NovaThinkingStatus } from '@/components/nova/nova-thinking';
 import type { NovaOrbStatus } from '@/components/nova/nova-orb';
 import { QuickAction } from '@/components/ui/quick-action';
 import { IntelligentPanel } from '@/components/home/intelligent-panel';
-import { ConversationService } from '@/services/ai';
+import { ConversationService, KEEP_RECENT_TURNS, shouldCondense } from '@/services/ai';
 import type { NovaContext, NovaStatus } from '@/services/nova';
 import { useDataStore } from '@/lib/data-store';
 import { useAppStore } from '@/lib/store';
@@ -123,6 +123,7 @@ export function NovaWorkspace({
   // fechar/reabrir o painel flutuante. Ver comentário em `lib/store.ts`.
   const messages = useAppStore((state) => state.novaMessages);
   const addNovaMessage = useAppStore((state) => state.addNovaMessage);
+  const replaceNovaMessages = useAppStore((state) => state.replaceNovaMessages);
   const [isThinking, setIsThinking] = React.useState(false);
   const [thinkingStatus, setThinkingStatus] = React.useState<NovaThinkingStatus>('pensando');
 
@@ -142,6 +143,10 @@ export function NovaWorkspace({
   const agendaEvents = useDataStore((state) => state.agendaEvents);
   const financeEntries = useDataStore((state) => state.financeEntries);
   const habits = useDataStore((state) => state.habits);
+  const trips = useDataStore((state) => state.trips);
+  const documents = useDataStore((state) => state.documents);
+  const assets = useDataStore((state) => state.assets);
+  const notes = useDataStore((state) => state.notes);
 
   // As actions do Zustand são referências estáveis entre renders. Os
   // snapshots de leitura (debts, missions, agendaEvents, financeEntries,
@@ -170,6 +175,10 @@ export function NovaWorkspace({
       agendaEvents,
       financeEntries,
       habits,
+      trips,
+      documents,
+      assets,
+      notes,
       userName: NOVA_USER_FIRST_NAME,
     }),
     [
@@ -189,8 +198,41 @@ export function NovaWorkspace({
       agendaEvents,
       financeEntries,
       habits,
+      trips,
+      documents,
+      assets,
+      notes,
     ]
   );
+
+  /**
+   * Resumo automático de conversa (CONTROL OS — Etapa 4): quando o
+   * histórico passa de `CONDENSE_THRESHOLD` mensagens, condensa tudo menos
+   * as últimas `KEEP_RECENT_TURNS` num único resumo — "a arquitetura deve
+   * suportar milhares de mensagens sem crescer indefinidamente". Lê o
+   * estado mais recente via `useAppStore.getState()` (não a variável
+   * `messages` fechada no closure) porque isto roda depois de um `await`,
+   * quando o array já pode ter mudado.
+   */
+  const maybeCondenseConversation = React.useCallback(() => {
+    const latest = useAppStore.getState().novaMessages;
+    if (!shouldCondense(latest.length)) return;
+
+    const older = latest.slice(0, latest.length - KEEP_RECENT_TURNS);
+    const recent = latest.slice(latest.length - KEEP_RECENT_TURNS);
+
+    void conversationService.summarizeOlderTurns(older).then((summaryText) => {
+      replaceNovaMessages([
+        {
+          id: nextMessageId('summary'),
+          role: 'nova',
+          content: `Resumo da conversa anterior: ${summaryText}`,
+          status: 'success',
+        },
+        ...recent,
+      ]);
+    });
+  }, [replaceNovaMessages]);
 
   const handleSend = React.useCallback(
     (text: string) => {
@@ -217,9 +259,10 @@ export function NovaWorkspace({
           status: resultStatusToMessageStatus(result.status),
         });
         setIsThinking(false);
+        maybeCondenseConversation();
       })();
     },
-    [novaContext, addNovaMessage]
+    [novaContext, addNovaMessage, maybeCondenseConversation]
   );
 
   const handleConfirmPending = React.useCallback(() => {
@@ -237,8 +280,9 @@ export function NovaWorkspace({
         status: resultStatusToMessageStatus(result.status),
       });
       setIsThinking(false);
+      maybeCondenseConversation();
     })();
-  }, [novaContext, addNovaMessage]);
+  }, [novaContext, addNovaMessage, maybeCondenseConversation]);
 
   const handleCancelPending = React.useCallback(() => {
     const result = conversationService.cancelPending();

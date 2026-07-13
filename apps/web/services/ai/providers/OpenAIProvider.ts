@@ -1,77 +1,214 @@
 import type { NovaIntent } from '@/services/nova';
+import { buildModelContextSummary } from '../context/buildModelContext';
+import { AIProviderError } from '../errors';
 import type { AIProvider } from '../interfaces';
-import type { AIConversationContext, AIExtractedEntities, ChatMessage } from '../types';
+import type {
+  AIConversationContext,
+  AIExtractedEntities,
+  ChatMessage,
+  NovaAIRequestBody,
+  NovaAIResponseBody,
+  NovaAIToolCall,
+} from '../types';
 
-const NOT_IMPLEMENTED_MESSAGE =
-  'OpenAIProvider ainda não implementado. Defina AI_PROVIDER=mock (padrão) — ' +
-  'este provider só deve ser instanciado depois que a integração real com o ' +
-  'SDK da OpenAI (GPT-5.5) for construída.';
+const ROUTE_URL = '/api/ai/nova';
+const MAX_SUGGESTIONS = 5;
 
 /**
- * Esqueleto do provedor real (CONTROL OS — Preparação para OpenAI GPT-5.5).
+ * Provedor real, falando com GPT-5.5 (CONTROL OS — Etapa 4: Preparação
+ * profissional para OpenAI GPT-5.5).
  *
- * NÃO integrar a API ainda. NÃO usar API Key. NÃO fazer chamadas HTTP. NÃO
- * gerar custo. Esta classe existe só para provar que a arquitetura já
- * comporta a troca — implementa `AIProvider`, então qualquer código que hoje
- * usa `MockAIProvider` continua funcionando sem alteração no dia em que
- * `getAIProvider()` (`services/ai/config.ts`) passar a devolver esta classe.
+ * "Nenhuma tela pode conversar diretamente com a OpenAI" e "toda chamada
+ * deve utilizar servidor" — por isso esta classe NUNCA importa um SDK de
+ * IA nem lê `OPENAI_API_KEY` (essa variável nem existe no bundle do
+ * navegador, por não ter o prefixo `NEXT_PUBLIC_`). Ela só sabe conversar
+ * com `POST /api/ai/nova` (`app/api/ai/nova/route.ts`), que roda no
+ * servidor e é o único lugar que de fato chama a API da OpenAI.
  *
- * Implementação futura, quando for a hora de ligar de verdade:
- *   1. `npm install openai` (SDK oficial da OpenAI).
- *   2. Instanciar o client no construtor, autenticado via
- *      `process.env.OPENAI_API_KEY` (nunca hardcoded, nunca no cliente —
- *      isso vai exigir mover a chamada para uma rota de servidor/edge
- *      function, já que `OPENAI_API_KEY` sem prefixo `NEXT_PUBLIC_` não
- *      pode vazar pro bundle do navegador).
- *   3. Cada método abaixo passa a montar o prompt certo (ver
- *      `services/ai/prompts/`) e chamar `client.chat.completions.create`
- *      (ou o endpoint equivalente) com o modelo GPT-5.5.
- *   4. `classifyIntent` deve devolver exatamente o formato `NovaIntent` —
- *      a resposta do modelo precisa ser parseada/validada para esse
- *      formato (sem `any`/`unknown` como atalho — validar campo a campo,
- *      como já é feito em `services/nova/memory/index.ts` para dados vindos
- *      de fora do sistema de tipos).
- *   5. `AI_PROVIDER=openai` no ambiente liga esta classe — sem alterar
- *      nenhuma outra parte do sistema.
+ * "Nenhuma regra de negócio pode existir dentro do provider. Ele apenas
+ * envia contexto, envia mensagens, recebe resposta, recebe tool calls,
+ * devolve tudo ao ConversationService." — esta classe não decide o que
+ * fazer com uma intenção classificada; só a devolve. `ConversationService`
+ * é quem resolve (`IntentResolver`) e executa (`ActionExecutor`).
  */
 export class OpenAIProvider implements AIProvider {
   async chat(messages: ChatMessage[], context: AIConversationContext): Promise<string> {
-    void messages;
-    void context;
-    // implementação futura: client.chat.completions.create({ model: 'gpt-5.5', messages, ... })
-    throw new Error(NOT_IMPLEMENTED_MESSAGE);
+    const response = await this.callRoute({
+      mode: 'chat',
+      messages,
+      contextSummary: buildModelContextSummary(context),
+    });
+    return response.content;
   }
 
   async generateResponse(prompt: string, context: AIConversationContext): Promise<string> {
-    void prompt;
-    void context;
-    // implementação futura: monta o SystemPrompt + prompt do usuário e chama o SDK.
-    throw new Error(NOT_IMPLEMENTED_MESSAGE);
+    const response = await this.callRoute({
+      mode: 'generate',
+      prompt,
+      contextSummary: buildModelContextSummary(context),
+    });
+    return response.content;
   }
 
   async classifyIntent(text: string, context: AIConversationContext): Promise<NovaIntent> {
-    void text;
-    void context;
-    // implementação futura: usa PlannerPrompt + function calling / structured
-    // output do modelo pra devolver um `NovaIntent` validado.
-    throw new Error(NOT_IMPLEMENTED_MESSAGE);
+    const response = await this.callRoute({
+      mode: 'classify',
+      prompt: text,
+      contextSummary: buildModelContextSummary(context),
+    });
+    if (!response.toolCall) {
+      return { kind: 'desconhecido', raw: text };
+    }
+    return mapToolCallToIntent(response.toolCall, text);
   }
 
   async extractEntities(text: string): Promise<AIExtractedEntities> {
-    void text;
-    // implementação futura: extração de entidades via structured output do modelo.
-    throw new Error(NOT_IMPLEMENTED_MESSAGE);
+    const response = await this.callRoute({ mode: 'extract', prompt: text });
+    return parseEntitiesFromLines(response.content);
   }
 
   async summarize(text: string): Promise<string> {
-    void text;
-    // implementação futura: chamada de resumo via GPT-5.5.
-    throw new Error(NOT_IMPLEMENTED_MESSAGE);
+    const response = await this.callRoute({ mode: 'summarize', prompt: text });
+    return response.content;
   }
 
   async generateSuggestions(context: AIConversationContext): Promise<string[]> {
-    void context;
-    // implementação futura: sugestões contextuais geradas pelo modelo.
-    throw new Error(NOT_IMPLEMENTED_MESSAGE);
+    const response = await this.callRoute({
+      mode: 'suggest',
+      contextSummary: buildModelContextSummary(context),
+    });
+    return response.content
+      .split('\n')
+      .map((line) => line.replace(/^[-•\d.)\s]+/, '').trim())
+      .filter((line) => line.length > 0)
+      .slice(0, MAX_SUGGESTIONS);
   }
+
+  /**
+   * Único ponto que fala com `/api/ai/nova`. Nunca deixa um erro de rede
+   * "cru" escapar — sempre mapeia pra `AIProviderError`, que
+   * `ConversationService` já sabe capturar e transformar numa resposta
+   * amigável (ver `ConversationService.processTurn`).
+   */
+  private async callRoute(body: NovaAIRequestBody): Promise<{ content: string; toolCall?: NovaAIToolCall }> {
+    let raw: unknown;
+    try {
+      const response = await fetch(ROUTE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      raw = await response.json();
+    } catch {
+      throw new AIProviderError('unavailable');
+    }
+
+    if (!isNovaAIResponseBody(raw)) {
+      throw new AIProviderError('invalid_response');
+    }
+    if (!raw.ok) {
+      throw new AIProviderError(raw.code, raw.message);
+    }
+    return { content: raw.content, toolCall: raw.toolCall };
+  }
+}
+
+function isNovaAIResponseBody(value: unknown): value is NovaAIResponseBody {
+  if (typeof value !== 'object' || value === null || !('ok' in value)) return false;
+  if (value.ok === true) return 'content' in value && typeof value.content === 'string';
+  if (value.ok === false) return 'code' in value && 'message' in value && typeof value.message === 'string';
+  return false;
+}
+
+/** Extrai um número de um argumento de tool call que deveria ser number. */
+function requireNumber(args: Record<string, string | number>, key: string): number | undefined {
+  const value = args[key];
+  return typeof value === 'number' ? value : undefined;
+}
+
+/** Extrai uma string de um argumento de tool call que deveria ser string. */
+function requireString(args: Record<string, string | number>, key: string): string | undefined {
+  const value = args[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * Mapeia uma tool call (nome + argumentos já validados como string/number
+ * pela Route Handler) de volta para o `NovaIntent` discriminado
+ * correspondente — campo a campo, sem `any`/cast. Nomes de tool batem 1:1
+ * com `NovaIntentKind` (ver `services/ai/tools/schemas.ts`).
+ */
+function mapToolCallToIntent(toolCall: NovaAIToolCall, raw: string): NovaIntent {
+  const { name, arguments: args } = toolCall;
+
+  switch (name) {
+    case 'registrar_despesa': {
+      const amount = requireNumber(args, 'amount');
+      const description = requireString(args, 'description');
+      if (amount === undefined || description === undefined) break;
+      return { kind: 'registrar_despesa', raw, amount, description };
+    }
+    case 'registrar_receita': {
+      const amount = requireNumber(args, 'amount');
+      const description = requireString(args, 'description');
+      if (amount === undefined || description === undefined) break;
+      return { kind: 'registrar_receita', raw, amount, description };
+    }
+    case 'criar_lembrete': {
+      const title = requireString(args, 'title');
+      if (title === undefined) break;
+      return { kind: 'criar_lembrete', raw, title };
+    }
+    case 'criar_agenda': {
+      const title = requireString(args, 'title');
+      if (title === undefined) break;
+      return { kind: 'criar_agenda', raw, title, time: requireString(args, 'time') };
+    }
+    case 'criar_objetivo': {
+      const title = requireString(args, 'title');
+      if (title === undefined) break;
+      return { kind: 'criar_objetivo', raw, title };
+    }
+    case 'criar_projeto': {
+      const title = requireString(args, 'title');
+      if (title === undefined) break;
+      return { kind: 'criar_projeto', raw, title };
+    }
+    case 'registrar_divida': {
+      const totalAmount = requireNumber(args, 'totalAmount');
+      const description = requireString(args, 'description');
+      if (totalAmount === undefined || description === undefined) break;
+      const installments = requireNumber(args, 'installments') ?? 1;
+      return { kind: 'registrar_divida', raw, totalAmount, installments, description };
+    }
+  }
+
+  // Tool desconhecida ou argumentos incompletos — não inventa dado faltando.
+  return { kind: 'desconhecido', raw };
+}
+
+/** Parseia linhas "chave: valor" numa `AIExtractedEntities` — formato pedido ao modelo no modo `'extract'`. */
+function parseEntitiesFromLines(content: string): AIExtractedEntities {
+  const entities: AIExtractedEntities = {};
+  for (const line of content.split('\n')) {
+    const separatorIndex = line.indexOf(':');
+    if (separatorIndex === -1) continue;
+    const key = line.slice(0, separatorIndex).trim().toLowerCase();
+    const value = line.slice(separatorIndex + 1).trim();
+    if (!value) continue;
+
+    if (key === 'amount') {
+      const parsed = Number(value.replace(',', '.'));
+      if (Number.isFinite(parsed)) entities.amount = parsed;
+    } else if (key === 'date') {
+      entities.date = value;
+    } else if (key === 'time') {
+      entities.time = value;
+    } else if (key === 'title') {
+      entities.title = value;
+    } else if (key === 'category') {
+      entities.category = value;
+    }
+  }
+  return entities;
 }

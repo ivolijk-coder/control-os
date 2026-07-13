@@ -173,6 +173,15 @@ export interface NovaContext {
   agendaEvents: AgendaEvent[];
   financeEntries: FinanceEntry[];
   habits: Habit[];
+  /**
+   * Adicionados na Etapa 4 (Preparação profissional para OpenAI GPT-5.5) —
+   * o contexto enviado a um provedor de IA real precisa cobrir todos os
+   * domínios do CONTROL OS, não só os que já tinham intent conversacional.
+   */
+  trips: Trip[];
+  documents: PersonalDocument[];
+  assets: Asset[];
+  notes: Note[];
   /** Primeiro nome do usuário — usado pra personalizar a resposta de "olá"/plano do dia. */
   userName: string;
 }

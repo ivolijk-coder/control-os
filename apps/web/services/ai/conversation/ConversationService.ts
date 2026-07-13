@@ -1,6 +1,8 @@
-import { buildDailyCheckIn, buildDebtsSummary, buildPlan, buildReply, rememberTurn } from '@/services/nova';
+import { buildDailyCheckIn, buildDebtsSummary, buildPlan, buildReply, recallFacts, rememberTurn } from '@/services/nova';
 import type { NovaContext, NovaIntent, NovaTurnResult } from '@/services/nova';
 import { getAIProvider } from '../config';
+import { AIProviderError, AI_ERROR_FRIENDLY_MESSAGES } from '../errors';
+import { buildOlderTurnsText, type ConversationTurnLike } from '../memory/condense-conversation';
 import type { AIConversationContext } from '../types';
 import type { Action } from '../actions';
 import { ActionExecutor } from './ActionExecutor';
@@ -25,7 +27,12 @@ const FALLBACK_REPLY =
 const NO_PENDING_ACTION_REPLY = 'Não havia nenhuma ação pendente de confirmação.';
 const CANCELLED_REPLY = 'Ok, não fiz nada.';
 
-/** Recorta de `NovaContext` só o que o `AIProvider` pode ler — nunca `actions`. */
+/**
+ * Recorta de `NovaContext` só o que o `AIProvider` pode ler — nunca
+ * `actions`. Estendido na Etapa 4 com todos os domínios do CONTROL OS
+ * (trips/documents/assets/notes/preferences), pra um provedor real ter
+ * cobertura completa sem precisar de acesso direto ao banco.
+ */
 function toAIConversationContext(ctx: NovaContext): AIConversationContext {
   return {
     userName: ctx.userName,
@@ -34,6 +41,11 @@ function toAIConversationContext(ctx: NovaContext): AIConversationContext {
     agendaEvents: ctx.agendaEvents,
     financeEntries: ctx.financeEntries,
     habits: ctx.habits,
+    trips: ctx.trips,
+    documents: ctx.documents,
+    assets: ctx.assets,
+    notes: ctx.notes,
+    preferences: recallFacts('preferencia').map((fact) => fact.text),
   };
 }
 
@@ -85,7 +97,18 @@ export class ConversationService {
 
     const provider = getAIProvider();
     const aiContext = toAIConversationContext(ctx);
-    const intent = await provider.classifyIntent(text, aiContext);
+
+    let intent: NovaIntent;
+    try {
+      intent = await provider.classifyIntent(text, aiContext);
+    } catch (error) {
+      // `MockAIProvider` nunca lança — só `OpenAIProvider` (rede real).
+      // Nunca deixa a Promise rejeitar sem tratamento até a UI: sempre
+      // devolve um `NovaTurnResult` normal, com uma mensagem amigável.
+      rememberTurn(text);
+      const message = error instanceof AIProviderError ? error.friendlyMessage : AI_ERROR_FRIENDLY_MESSAGES.unavailable;
+      return { status: 'erro', reply: message, checklist: [], results: [] };
+    }
 
     if (intent.kind === 'desconhecido') {
       rememberTurn(text);
@@ -135,6 +158,18 @@ export class ConversationService {
   cancelPending(): NovaTurnResult {
     this.pending = undefined;
     return { status: 'concluido', reply: CANCELLED_REPLY, checklist: [], results: [] };
+  }
+
+  /**
+   * Resumo automático de conversa (CONTROL OS — Etapa 4) — chamado pela UI
+   * quando o histórico cresce demais (ver `shouldCondense`,
+   * `services/ai/memory/condense-conversation.ts`). Único ponto de acesso
+   * ao `AIProvider` para isso — a UI nunca chama `getAIProvider()` direto,
+   * mesmo princípio de `processTurn`.
+   */
+  async summarizeOlderTurns(turns: ConversationTurnLike[]): Promise<string> {
+    const provider = getAIProvider();
+    return provider.summarize(buildOlderTurnsText(turns));
   }
 
   private executePending(ctx: NovaContext): NovaTurnResult {

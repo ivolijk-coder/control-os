@@ -56,6 +56,14 @@ interface AppState {
    */
   novaMessages: ConversationMessage[];
   addNovaMessage: (message: ConversationMessage) => void;
+  /**
+   * Substitui o histórico inteiro (CONTROL OS — Etapa 4) — usado só pelo
+   * resumo automático de conversa (`ConversationService.summarizeOlderTurns`,
+   * disparado por `NovaWorkspace` quando `novaMessages.length` passa de
+   * `CONDENSE_THRESHOLD`): as mensagens antigas viram um único resumo, as
+   * recentes continuam intactas. Diferente de `addNovaMessage` (só anexa).
+   */
+  replaceNovaMessages: (messages: ConversationMessage[]) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -85,6 +93,7 @@ export const useAppStore = create<AppState>()(
       novaMessages: [],
       addNovaMessage: (message) =>
         set((state) => ({ novaMessages: [...state.novaMessages, message].slice(-MAX_NOVA_MESSAGES) })),
+      replaceNovaMessages: (messages) => set({ novaMessages: messages }),
     }),
     {
       name: 'control-os-app-state',
