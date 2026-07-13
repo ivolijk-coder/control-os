@@ -3,7 +3,7 @@
 import * as React from 'react';
 import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
-import { Activity, CalendarClock, Flag, Target, Wallet } from 'lucide-react';
+import { Activity, CalendarClock, Flag, Target, Wallet, type LucideIcon } from 'lucide-react';
 import { NovaInput } from '@/components/nova/nova-input';
 import { NovaConversation } from '@/components/nova/nova-conversation';
 import type { ConversationMessage, ConversationMessageStatus } from '@/components/nova/nova-message-bubble';
@@ -12,7 +12,8 @@ import type { NovaOrbStatus } from '@/components/nova/nova-orb';
 import { QuickAction } from '@/components/ui/quick-action';
 import { IntelligentPanel } from '@/components/home/intelligent-panel';
 import { conversationService, KEEP_RECENT_TURNS, shouldCondense } from '@/services/ai';
-import type { NovaStatus } from '@/services/nova';
+import { generateRecommendations, toReadOnlyContext } from '@/services/nova';
+import type { NovaRecommendationCategory, NovaStatus } from '@/services/nova';
 import { useAppStore } from '@/lib/store';
 import { useNovaContext } from '@/lib/use-nova-context';
 import { transitionOut, transitionSpring } from '@/lib/motion';
@@ -22,6 +23,9 @@ const NovaOrb = dynamic(() => import('@/components/nova/nova-orb').then((mod) =>
   ssr: false,
 });
 
+// Sugestões genéricas — só aparecem quando ainda não há nenhuma recomendação
+// real (usuário novo, sem dados suficientes ainda). Nunca a fonte principal
+// de sugestão a partir da Etapa 9 (ver `SUGGESTION_ICON_BY_CATEGORY` abaixo).
 const QUICK_ACTIONS = [
   { icon: Target, label: 'Organize meu dia' },
   { icon: Activity, label: 'Como está minha empresa?' },
@@ -29,6 +33,28 @@ const QUICK_ACTIONS = [
   { icon: Flag, label: 'Criar uma meta' },
   { icon: CalendarClock, label: 'Ver meus compromissos' },
 ] as const;
+
+// CONTROL OS — Etapa 9: "Nunca sugestões aleatórias. Sempre baseadas nos
+// dados." Cada categoria do Recommendation Engine (Etapa 7,
+// `generateRecommendations`) vira uma pergunta curta e clicável — o ícone
+// reaproveita os 5 já importados acima (nenhum ícone novo).
+const SUGGESTION_ICON_BY_CATEGORY: Record<NovaRecommendationCategory, LucideIcon> = {
+  reduzir_gastos: Wallet,
+  revisar_gastos: Wallet,
+  concluir_habitos: Activity,
+  reorganizar_agenda: CalendarClock,
+  antecipar_metas: Flag,
+  priorizar_tarefas: Target,
+};
+
+const SUGGESTION_LABEL_BY_CATEGORY: Record<NovaRecommendationCategory, string> = {
+  reduzir_gastos: 'Quer revisar seus gastos deste mês?',
+  revisar_gastos: 'Quer revisar essa categoria de gasto?',
+  concluir_habitos: 'Quer ver seus hábitos pendentes?',
+  reorganizar_agenda: 'Quer reorganizar sua agenda?',
+  antecipar_metas: 'Quer antecipar os próximos passos da sua meta?',
+  priorizar_tarefas: 'Quer priorizar o que está em risco?',
+};
 
 // Nenhuma tela acessa a IA diretamente (CONTROL OS — Preparação para OpenAI
 // GPT-5.5): o único jeito de conversar com a NOVA é através do
@@ -120,6 +146,23 @@ export function NovaWorkspace({
   // real, e duplicar esta montagem em dois lugares arriscaria os dois
   // divergirem com o tempo.
   const novaContext = useNovaContext();
+
+  /**
+   * Sugestões da Home (CONTROL OS — Etapa 9): "nunca sugestões aleatórias,
+   * sempre baseadas nos dados" — reaproveita o Recommendation Engine
+   * (`generateRecommendations`, Etapa 7) em vez do `QUICK_ACTIONS` estático.
+   * Cai de volta pro `QUICK_ACTIONS` só quando não há nenhuma recomendação
+   * real ainda (usuário novo, sem dados suficientes).
+   */
+  const suggestions = React.useMemo(() => {
+    const recommendations = generateRecommendations(toReadOnlyContext(novaContext));
+    return recommendations.map((recommendation) => ({
+      icon: SUGGESTION_ICON_BY_CATEGORY[recommendation.category],
+      label: SUGGESTION_LABEL_BY_CATEGORY[recommendation.category],
+    }));
+  }, [novaContext]);
+
+  const quickActions = suggestions.length > 0 ? suggestions : QUICK_ACTIONS;
 
   /**
    * Resumo automático de conversa (CONTROL OS — Etapa 4): quando o
@@ -219,7 +262,7 @@ export function NovaWorkspace({
     <div className="mx-auto w-full max-w-2xl">
       <NovaInput onSubmit={handleSend} disabled={isThinking} />
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-        {QUICK_ACTIONS.map((action) => (
+        {quickActions.map((action) => (
           <QuickAction
             key={action.label}
             icon={action.icon}
@@ -269,7 +312,16 @@ export function NovaWorkspace({
               transition={transitionSpring}
               className="flex h-64 w-64 shrink-0 items-center justify-center sm:h-80 sm:w-80"
             >
-              <NovaOrb status={orbStatus} />
+              {/* CONTROL OS — Etapa 9: "NOVA ORB. Grande. Viva. Respirando."
+                  — respiração (`animate-breathe`, CSS) só quando ociosa, num
+                  `div` interno separado do `motion.div` externo (que já
+                  anima `scale` via Framer Motion enquanto pensa/executa) —
+                  mesmo motivo do botão flutuante em `nova-floating-launcher.tsx`:
+                  duas animações de `transform` no mesmo elemento competiriam
+                  entre si. */}
+              <div className={orbStatus === 'idle' ? 'h-full w-full animate-breathe' : 'h-full w-full'}>
+                <NovaOrb status={orbStatus} />
+              </div>
             </motion.div>
 
             <div className="flex w-full flex-col gap-6">{conversationArea}</div>

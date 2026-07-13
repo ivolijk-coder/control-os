@@ -7,8 +7,9 @@ import {
   publish,
   recallFacts,
   rememberTurn,
+  toReadOnlyContext,
 } from '@/services/nova';
-import type { NovaActionResult, NovaContext, NovaIntent, NovaReadOnlyContext, NovaTurnResult } from '@/services/nova';
+import type { NovaActionResult, NovaContext, NovaIntent, NovaTurnResult } from '@/services/nova';
 import { AI_PROVIDER, getAIProvider } from '../config';
 import { AIProviderError, AI_ERROR_FRIENDLY_MESSAGES } from '../errors';
 import type { AIProvider, ReasoningProvider, ReasoningTurn, ToolExecutionOutput } from '../interfaces';
@@ -94,17 +95,6 @@ function toAIConversationContext(ctx: NovaContext): AIConversationContext {
     notes: ctx.notes,
     preferences: recallFacts('preferencia').map((fact) => fact.text),
   };
-}
-
-/**
- * Projeção somente-leitura de `NovaContext` pro Event Bus (CONTROL OS —
- * Etapa 7: IA-Native) — nunca inclui `actions`, pelo mesmo motivo de
- * `toAIConversationContext`: quem recebe isto (`NovaObserver`,
- * `RecommendationEngine`) só analisa, nunca grava.
- */
-function toNovaReadOnlyContext(ctx: NovaContext): NovaReadOnlyContext {
-  const { actions: _actions, ...readOnly } = ctx;
-  return readOnly;
 }
 
 /**
@@ -405,7 +395,7 @@ export class ConversationService {
     // Snapshot único, calculado depois de todas as escritas do turno — cada
     // evento publicado abaixo carrega o mesmo estado real e já atualizado,
     // nunca um instantâneo parcial de um item anterior do mesmo lote.
-    const readOnlyCtx = toNovaReadOnlyContext(ctx);
+    const readOnlyCtx = toReadOnlyContext(ctx);
     const occurredAt = new Date().toISOString();
     for (const entry of perItemResults) {
       const eventType = eventTypeForIntentKind(entry.intent.kind);

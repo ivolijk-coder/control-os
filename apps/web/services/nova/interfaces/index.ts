@@ -265,3 +265,17 @@ export interface NovaTurnResult {
  * `NovaContext` ganhar no futuro chega aqui automaticamente.
  */
 export type NovaReadOnlyContext = Omit<NovaContext, 'actions'>;
+
+/**
+ * Converte um `NovaContext` real na sua projeção somente-leitura (CONTROL OS
+ * — Etapa 9). Antes existia como função privada duplicada dentro de
+ * `ConversationService.ts` (`toNovaReadOnlyContext`) — movida pra cá e
+ * exportada porque a partir da Etapa 9 a própria Home (`NovaWorkspace`)
+ * também precisa desta conversão pra chamar `generateRecommendations`/
+ * `buildHomeInsights` com o mesmo contexto real, sem duplicar a lógica de
+ * "remover `actions`" em dois lugares.
+ */
+export function toReadOnlyContext(ctx: NovaContext): NovaReadOnlyContext {
+  const { actions: _actions, ...readOnly } = ctx;
+  return readOnly;
+}
