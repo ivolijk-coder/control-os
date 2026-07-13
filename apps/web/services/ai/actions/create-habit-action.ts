@@ -9,11 +9,12 @@ export interface CreateHabitInput {
 }
 
 /**
- * Comando "criar um hábito" — usado pelo `HabitsTool`. Sem função
- * equivalente em `services/nova/actions` ainda (o parser determinístico não
- * detecta esse tipo de intenção hoje) — implementação nova, seguindo o
- * mesmo padrão das Actions existentes (grava o registro + evento na
- * Timeline).
+ * Comando "criar um hábito". Implementação completa e correta, mas ainda
+ * sem nenhuma `NovaIntentKind`/tool schema apontando para ela — nem
+ * `MockAIProvider` nem `OpenAIProvider` conseguem disparar esta Action
+ * numa conversa hoje (auditoria da Etapa 4.5). Conectá-la é trabalho de uma
+ * fase futura (nova intent + schema em `services/ai/tools/schemas.ts` +
+ * caso no `IntentResolver`), não desta auditoria.
  */
 export class CreateHabitAction implements Action {
   constructor(private readonly input: CreateHabitInput) {}

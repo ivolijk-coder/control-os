@@ -10,11 +10,12 @@ export interface CreateNoteInput {
 }
 
 /**
- * Comando "criar uma nota" — usado pelo `NotesTool`. Sem função equivalente
- * em `services/nova/actions` ainda; implementação nova. Sempre cria uma
- * nota do tipo `'texto'` — notas do tipo `'checklist'` continuam sendo
- * criadas por navegação manual em `/notas`, onde faz sentido montar os
- * itens um a um.
+ * Comando "criar uma nota". Sempre cria uma nota do tipo `'texto'` — notas
+ * do tipo `'checklist'` continuam sendo criadas por navegação manual em
+ * `/notas`, onde faz sentido montar os itens um a um. Implementação
+ * completa, mas ainda sem nenhuma `NovaIntentKind`/tool schema apontando
+ * para ela — não é disparável numa conversa hoje (auditoria da Etapa 4.5).
+ * Conectá-la é trabalho de uma fase futura, não desta auditoria.
  */
 export class CreateNoteAction implements Action {
   constructor(private readonly input: CreateNoteInput) {}

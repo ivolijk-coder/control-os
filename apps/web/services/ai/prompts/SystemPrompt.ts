@@ -2,10 +2,12 @@
  * Prompt de sistema — o único, central, definindo quem a NOVA é (CONTROL OS
  * — Etapa 4: Preparação profissional para OpenAI GPT-5.5). "Nunca espalhar
  * prompts pelo projeto. Todo prompt deve ficar centralizado" — este é o
- * prompt base, enviado em toda chamada feita por `app/api/ai/nova/route.ts`;
- * os outros arquivos deste diretório (`PlannerPrompt`, `FinancePrompt` etc.)
- * são complementos de domínio, concatenados a este quando fizer sentido —
- * nunca substitutos dele.
+ * único prompt do sistema, enviado em toda chamada feita por
+ * `app/api/ai/nova/route.ts` (`buildMessages`). Não existem mais prompts de
+ * domínio separados (removidos na auditoria da Etapa 4.5 por nunca terem
+ * sido referenciados por código real) — se algum dia fizer sentido dar
+ * instruções extras por domínio, elas entram aqui, como novas seções deste
+ * mesmo texto, não como arquivos novos.
  *
  * Só usado pelo `OpenAIProvider`, via a Route Handler — `MockAIProvider`
  * não lê nenhum prompt, é puramente determinístico (regex).

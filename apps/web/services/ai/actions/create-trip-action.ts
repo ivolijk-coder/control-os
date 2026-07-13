@@ -9,10 +9,11 @@ export interface CreateTripInput {
 }
 
 /**
- * Comando "criar uma viagem" — usado pelo `TripsTool`. Sem função
- * equivalente em `services/nova/actions` ainda; implementação nova, mesmo
- * padrão das demais (checklist começa vazio — item por item vem depois, por
- * navegação manual em `/viagens`).
+ * Comando "criar uma viagem". Implementação completa (checklist começa
+ * vazio — item por item vem depois, por navegação manual em `/viagens`),
+ * mas ainda sem nenhuma `NovaIntentKind`/tool schema apontando para ela —
+ * não é disparável numa conversa hoje (auditoria da Etapa 4.5). Conectá-la
+ * é trabalho de uma fase futura, não desta auditoria.
  */
 export class CreateTripAction implements Action {
   constructor(private readonly input: CreateTripInput) {}

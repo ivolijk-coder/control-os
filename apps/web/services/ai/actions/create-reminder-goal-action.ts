@@ -11,9 +11,10 @@ export interface CreateGoalInput {
 }
 
 /**
- * Comando "criar um lembrete" — usado pelo `GoalsTool`. Reaproveita
- * `createReminder` (`services/nova/actions/create-mission.ts`) — Missão
- * continua sendo a unidade central, sem tipo duplicado.
+ * Comando "criar um lembrete" — resolvido pelo `IntentResolver` a partir da
+ * intent `criar_lembrete`. Reaproveita `createReminder`
+ * (`services/nova/actions/create-mission.ts`) — Missão continua sendo a
+ * unidade central, sem tipo duplicado.
  */
 export class CreateReminderAction implements Action {
   constructor(private readonly input: CreateReminderInput) {}
@@ -24,8 +25,9 @@ export class CreateReminderAction implements Action {
 }
 
 /**
- * Comando "criar uma meta" — usado pelo `GoalsTool`. Reaproveita
- * `createGoal` (`services/nova/actions/create-mission.ts`).
+ * Comando "criar uma meta" — resolvido pelo `IntentResolver` a partir da
+ * intent `criar_objetivo`. Reaproveita `createGoal`
+ * (`services/nova/actions/create-mission.ts`).
  */
 export class CreateGoalAction implements Action {
   constructor(private readonly input: CreateGoalInput) {}

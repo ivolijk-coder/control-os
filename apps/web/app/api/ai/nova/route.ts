@@ -32,6 +32,23 @@ import type { ChatMessage, NovaAIRequestBody, NovaAIRequestMode, NovaAIResponseB
 const OPENAI_CHAT_COMPLETIONS_URL = 'https://api.openai.com/v1/chat/completions';
 const REQUEST_TIMEOUT_MS = 20_000;
 
+/**
+ * Teto de tokens de saída por modo (CONTROL OS — Etapa 4.5: Auditoria de
+ * Performance). Antes da auditoria a chamada não enviava `max_tokens`
+ * nenhum — uma resposta da OpenAI sem limite explícito custa mais e demora
+ * mais do que o necessário. Modos que só classificam/extraem (uma tool call
+ * curta ou poucas linhas "chave: valor") precisam de bem menos espaço do
+ * que modos que geram texto livre para o usuário ler.
+ */
+const MAX_TOKENS_BY_MODE: Record<NovaAIRequestMode, number> = {
+  classify: 200,
+  extract: 200,
+  summarize: 300,
+  suggest: 300,
+  generate: 500,
+  chat: 500,
+};
+
 function isChatMessage(value: unknown): value is ChatMessage {
   if (typeof value !== 'object' || value === null) return false;
   if (!('role' in value) || !('content' in value)) return false;
@@ -216,6 +233,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<NovaAIRes
       body: JSON.stringify({
         model,
         messages,
+        max_tokens: MAX_TOKENS_BY_MODE[body.mode],
         ...(tools ? { tools, tool_choice: 'auto' } : {}),
       }),
       signal: controller.signal,

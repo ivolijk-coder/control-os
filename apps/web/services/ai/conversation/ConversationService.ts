@@ -3,6 +3,7 @@ import type { NovaContext, NovaIntent, NovaTurnResult } from '@/services/nova';
 import { getAIProvider } from '../config';
 import { AIProviderError, AI_ERROR_FRIENDLY_MESSAGES } from '../errors';
 import { buildOlderTurnsText, type ConversationTurnLike } from '../memory/condense-conversation';
+import { MockAIProvider } from '../providers/MockAIProvider';
 import type { AIConversationContext } from '../types';
 import type { Action } from '../actions';
 import { ActionExecutor } from './ActionExecutor';
@@ -11,6 +12,27 @@ import { IntentResolver } from './IntentResolver';
 
 const intentResolver = new IntentResolver();
 const actionExecutor = new ActionExecutor();
+const mockFallbackProvider = new MockAIProvider();
+
+/**
+ * Sessão usada quando quem chama não passa uma (`NovaWorkspace` hoje —
+ * usuário único, cliente). Existe pra `pendingBySession` já nascer pronto
+ * pra múltiplas sessões concorrentes (CONTROL OS — Etapa 4.5: Auditoria —
+ * "será possível integrar WhatsApp/Telegram/etc. sem refatoração grande?")
+ * sem exigir que o único chamador atual mude nada.
+ */
+const DEFAULT_SESSION_ID = 'default';
+
+/**
+ * Fallback automático para `MockAIProvider` quando `OpenAIProvider` falha
+ * (CONTROL OS — Etapa 4.5: Auditoria de Segurança — "fallback automático
+ * para MockAIProvider quando configurado"). Desligado por padrão: sem essa
+ * variável, uma falha da OpenAI continua devolvendo a mensagem amigável de
+ * erro (comportamento inalterado desde a Etapa 4). Fica atrás de
+ * `NEXT_PUBLIC_` porque `ConversationService` roda no cliente
+ * (`NovaWorkspace`), mesmo padrão de `services/ai/config.ts`.
+ */
+const FALLBACK_TO_MOCK_ON_ERROR = process.env.NEXT_PUBLIC_AI_FALLBACK_TO_MOCK === '1';
 
 /**
  * Mesmo texto de `services/nova/conversation/index.ts` (`FALLBACK_REPLY`) —
@@ -68,27 +90,37 @@ interface PendingTurn {
  * por ele.
  *
  * Ações sensíveis (dívida, ou despesa/receita de valor alto — ver
- * `isSensitiveIntent`) não executam na hora: ficam guardadas em `pending`
- * até o usuário confirmar (pelo botão na UI ou digitando algo como "sim")
- * ou cancelar. Uma instância desta classe guarda no máximo uma ação
- * pendente por vez — suficiente porque o usuário só conversa com um fluxo
- * por vez; uma nova mensagem que não seja claramente uma confirmação
- * descarta a pendência em vez de arriscar executar por engano.
+ * `isSensitiveIntent`) não executam na hora: ficam guardadas em
+ * `pendingBySession` até o usuário confirmar (pelo botão na UI ou digitando
+ * algo como "sim") ou cancelar — no máximo uma ação pendente por sessão;
+ * uma nova mensagem que não seja claramente uma confirmação descarta a
+ * pendência daquela sessão em vez de arriscar executar por engano.
+ *
+ * Estado de pendência é mantido POR `sessionId` (nunca por instância) desde
+ * a auditoria da Etapa 4.5: `NovaWorkspace` usa uma única instância
+ * compartilhada deste serviço (ver comentário lá) e, antes desta mudança,
+ * um `this.pending` único misturaria a confirmação pendente de conversas
+ * diferentes se este mesmo serviço um dia atender mais de um usuário ao
+ * mesmo tempo (ex.: `services/channels/whatsapp`, hoje um stub desconectado
+ * de qualquer webhook, mas desenhado pra reaproveitar esta classe sem
+ * modificação quando for conectado de verdade). Quem chama sem informar
+ * `sessionId` (todo código atual) continua usando `DEFAULT_SESSION_ID` — o
+ * comportamento de hoje, para um usuário só, não muda em nada.
  */
 export class ConversationService {
-  private pending: PendingTurn | undefined;
+  private pendingBySession = new Map<string, PendingTurn>();
 
-  async processTurn(text: string, ctx: NovaContext): Promise<NovaTurnResult> {
-    if (this.pending) {
+  async processTurn(text: string, ctx: NovaContext, sessionId: string = DEFAULT_SESSION_ID): Promise<NovaTurnResult> {
+    if (this.pendingBySession.has(sessionId)) {
       const trimmed = text.trim();
       if (CONFIRM_PATTERN.test(trimmed)) {
         rememberTurn(text);
-        return this.executePending(ctx);
+        return this.executePending(ctx, sessionId);
       }
       // Não foi uma confirmação clara — descarta a pendência (cancelamento
       // explícito ou o usuário simplesmente mudou de assunto) e trata a
       // mensagem como um turno novo, nunca executando a ação antiga.
-      this.pending = undefined;
+      this.pendingBySession.delete(sessionId);
       if (CANCEL_PATTERN.test(trimmed)) {
         rememberTurn(text);
         return { status: 'concluido', reply: CANCELLED_REPLY, checklist: [], results: [] };
@@ -102,12 +134,20 @@ export class ConversationService {
     try {
       intent = await provider.classifyIntent(text, aiContext);
     } catch (error) {
-      // `MockAIProvider` nunca lança — só `OpenAIProvider` (rede real).
-      // Nunca deixa a Promise rejeitar sem tratamento até a UI: sempre
-      // devolve um `NovaTurnResult` normal, com uma mensagem amigável.
-      rememberTurn(text);
-      const message = error instanceof AIProviderError ? error.friendlyMessage : AI_ERROR_FRIENDLY_MESSAGES.unavailable;
-      return { status: 'erro', reply: message, checklist: [], results: [] };
+      // `MockAIProvider` nunca lança — só `OpenAIProvider` (rede real). Se
+      // o fallback estiver ligado (`NEXT_PUBLIC_AI_FALLBACK_TO_MOCK=1`),
+      // tenta o Mock antes de desistir — mesmo padrão determinístico que já
+      // roda em produção quando `AI_PROVIDER=mock`. Sem o fallback (padrão),
+      // ou se o próprio Mock falhar (não deveria, mas nunca deixa uma
+      // Promise rejeitar sem tratamento até a UI), devolve a mensagem
+      // amigável de erro.
+      const fallbackIntent = await this.tryMockFallback(text);
+      if (!fallbackIntent) {
+        rememberTurn(text);
+        const message = error instanceof AIProviderError ? error.friendlyMessage : AI_ERROR_FRIENDLY_MESSAGES.unavailable;
+        return { status: 'erro', reply: message, checklist: [], results: [] };
+      }
+      intent = fallbackIntent;
     }
 
     if (intent.kind === 'desconhecido') {
@@ -127,7 +167,7 @@ export class ConversationService {
     }
 
     if (isSensitiveIntent(intent)) {
-      this.pending = { intent, action: intentResolver.resolve(intent) };
+      this.pendingBySession.set(sessionId, { intent, action: intentResolver.resolve(intent) });
       rememberTurn(text);
       return { status: 'aguardando_confirmacao', reply: buildConfirmationPreview(intent), checklist: [], results: [] };
     }
@@ -146,17 +186,17 @@ export class ConversationService {
     };
   }
 
-  /** Chamado pelo botão "Confirmar" na UI — executa a ação guardada em `pending`. */
-  async confirmPending(ctx: NovaContext): Promise<NovaTurnResult> {
-    if (!this.pending) {
+  /** Chamado pelo botão "Confirmar" na UI — executa a ação guardada em `pendingBySession`. */
+  async confirmPending(ctx: NovaContext, sessionId: string = DEFAULT_SESSION_ID): Promise<NovaTurnResult> {
+    if (!this.pendingBySession.has(sessionId)) {
       return { status: 'concluido', reply: NO_PENDING_ACTION_REPLY, checklist: [], results: [] };
     }
-    return this.executePending(ctx);
+    return this.executePending(ctx, sessionId);
   }
 
-  /** Chamado pelo botão "Cancelar" na UI — descarta `pending` sem executar nada. */
-  cancelPending(): NovaTurnResult {
-    this.pending = undefined;
+  /** Chamado pelo botão "Cancelar" na UI — descarta a pendência da sessão sem executar nada. */
+  cancelPending(sessionId: string = DEFAULT_SESSION_ID): NovaTurnResult {
+    this.pendingBySession.delete(sessionId);
     return { status: 'concluido', reply: CANCELLED_REPLY, checklist: [], results: [] };
   }
 
@@ -172,9 +212,28 @@ export class ConversationService {
     return provider.summarize(buildOlderTurnsText(turns));
   }
 
-  private executePending(ctx: NovaContext): NovaTurnResult {
-    const pending = this.pending;
-    this.pending = undefined;
+  /**
+   * Tenta classificar com `MockAIProvider` depois de uma falha do provedor
+   * ativo — só faz sentido, e só é chamada, quando o fallback está ligado
+   * (ver `FALLBACK_TO_MOCK_ON_ERROR`). `MockAIProvider.classifyIntent` não
+   * usa contexto (é regex puro sobre o texto — só `generateResponse` olha
+   * `context`), por isso só `text` é passado aqui. `MockAIProvider` é
+   * determinístico e não faz rede, mas o `try` continua por segurança:
+   * nunca deixa uma falha inesperada do fallback também escapar sem
+   * tratamento.
+   */
+  private async tryMockFallback(text: string): Promise<NovaIntent | undefined> {
+    if (!FALLBACK_TO_MOCK_ON_ERROR) return undefined;
+    try {
+      return await mockFallbackProvider.classifyIntent(text);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private executePending(ctx: NovaContext, sessionId: string): NovaTurnResult {
+    const pending = this.pendingBySession.get(sessionId);
+    this.pendingBySession.delete(sessionId);
     if (!pending) {
       return { status: 'concluido', reply: NO_PENDING_ACTION_REPLY, checklist: [], results: [] };
     }

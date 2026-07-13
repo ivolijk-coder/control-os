@@ -10,8 +10,10 @@ export interface CreateAssetInput {
 }
 
 /**
- * Comando "registrar um bem patrimonial" — usado pelo `AssetsTool`. Sem
- * função equivalente em `services/nova/actions` ainda; implementação nova.
+ * Comando "registrar um bem patrimonial". Implementação completa, mas
+ * ainda sem nenhuma `NovaIntentKind`/tool schema apontando para ela — não é
+ * disparável numa conversa hoje (auditoria da Etapa 4.5). Conectá-la é
+ * trabalho de uma fase futura, não desta auditoria.
  */
 export class CreateAssetAction implements Action {
   constructor(private readonly input: CreateAssetInput) {}

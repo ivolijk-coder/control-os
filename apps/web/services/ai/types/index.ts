@@ -14,14 +14,14 @@ import type { AIProviderErrorCode } from '../errors';
 /**
  * Tipos da camada de IA (CONTROL OS — Preparação para OpenAI GPT-5.5).
  *
- * Nada aqui faz chamada HTTP, usa API key ou gera custo — são apenas os
- * contratos que tanto o `MockAIProvider` (hoje, determinístico) quanto o
- * `OpenAIProvider` (futuro, ainda não implementado) precisam satisfazer.
- * Reaproveita os tipos de domínio existentes (`@control-os/types`) em vez de
- * duplicá-los.
+ * Nenhum tipo aqui faz chamada HTTP, usa API key ou gera custo por si só —
+ * são os contratos que tanto o `MockAIProvider` (determinístico) quanto o
+ * `OpenAIProvider` (real, desde a Etapa 4, via `app/api/ai/nova/route.ts`)
+ * precisam satisfazer. Reaproveita os tipos de domínio existentes
+ * (`@control-os/types`) em vez de duplicá-los.
  */
 
-/** Um provedor por vez. `'mock'` é o único ativo nesta fase. */
+/** Um provedor por vez — qual, é decidido em `services/ai/config.ts`. */
 export type AIProviderName = 'mock' | 'openai';
 
 /** Uma mensagem de uma conversa, no formato genérico que qualquer LLM de chat espera. */

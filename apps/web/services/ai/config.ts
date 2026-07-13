@@ -15,10 +15,11 @@ import type { AIProviderName } from './types';
  * uma variável `AI_PROVIDER` sem prefixo existiria só no servidor e ficaria
  * sempre `undefined` no cliente.
  *
- * Hoje `AI_PROVIDER` só pode valer `'mock'` na prática: mesmo que alguém
- * defina `NEXT_PUBLIC_AI_PROVIDER=openai`, `OpenAIProvider` lança erro em
- * qualquer chamada (ainda não implementado) — isso é intencional, não um
- * bug. Nenhuma chamada HTTP, API key ou custo acontece nesta fase.
+ * Desde a Etapa 4, `OpenAIProvider` é uma implementação real — definir
+ * `NEXT_PUBLIC_AI_PROVIDER=openai` (cliente) e `AI_PROVIDER=openai` +
+ * `OPENAI_API_KEY` (servidor, em `app/api/ai/nova/route.ts`) liga chamadas
+ * reais à OpenAI. Sem essa configuração completa nos dois lados, o valor
+ * efetivo continua sendo `'mock'` — sem chamada HTTP, sem custo.
  */
 export const AI_PROVIDER: AIProviderName =
   process.env.NEXT_PUBLIC_AI_PROVIDER === 'openai' ? 'openai' : 'mock';

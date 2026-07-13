@@ -8,11 +8,11 @@ export interface CreateExpenseInput {
 }
 
 /**
- * Comando "registrar uma despesa" — usado pelo `FinanceTool`. Reaproveita
- * `createExpense` (`services/nova/actions/create-expense.ts`), já
- * comprovada em produção (grava `FinanceEntry` + evento na Timeline); esta
- * classe só empacota o input num `ExpenseIntent` sintético, sem duplicar a
- * lógica de gravação.
+ * Comando "registrar uma despesa" — resolvido pelo `IntentResolver` a
+ * partir da intent `registrar_despesa`. Reaproveita `createExpense`
+ * (`services/nova/actions/create-expense.ts`), já comprovada em produção
+ * (grava `FinanceEntry` + evento na Timeline); esta classe só empacota o
+ * input num `ExpenseIntent` sintético, sem duplicar a lógica de gravação.
  */
 export class CreateExpenseAction implements Action {
   constructor(private readonly input: CreateExpenseInput) {}

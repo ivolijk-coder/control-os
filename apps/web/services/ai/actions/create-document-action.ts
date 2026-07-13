@@ -10,8 +10,10 @@ export interface CreateDocumentInput {
 }
 
 /**
- * Comando "adicionar um documento" — usado pelo `DocumentsTool`. Sem função
- * equivalente em `services/nova/actions` ainda; implementação nova.
+ * Comando "adicionar um documento". Implementação completa, mas ainda sem
+ * nenhuma `NovaIntentKind`/tool schema apontando para ela — não é
+ * disparável numa conversa hoje (auditoria da Etapa 4.5). Conectá-la é
+ * trabalho de uma fase futura, não desta auditoria.
  */
 export class CreateDocumentAction implements Action {
   constructor(private readonly input: CreateDocumentInput) {}

@@ -8,8 +8,9 @@ export interface CreateIncomeInput {
 }
 
 /**
- * Comando "registrar uma receita" — usado pelo `FinanceTool`. Reaproveita
- * `createRevenue` (`services/nova/actions/create-revenue.ts`).
+ * Comando "registrar uma receita" — resolvido pelo `IntentResolver` a
+ * partir da intent `registrar_receita`. Reaproveita `createRevenue`
+ * (`services/nova/actions/create-revenue.ts`).
  */
 export class CreateIncomeAction implements Action {
   constructor(private readonly input: CreateIncomeInput) {}

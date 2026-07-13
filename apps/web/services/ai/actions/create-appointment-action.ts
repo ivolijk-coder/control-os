@@ -8,8 +8,8 @@ export interface CreateAppointmentInput {
 }
 
 /**
- * Comando "criar um compromisso na agenda" — usado pelo `CalendarTool`.
- * Reaproveita `createAgendaEvent`
+ * Comando "criar um compromisso na agenda" — resolvido pelo `IntentResolver`
+ * a partir da intent `criar_agenda`. Reaproveita `createAgendaEvent`
  * (`services/nova/actions/create-agenda-event.ts`), que também cria o
  * lembrete vinculado em Missões.
  */
