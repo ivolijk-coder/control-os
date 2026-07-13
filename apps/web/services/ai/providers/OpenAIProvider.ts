@@ -1,7 +1,7 @@
 import type { NovaIntent } from '@/services/nova';
 import { buildModelContextSummary } from '../context/buildModelContext';
 import { AIProviderError } from '../errors';
-import type { AIProvider } from '../interfaces';
+import type { AIProvider, ProposedToolCall, ReasoningProvider, ReasoningTurn, ToolExecutionOutput } from '../interfaces';
 import type {
   AIConversationContext,
   AIExtractedEntities,
@@ -16,7 +16,8 @@ const MAX_SUGGESTIONS = 5;
 
 /**
  * Provedor real, falando com GPT-5.5 (CONTROL OS — Etapa 4: Preparação
- * profissional para OpenAI GPT-5.5).
+ * profissional para OpenAI GPT-5.5 / Etapa 5: OpenAI GPT-5.5 como cérebro
+ * da NOVA).
  *
  * "Nenhuma tela pode conversar diretamente com a OpenAI" e "toda chamada
  * deve utilizar servidor" — por isso esta classe NUNCA importa um SDK de
@@ -28,10 +29,13 @@ const MAX_SUGGESTIONS = 5;
  * "Nenhuma regra de negócio pode existir dentro do provider. Ele apenas
  * envia contexto, envia mensagens, recebe resposta, recebe tool calls,
  * devolve tudo ao ConversationService." — esta classe não decide o que
- * fazer com uma intenção classificada; só a devolve. `ConversationService`
- * é quem resolve (`IntentResolver`) e executa (`ActionExecutor`).
+ * fazer com uma intenção proposta; só a devolve. `ConversationService` é
+ * quem resolve (`IntentResolver`) e executa (`ActionExecutor`).
+ *
+ * Implementa `ReasoningProvider` (Etapa 5) além de `AIProvider` — é o único
+ * provider que faz isso; `MockAIProvider` continua só com `AIProvider`.
  */
-export class OpenAIProvider implements AIProvider {
+export class OpenAIProvider implements AIProvider, ReasoningProvider {
   async chat(messages: ChatMessage[], context: AIConversationContext): Promise<string> {
     const response = await this.callRoute({
       mode: 'chat',
@@ -56,10 +60,11 @@ export class OpenAIProvider implements AIProvider {
       prompt: text,
       contextSummary: buildModelContextSummary(context),
     });
-    if (!response.toolCall) {
+    const [firstCall] = response.toolCalls;
+    if (!firstCall) {
       return { kind: 'desconhecido', raw: text };
     }
-    return mapToolCallToIntent(response.toolCall, text);
+    return mapToolCallToIntent(firstCall, text);
   }
 
   async extractEntities(text: string): Promise<AIExtractedEntities> {
@@ -85,12 +90,55 @@ export class OpenAIProvider implements AIProvider {
   }
 
   /**
+   * Primeiro round do raciocínio (CONTROL OS — Etapa 5): manda a mensagem
+   * do usuário + todas as Tools disponíveis pra OpenAI decidir sozinha —
+   * responde direto (`replyText`) ou propõe uma ou mais tool calls.
+   * `ConversationService` é quem resolve cada uma via `IntentResolver` e
+   * decide se executa na hora ou pausa pra confirmação (ações sensíveis).
+   */
+  async converse(text: string, context: AIConversationContext): Promise<ReasoningTurn> {
+    const response = await this.callRoute({
+      mode: 'reason',
+      prompt: text,
+      contextSummary: buildModelContextSummary(context),
+    });
+    return toReasoningTurn(response, text);
+  }
+
+  /**
+   * Segundo round: devolve à OpenAI o resultado real de cada tool call já
+   * executada por `ActionExecutor`, e recebe de volta a resposta final em
+   * linguagem natural — "OpenAI monta resposta" (diagrama da Etapa 5).
+   * `continuationToken` (Responses API: `previous_response_id`) é o que
+   * permite não reenviar a conversa inteira a cada round.
+   */
+  async continueWithToolResults(
+    continuationToken: string | undefined,
+    outputs: ToolExecutionOutput[],
+    context: AIConversationContext
+  ): Promise<ReasoningTurn> {
+    const response = await this.callRoute({
+      mode: 'reason',
+      previousResponseId: continuationToken,
+      toolOutputs: outputs.map((output) => ({ callId: output.callId, output: output.output })),
+      contextSummary: buildModelContextSummary(context),
+    });
+    // Sem `text` de usuário nesta chamada — só usado se a OpenAI, contra o
+    // esperado, propuser MAIS uma tool call neste round (ver
+    // `ConversationService.processTurnWithReasoning`, que trata isso como
+    // caso defensivo, não como loop normal).
+    return toReasoningTurn(response, '(continuação)');
+  }
+
+  /**
    * Único ponto que fala com `/api/ai/nova`. Nunca deixa um erro de rede
    * "cru" escapar — sempre mapeia pra `AIProviderError`, que
    * `ConversationService` já sabe capturar e transformar numa resposta
    * amigável (ver `ConversationService.processTurn`).
    */
-  private async callRoute(body: NovaAIRequestBody): Promise<{ content: string; toolCall?: NovaAIToolCall }> {
+  private async callRoute(
+    body: NovaAIRequestBody
+  ): Promise<{ content: string; toolCalls: NovaAIToolCall[]; responseId: string | undefined }> {
     let raw: unknown;
     try {
       const response = await fetch(ROUTE_URL, {
@@ -109,8 +157,23 @@ export class OpenAIProvider implements AIProvider {
     if (!raw.ok) {
       throw new AIProviderError(raw.code, raw.message);
     }
-    return { content: raw.content, toolCall: raw.toolCall };
+    return { content: raw.content, toolCalls: raw.toolCalls, responseId: raw.responseId };
   }
+}
+
+/** Converte a resposta crua da rota num `ReasoningTurn` — usado por `converse` e `continueWithToolResults`. */
+function toReasoningTurn(
+  response: { content: string; toolCalls: NovaAIToolCall[]; responseId: string | undefined },
+  raw: string
+): ReasoningTurn {
+  if (response.toolCalls.length === 0) {
+    return { replyText: response.content, toolCalls: [], continuationToken: response.responseId };
+  }
+  const toolCalls: ProposedToolCall[] = response.toolCalls.map((call) => ({
+    callId: call.callId,
+    intent: mapToolCallToIntent(call, raw),
+  }));
+  return { toolCalls, continuationToken: response.responseId };
 }
 
 function isNovaAIResponseBody(value: unknown): value is NovaAIResponseBody {
@@ -180,6 +243,41 @@ function mapToolCallToIntent(toolCall: NovaAIToolCall, raw: string): NovaIntent 
       if (totalAmount === undefined || description === undefined) break;
       const installments = requireNumber(args, 'installments') ?? 1;
       return { kind: 'registrar_divida', raw, totalAmount, installments, description };
+    }
+    case 'criar_habito': {
+      const title = requireString(args, 'title');
+      if (title === undefined) break;
+      return { kind: 'criar_habito', raw, title, category: requireString(args, 'category') };
+    }
+    case 'criar_viagem': {
+      const destination = requireString(args, 'destination');
+      const startDate = requireString(args, 'startDate');
+      const endDate = requireString(args, 'endDate');
+      if (destination === undefined || startDate === undefined || endDate === undefined) break;
+      return { kind: 'criar_viagem', raw, destination, startDate, endDate, budget: requireNumber(args, 'budget') };
+    }
+    case 'criar_documento': {
+      const title = requireString(args, 'title');
+      if (title === undefined) break;
+      return {
+        kind: 'criar_documento',
+        raw,
+        title,
+        category: requireString(args, 'category'),
+        expiresAt: requireString(args, 'expiresAt'),
+      };
+    }
+    case 'criar_bem': {
+      const name = requireString(args, 'name');
+      const estimatedValue = requireNumber(args, 'estimatedValue');
+      if (name === undefined || estimatedValue === undefined) break;
+      return { kind: 'criar_bem', raw, name, estimatedValue, category: requireString(args, 'category') };
+    }
+    case 'criar_nota': {
+      const title = requireString(args, 'title');
+      const content = requireString(args, 'content');
+      if (title === undefined || content === undefined) break;
+      return { kind: 'criar_nota', raw, title, content, category: requireString(args, 'category') };
     }
   }
 

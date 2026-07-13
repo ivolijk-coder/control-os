@@ -1,20 +1,52 @@
 import type { AIConversationContext } from '../types';
 
+/** Quantas categorias de despesa do mês entram no resumo — top N por valor total, não a lista inteira. */
+const TOP_EXPENSE_CATEGORIES = 3;
+
+/**
+ * Soma o total de despesas do mês corrente por categoria, maior primeiro —
+ * base real (não inventada) pra perguntas do tipo "analise meus gastos"
+ * (CONTROL OS — Etapa 5). Só usa campos que existem de fato em
+ * `FinanceEntry` (`category`, `amount`, `date`, `type`) — não há conceito
+ * de "orçamento mensal" no modelo de dados hoje, então o resumo nunca
+ * afirma nada sobre orçamento; o `SystemPrompt` também instrui a NOVA a não
+ * inventar essa comparação.
+ */
+function topExpenseCategoriesThisMonth(ctx: AIConversationContext, monthPrefix: string): Array<{ category: string; total: number }> {
+  const totals = new Map<string, number>();
+  for (const entry of ctx.financeEntries) {
+    if (entry.type !== 'despesa' || !entry.date.startsWith(monthPrefix)) continue;
+    totals.set(entry.category, (totals.get(entry.category) ?? 0) + entry.amount);
+  }
+  return [...totals.entries()]
+    .map(([category, total]) => ({ category, total }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, TOP_EXPENSE_CATEGORIES);
+}
+
 /**
  * Monta o resumo compacto de contexto enviado a um provedor de IA real
- * (CONTROL OS — Etapa 4). "Nunca enviar dados desnecessários" — em vez de
- * serializar os arrays inteiros (`financeEntries`, `missions` etc., que
- * podem chegar a centenas de itens numa conta madura), condensa cada
- * domínio em totais/contagens/destaques, como um humano resumiria o
- * próprio dia pra outra pessoa. `MockAIProvider` nunca usa isto — só
- * `OpenAIProvider`, ao montar o payload pra `app/api/ai/nova/route.ts`.
+ * (CONTROL OS — Etapa 4, enriquecido na Etapa 5 pra sustentar análises
+ * pedidas em conversa — ex.: "analise meus gastos"). "Nunca enviar dados
+ * desnecessários" — em vez de serializar os arrays inteiros
+ * (`financeEntries`, `missions` etc., que podem chegar a centenas de itens
+ * numa conta madura), condensa cada domínio em totais/contagens/destaques,
+ * como um humano resumiria o próprio dia pra outra pessoa. `MockAIProvider`
+ * nunca usa isto — só `OpenAIProvider`, ao montar o payload pra
+ * `app/api/ai/nova/route.ts`.
  */
 export function buildModelContextSummary(ctx: AIConversationContext): string {
   const today = new Date().toISOString().slice(0, 10);
+  const monthPrefix = today.slice(0, 7);
 
   const eventosHoje = ctx.agendaEvents.filter((event) => event.date === today);
   const despesasHoje = ctx.financeEntries.filter((entry) => entry.type === 'despesa' && entry.date.slice(0, 10) === today);
   const receitasHoje = ctx.financeEntries.filter((entry) => entry.type === 'receita' && entry.date.slice(0, 10) === today);
+  const despesasMes = ctx.financeEntries.filter((entry) => entry.type === 'despesa' && entry.date.startsWith(monthPrefix));
+  const receitasMes = ctx.financeEntries.filter((entry) => entry.type === 'receita' && entry.date.startsWith(monthPrefix));
+  const totalDespesasMes = despesasMes.reduce((sum, entry) => sum + entry.amount, 0);
+  const totalReceitasMes = receitasMes.reduce((sum, entry) => sum + entry.amount, 0);
+  const topCategorias = topExpenseCategoriesThisMonth(ctx, monthPrefix);
   const metasAtivas = ctx.missions.filter((mission) => mission.kind === 'meta' && mission.status !== 'concluida');
   const missõesEmRisco = ctx.missions.filter((mission) => mission.status === 'em_risco');
   const habitosPendentes = ctx.habits.filter((habit) => !habit.completedToday);
@@ -26,14 +58,25 @@ export function buildModelContextSummary(ctx: AIConversationContext): string {
     `Compromissos hoje: ${eventosHoje.length}`,
     `Despesas hoje: ${despesasHoje.length} lançamento(s)`,
     `Receitas hoje: ${receitasHoje.length} lançamento(s)`,
+    `Despesas do mês: R$ ${totalDespesasMes.toFixed(2)} em ${despesasMes.length} lançamento(s)`,
+    `Receitas do mês: R$ ${totalReceitasMes.toFixed(2)} em ${receitasMes.length} lançamento(s)`,
+    `Saldo do mês (receitas − despesas): R$ ${(totalReceitasMes - totalDespesasMes).toFixed(2)}`,
+  ];
+
+  if (topCategorias.length > 0) {
+    const categoriasTexto = topCategorias.map((item) => `${item.category} (R$ ${item.total.toFixed(2)})`).join(', ');
+    lines.push(`Maiores categorias de despesa no mês: ${categoriasTexto}`);
+  }
+
+  lines.push(
     `Metas em andamento: ${metasAtivas.length}${metasAtivas.length > 0 ? ` (ex.: "${metasAtivas[0]?.title}" em ${metasAtivas[0]?.progress}%)` : ''}`,
     `Missões em risco de prazo: ${missõesEmRisco.length}`,
     `Hábitos pendentes hoje: ${habitosPendentes.length} de ${ctx.habits.length}`,
     `Dívidas em aberto: ${dividasAbertas.length}`,
     `Documentos cadastrados: ${ctx.documents.length}`,
     `Bens patrimoniais cadastrados: ${ctx.assets.length}`,
-    `Notas cadastradas: ${ctx.notes.length}`,
-  ];
+    `Notas cadastradas: ${ctx.notes.length}`
+  );
 
   if (proximaViagem) {
     lines.push(`Próxima viagem: ${proximaViagem.destination} (${proximaViagem.startDate})`);

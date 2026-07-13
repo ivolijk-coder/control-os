@@ -76,28 +76,50 @@ export interface AIExtractedEntities {
 /**
  * Contrato entre `OpenAIProvider` (client, `services/ai/providers/`) e a
  * Route Handler server-only (`app/api/ai/nova/route.ts`) — CONTROL OS,
- * Etapa 4. O `OpenAIProvider` NUNCA fala com a OpenAI diretamente; ele só
- * conhece este contrato HTTP local (mesma origem, sem CORS, sem expor a
- * API key ao navegador).
+ * Etapa 4 / Etapa 5. O `OpenAIProvider` NUNCA fala com a OpenAI
+ * diretamente; ele só conhece este contrato HTTP local (mesma origem, sem
+ * CORS, sem expor a API key ao navegador). A rota usa a Responses API da
+ * OpenAI por baixo (`/v1/responses`) — este contrato local é deliberadamente
+ * mais simples que o da Responses API crua, pra manter `OpenAIProvider`
+ * isolado de detalhes de transporte.
+ *
+ * `'reason'` (Etapa 5) é o modo que faz a NOVA raciocinar de verdade: a
+ * OpenAI recebe todas as Tools disponíveis e decide sozinha se responde
+ * direto ou propõe tool calls — ver `ConversationService.processTurnWithReasoning`.
+ * Os demais modos (`'chat'`, `'generate'`, `'classify'`, `'extract'`,
+ * `'summarize'`, `'suggest'`) continuam turno único, sem Tools, herdados da
+ * Etapa 4.
  */
-export type NovaAIRequestMode = 'chat' | 'generate' | 'classify' | 'extract' | 'summarize' | 'suggest';
+export type NovaAIRequestMode = 'chat' | 'generate' | 'classify' | 'extract' | 'summarize' | 'suggest' | 'reason';
+
+/** Resultado de uma tool call já executada por `ActionExecutor` — devolvido à OpenAI na continuação do modo `'reason'`. */
+export interface NovaAIToolOutput {
+  callId: string;
+  output: string;
+}
 
 export interface NovaAIRequestBody {
   mode: NovaAIRequestMode;
   /** Usado no modo `'chat'` — histórico completo. */
   messages?: ChatMessage[];
-  /** Usado nos demais modos — texto único (mensagem do usuário, ou texto a resumir). */
+  /** Usado nos demais modos — texto único (mensagem do usuário, ou texto a resumir). Ausente na continuação do modo `'reason'` (só `toolOutputs` importa nesse caso). */
   prompt?: string;
   /** Resumo compacto de `AIConversationContext` — ver `services/ai/context/buildModelContext.ts`. */
   contextSummary?: string;
+  /** Continuação de uma conversa Responses API já iniciada (modo `'reason'`, segundo round). */
+  previousResponseId?: string;
+  /** Resultados das tool calls já executadas — só presente na continuação do modo `'reason'`. */
+  toolOutputs?: NovaAIToolOutput[];
 }
 
 /** Argumentos de uma tool call — sempre string ou number nas Tools atuais (ver `services/ai/tools/schemas.ts`). */
 export interface NovaAIToolCall {
+  /** Id opaco da chamada (Responses API: `call_id`) — usado só pra correlacionar com `NovaAIToolOutput` na continuação. */
+  callId: string;
   name: string;
   arguments: Record<string, string | number>;
 }
 
 export type NovaAIResponseBody =
-  | { ok: true; content: string; toolCall?: NovaAIToolCall }
+  | { ok: true; content: string; toolCalls: NovaAIToolCall[]; responseId?: string }
   | { ok: false; code: AIProviderErrorCode; message: string };

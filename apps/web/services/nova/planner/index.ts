@@ -48,6 +48,31 @@ export function buildPlan(intent: NovaIntent): NovaAction[] {
         { kind: 'criar_divida', label: 'Registrar dívida' },
         { kind: 'registrar_timeline', label: 'Atualizar Financeiro' },
       ];
+    case 'criar_habito':
+      return [
+        { kind: 'criar_habito', label: 'Criar hábito' },
+        { kind: 'registrar_timeline', label: 'Adicionar ao histórico' },
+      ];
+    case 'criar_viagem':
+      return [
+        { kind: 'criar_viagem', label: 'Criar viagem' },
+        { kind: 'registrar_timeline', label: 'Adicionar ao histórico' },
+      ];
+    case 'criar_documento':
+      return [
+        { kind: 'criar_documento', label: 'Adicionar documento' },
+        { kind: 'registrar_timeline', label: 'Adicionar ao histórico' },
+      ];
+    case 'criar_bem':
+      return [
+        { kind: 'criar_bem', label: 'Registrar bem patrimonial' },
+        { kind: 'registrar_timeline', label: 'Adicionar ao histórico' },
+      ];
+    case 'criar_nota':
+      return [
+        { kind: 'criar_nota', label: 'Criar nota' },
+        { kind: 'registrar_timeline', label: 'Adicionar ao histórico' },
+      ];
     case 'consultar_dividas':
     case 'consultar_dia':
       // Leitura, não gera checklist de execução — tratada direto em `conversation/`.

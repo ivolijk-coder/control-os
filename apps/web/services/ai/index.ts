@@ -20,7 +20,7 @@ export { shouldCondense, KEEP_RECENT_TURNS } from './memory/condense-conversatio
 export type { ConversationTurnLike } from './memory/condense-conversation';
 export { INTENT_TOOL_SCHEMAS } from './tools/schemas';
 export type { ToolSchema, ToolSchemaProperty } from './tools/schemas';
-export type { AIProvider } from './interfaces';
+export type { AIProvider, ProposedToolCall, ReasoningProvider, ReasoningTurn, ToolExecutionOutput } from './interfaces';
 export type {
   AIConversationContext,
   AIExtractedEntities,
@@ -30,4 +30,5 @@ export type {
   NovaAIRequestMode,
   NovaAIResponseBody,
   NovaAIToolCall,
+  NovaAIToolOutput,
 } from './types';

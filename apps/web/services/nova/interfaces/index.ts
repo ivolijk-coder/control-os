@@ -31,6 +31,11 @@ export type NovaIntentKind =
   | 'criar_objetivo'
   | 'criar_projeto'
   | 'registrar_divida'
+  | 'criar_habito'
+  | 'criar_viagem'
+  | 'criar_documento'
+  | 'criar_bem'
+  | 'criar_nota'
   | 'consultar_dividas'
   | 'consultar_dia'
   | 'desconhecido';
@@ -79,6 +84,50 @@ export interface DebtIntent extends NovaIntentBase {
   description: string;
 }
 
+/**
+ * As 5 intents abaixo (CONTROL OS — Etapa 5: OpenAI GPT-5.5 como cérebro da
+ * NOVA) cobrem domínios cujas Actions já existiam desde a preparação para
+ * OpenAI (`services/ai/actions/create-habit-action.ts` etc.) mas nunca
+ * tinham intent/tool correspondente — gap identificado na auditoria da
+ * Etapa 4.5 ("📈 antes da Etapa 5") e agora necessário de verdade: o
+ * exemplo "Quero viajar para Portugal" do spec da Etapa 5 espera que a NOVA
+ * proponha meta + viagem + lembrete, dependendo do contexto.
+ */
+export interface HabitIntent extends NovaIntentBase {
+  kind: 'criar_habito';
+  title: string;
+  category?: string;
+}
+
+export interface TripIntent extends NovaIntentBase {
+  kind: 'criar_viagem';
+  destination: string;
+  startDate: string;
+  endDate: string;
+  budget?: number;
+}
+
+export interface DocumentIntent extends NovaIntentBase {
+  kind: 'criar_documento';
+  title: string;
+  category?: string;
+  expiresAt?: string;
+}
+
+export interface AssetIntent extends NovaIntentBase {
+  kind: 'criar_bem';
+  name: string;
+  estimatedValue: number;
+  category?: string;
+}
+
+export interface NoteIntent extends NovaIntentBase {
+  kind: 'criar_nota';
+  title: string;
+  content: string;
+  category?: string;
+}
+
 /** "Quanto eu devo?" / "minhas dívidas" — intenção de leitura, sem passos de execução. */
 export interface ConsultDebtsIntent extends NovaIntentBase {
   kind: 'consultar_dividas';
@@ -102,6 +151,11 @@ export type NovaIntent =
   | GoalIntent
   | ProjectIntent
   | DebtIntent
+  | HabitIntent
+  | TripIntent
+  | DocumentIntent
+  | AssetIntent
+  | NoteIntent
   | ConsultDebtsIntent
   | ConsultDayPlanIntent
   | UnknownIntent;

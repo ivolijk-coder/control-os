@@ -35,6 +35,16 @@ export function buildReply(intent: NovaIntent, ok: boolean): string {
       return `Feito. Criei o projeto "${intent.title}" em Missões.`;
     case 'registrar_divida':
       return `Prontinho. Registrei a dívida "${intent.description}" — R$ ${intent.totalAmount.toFixed(2)} em ${intent.installments}x — e já atualizei o Financeiro.`;
+    case 'criar_habito':
+      return `Feito. Criei o hábito "${intent.title}".`;
+    case 'criar_viagem':
+      return `Feito. Criei a viagem para ${intent.destination}.`;
+    case 'criar_documento':
+      return `Feito. Adicionei o documento "${intent.title}".`;
+    case 'criar_bem':
+      return `Feito. Registrei o bem "${intent.name}" em Patrimônio.`;
+    case 'criar_nota':
+      return `Feito. Criei a nota "${intent.title}".`;
     case 'consultar_dividas':
     case 'consultar_dia':
       // Nunca alcançado em runtime — `processNovaTurn` responde direto via `buildDebtsSummary`/`buildDailyCheckIn`, sem passar por `runIntent`/`buildReply`.

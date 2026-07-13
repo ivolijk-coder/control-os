@@ -3,50 +3,71 @@ import type { NextRequest } from 'next/server';
 import type { AIProviderErrorCode } from '@/services/ai/errors';
 import { SYSTEM_PROMPT } from '@/services/ai/prompts';
 import { INTENT_TOOL_SCHEMAS, type ToolSchema } from '@/services/ai/tools/schemas';
-import type { ChatMessage, NovaAIRequestBody, NovaAIRequestMode, NovaAIResponseBody, NovaAIToolCall } from '@/services/ai/types';
+import type {
+  ChatMessage,
+  NovaAIRequestBody,
+  NovaAIRequestMode,
+  NovaAIResponseBody,
+  NovaAIToolCall,
+  NovaAIToolOutput,
+} from '@/services/ai/types';
 
 /**
  * Route Handler server-only (CONTROL OS — Etapa 4: Preparação profissional
- * para OpenAI GPT-5.5). Único lugar de todo o CONTROL OS que:
+ * para OpenAI GPT-5.5 / Etapa 5: OpenAI GPT-5.5 como cérebro da NOVA).
+ * Único lugar de todo o CONTROL OS que:
  *   1. Lê `OPENAI_API_KEY` (nunca prefixado com `NEXT_PUBLIC_` — nunca
  *      chega ao bundle do navegador);
  *   2. Fala com a API oficial da OpenAI (REST direta, sem SDK — ver nota
  *      abaixo);
- *   3. Monta o System Prompt + contexto + tools antes de qualquer chamada.
+ *   3. Monta as instruções (System Prompt + contexto) + Tools antes de
+ *      qualquer chamada.
  *
  * "Nenhuma tela pode conversar diretamente com a OpenAI" — `OpenAIProvider`
  * (client, `services/ai/providers/OpenAIProvider.ts`) só sabe fazer
  * `fetch('/api/ai/nova')`; é esta rota, rodando no servidor, que de fato
  * chama `api.openai.com`.
  *
+ * Etapa 5 — Responses API: "Utilizar a Responses API da OpenAI. Não
+ * utilizar implementações antigas se não forem necessárias." Esta rota
+ * chama `POST /v1/responses` (não mais `/v1/chat/completions`) para TODOS
+ * os modos — `instructions` substitui a mensagem `system`, `input`
+ * substitui `messages`, `max_output_tokens` substitui `max_tokens`. O modo
+ * `'reason'` é o único que usa Tools e suporta continuação via
+ * `previous_response_id` — é ele que faz o loop "OpenAI decide → Tool →
+ * ActionExecutor → resultado → OpenAI narra" (ver `ConversationService`).
+ *
  * Nota sobre o SDK: o ambiente de build usado para preparar esta etapa não
  * tem acesso à registry do npm para instalar o pacote oficial `openai`.
- * A REST API do Chat Completions é pública, estável e documentada — chamar
- * `https://api.openai.com/v1/chat/completions` via `fetch` nativo é
- * funcionalmente equivalente ao SDK (mesmo endpoint, mesmo contrato) e não
- * adiciona nenhuma dependência nova. Trocar para o SDK oficial depois,
- * caso prefiram, é uma troca isolada só dentro desta rota — nenhum outro
- * arquivo do sistema precisa saber a diferença.
+ * A Responses API é pública, estável e documentada — chamar
+ * `https://api.openai.com/v1/responses` via `fetch` nativo é funcionalmente
+ * equivalente ao SDK (mesmo endpoint, mesmo contrato) e não adiciona
+ * nenhuma dependência nova. Trocar para o SDK oficial depois, caso
+ * prefiram, é uma troca isolada só dentro desta rota — nenhum outro arquivo
+ * do sistema precisa saber a diferença.
  */
 
-const OPENAI_CHAT_COMPLETIONS_URL = 'https://api.openai.com/v1/chat/completions';
+const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 const REQUEST_TIMEOUT_MS = 20_000;
 
 /**
  * Teto de tokens de saída por modo (CONTROL OS — Etapa 4.5: Auditoria de
- * Performance). Antes da auditoria a chamada não enviava `max_tokens`
- * nenhum — uma resposta da OpenAI sem limite explícito custa mais e demora
- * mais do que o necessário. Modos que só classificam/extraem (uma tool call
- * curta ou poucas linhas "chave: valor") precisam de bem menos espaço do
- * que modos que geram texto livre para o usuário ler.
+ * Performance, valores revistos na Etapa 5). Modelos de raciocínio como o
+ * GPT-5.5 gastam parte de `max_output_tokens` em tokens de raciocínio
+ * internos (não visíveis) antes do texto/tool call final — por isso os
+ * limites aqui são mais generosos que um teto "só de texto visível" seria;
+ * um valor baixo demais pode truncar a resposta antes do texto aparecer.
+ * `'reason'` é o maior porque pode precisar decidir várias tool calls no
+ * mesmo turno (ex.: meta + viagem + lembrete).
  */
-const MAX_TOKENS_BY_MODE: Record<NovaAIRequestMode, number> = {
-  classify: 200,
-  extract: 200,
-  summarize: 300,
-  suggest: 300,
-  generate: 500,
-  chat: 500,
+const MAX_OUTPUT_TOKENS_BY_MODE: Record<NovaAIRequestMode, number> = {
+  classify: 400,
+  extract: 400,
+  summarize: 500,
+  suggest: 500,
+  generate: 700,
+  chat: 700,
+  reason: 900,
 };
 
 function isChatMessage(value: unknown): value is ChatMessage {
@@ -54,6 +75,12 @@ function isChatMessage(value: unknown): value is ChatMessage {
   if (!('role' in value) || !('content' in value)) return false;
   const role = value.role;
   return (role === 'user' || role === 'assistant' || role === 'system') && typeof value.content === 'string';
+}
+
+function isNovaAIToolOutput(value: unknown): value is NovaAIToolOutput {
+  if (typeof value !== 'object' || value === null) return false;
+  if (!('callId' in value) || !('output' in value)) return false;
+  return typeof value.callId === 'string' && typeof value.output === 'string';
 }
 
 /**
@@ -68,7 +95,8 @@ function isNovaAIRequestMode(value: string): value is NovaAIRequestMode {
     value === 'classify' ||
     value === 'extract' ||
     value === 'summarize' ||
-    value === 'suggest'
+    value === 'suggest' ||
+    value === 'reason'
   );
 }
 
@@ -84,66 +112,96 @@ function isNovaAIRequestBody(value: unknown): value is NovaAIRequestBody {
   if ('contextSummary' in value && value.contextSummary !== undefined && typeof value.contextSummary !== 'string') {
     return false;
   }
+  if ('previousResponseId' in value && value.previousResponseId !== undefined && typeof value.previousResponseId !== 'string') {
+    return false;
+  }
+  if ('toolOutputs' in value && value.toolOutputs !== undefined) {
+    if (!Array.isArray(value.toolOutputs) || !value.toolOutputs.every(isNovaAIToolOutput)) return false;
+  }
   return true;
 }
 
-interface OpenAIToolCallRaw {
-  function: { name: string; arguments: string };
+interface OpenAIResponseFunctionCall {
+  callId: string;
+  name: string;
+  arguments: string;
 }
 
-interface OpenAIChatCompletionResponse {
-  content: string | null;
-  toolCall: OpenAIToolCallRaw | undefined;
-  usage: { promptTokens: number; completionTokens: number; totalTokens: number } | undefined;
+interface OpenAIResponsesResult {
+  responseId: string;
+  outputText: string;
+  functionCalls: OpenAIResponseFunctionCall[];
+  usage: { inputTokens: number; outputTokens: number; totalTokens: number; reasoningTokens: number } | undefined;
 }
 
-/** Valida campo a campo a resposta bruta da OpenAI — nunca `any`/cast, sempre checagem explícita. */
-function parseOpenAIResponse(value: unknown): OpenAIChatCompletionResponse | null {
-  if (typeof value !== 'object' || value === null || !('choices' in value)) return null;
-  const choices = value.choices;
-  if (!Array.isArray(choices) || choices.length === 0) return null;
+/**
+ * Valida campo a campo a resposta bruta da Responses API — nunca
+ * `any`/cast, sempre checagem explícita. Formato: `{id, output: [...],
+ * usage}`, onde `output` mistura itens `type: 'message'` (com
+ * `content: [{type:'output_text', text}]`) e `type: 'function_call'` (com
+ * `call_id`, `name`, `arguments` já serializado em JSON).
+ */
+function parseResponsesApiResult(value: unknown): OpenAIResponsesResult | null {
+  if (typeof value !== 'object' || value === null) return null;
+  if (!('id' in value) || typeof value.id !== 'string') return null;
+  if (!('output' in value) || !Array.isArray(value.output)) return null;
 
-  const first: unknown = choices[0];
-  if (typeof first !== 'object' || first === null || !('message' in first)) return null;
-  const message = first.message;
-  if (typeof message !== 'object' || message === null) return null;
+  let outputText = '';
+  const functionCalls: OpenAIResponseFunctionCall[] = [];
 
-  const content = 'content' in message && typeof message.content === 'string' ? message.content : null;
+  for (const item of value.output) {
+    if (typeof item !== 'object' || item === null || !('type' in item)) continue;
 
-  let toolCall: OpenAIToolCallRaw | undefined;
-  if ('tool_calls' in message && Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
-    const rawCall: unknown = message.tool_calls[0];
+    if (item.type === 'message' && 'content' in item && Array.isArray(item.content)) {
+      for (const part of item.content) {
+        if (
+          typeof part === 'object' &&
+          part !== null &&
+          'type' in part &&
+          part.type === 'output_text' &&
+          'text' in part &&
+          typeof part.text === 'string'
+        ) {
+          outputText += part.text;
+        }
+      }
+      continue;
+    }
+
     if (
-      typeof rawCall === 'object' &&
-      rawCall !== null &&
-      'function' in rawCall &&
-      typeof rawCall.function === 'object' &&
-      rawCall.function !== null &&
-      'name' in rawCall.function &&
-      typeof rawCall.function.name === 'string' &&
-      'arguments' in rawCall.function &&
-      typeof rawCall.function.arguments === 'string'
+      item.type === 'function_call' &&
+      'call_id' in item &&
+      typeof item.call_id === 'string' &&
+      'name' in item &&
+      typeof item.name === 'string' &&
+      'arguments' in item &&
+      typeof item.arguments === 'string'
     ) {
-      toolCall = { function: { name: rawCall.function.name, arguments: rawCall.function.arguments } };
+      functionCalls.push({ callId: item.call_id, name: item.name, arguments: item.arguments });
     }
   }
 
-  let usage: OpenAIChatCompletionResponse['usage'];
+  let usage: OpenAIResponsesResult['usage'];
   if ('usage' in value && typeof value.usage === 'object' && value.usage !== null) {
     const u = value.usage;
-    if (
-      'prompt_tokens' in u &&
-      typeof u.prompt_tokens === 'number' &&
-      'completion_tokens' in u &&
-      typeof u.completion_tokens === 'number' &&
-      'total_tokens' in u &&
-      typeof u.total_tokens === 'number'
-    ) {
-      usage = { promptTokens: u.prompt_tokens, completionTokens: u.completion_tokens, totalTokens: u.total_tokens };
+    if ('input_tokens' in u && typeof u.input_tokens === 'number' && 'output_tokens' in u && typeof u.output_tokens === 'number') {
+      const totalTokens =
+        'total_tokens' in u && typeof u.total_tokens === 'number' ? u.total_tokens : u.input_tokens + u.output_tokens;
+      let reasoningTokens = 0;
+      if (
+        'output_tokens_details' in u &&
+        typeof u.output_tokens_details === 'object' &&
+        u.output_tokens_details !== null &&
+        'reasoning_tokens' in u.output_tokens_details &&
+        typeof u.output_tokens_details.reasoning_tokens === 'number'
+      ) {
+        reasoningTokens = u.output_tokens_details.reasoning_tokens;
+      }
+      usage = { inputTokens: u.input_tokens, outputTokens: u.output_tokens, totalTokens, reasoningTokens };
     }
   }
 
-  return { content, toolCall, usage };
+  return { responseId: value.id, outputText, functionCalls, usage };
 }
 
 /** Argumentos de uma tool call só têm campos string/number nas Tools atuais — validado, nunca `any`. */
@@ -164,21 +222,46 @@ function parseToolCallArguments(raw: string): Record<string, string | number> | 
   return result;
 }
 
-function toOpenAITools(schemas: ToolSchema[]): Array<{ type: 'function'; function: ToolSchema }> {
-  return schemas.map((schema) => ({ type: 'function', function: schema }));
+/** Formato "function tool" da Responses API — campos soltos (`name`, `parameters`), diferente do aninhado `function: {...}` da Chat Completions. */
+function toOpenAITools(schemas: ToolSchema[]): Array<{ type: 'function'; name: string; description: string; parameters: ToolSchema['parameters']; strict: boolean }> {
+  return schemas.map((schema) => ({
+    type: 'function',
+    name: schema.name,
+    description: schema.description,
+    parameters: schema.parameters,
+    // `strict: false` — nossos schemas têm propriedades opcionais (ex.: `category?`), e o modo strict da
+    // Responses API exige que todo campo de `properties` esteja em `required` (usando `null` pra opcionais).
+    // Mudar esse formato só pra ganhar `strict: true` não vale a complexidade nesta fase.
+    strict: false,
+  }));
 }
 
-function buildMessages(body: NovaAIRequestBody): ChatMessage[] {
-  const systemParts = [SYSTEM_PROMPT];
-  if (body.contextSummary) {
-    systemParts.push(`Contexto atual do usuário:\n${body.contextSummary}`);
+function buildInstructions(contextSummary: string | undefined): string {
+  const parts = [SYSTEM_PROMPT];
+  if (contextSummary) {
+    parts.push(`Contexto atual do usuário:\n${contextSummary}`);
   }
-  const system: ChatMessage = { role: 'system', content: systemParts.join('\n\n') };
+  return parts.join('\n\n');
+}
 
-  if (body.mode === 'chat' && body.messages) {
-    return [system, ...body.messages];
+type ResponsesInputItem = { role: 'user' | 'assistant' | 'system'; content: string } | { type: 'function_call_output'; call_id: string; output: string };
+
+/**
+ * Monta o `input` da Responses API. Três formatos possíveis:
+ *   1. Continuação do modo `'reason'` (`toolOutputs` presente): só os
+ *      resultados das tool calls — o resto da conversa já está no lado da
+ *      OpenAI via `previous_response_id`.
+ *   2. Modo `'chat'`: histórico completo.
+ *   3. Qualquer outro modo: uma única mensagem de usuário.
+ */
+function buildResponsesInput(body: NovaAIRequestBody): ResponsesInputItem[] {
+  if (body.toolOutputs && body.toolOutputs.length > 0) {
+    return body.toolOutputs.map((output) => ({ type: 'function_call_output', call_id: output.callId, output: output.output }));
   }
-  return [system, { role: 'user', content: body.prompt ?? '' }];
+  if (body.mode === 'chat' && body.messages) {
+    return body.messages.map((message) => ({ role: message.role, content: message.content }));
+  }
+  return [{ role: 'user', content: body.prompt ?? '' }];
 }
 
 function logDebug(label: string, detail: Record<string, string | number>): void {
@@ -217,14 +300,15 @@ export async function POST(request: NextRequest): Promise<NextResponse<NovaAIRes
   }
 
   const model = process.env.OPENAI_MODEL ?? 'gpt-5.5';
-  const messages = buildMessages(body);
-  const tools = body.mode === 'classify' ? toOpenAITools(INTENT_TOOL_SCHEMAS) : undefined;
+  const instructions = buildInstructions(body.contextSummary);
+  const input = buildResponsesInput(body);
+  const tools = body.mode === 'reason' || body.mode === 'classify' ? toOpenAITools(INTENT_TOOL_SCHEMAS) : undefined;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    const response = await fetch(OPENAI_CHAT_COMPLETIONS_URL, {
+    const response = await fetch(OPENAI_RESPONSES_URL, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -232,9 +316,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<NovaAIRes
       },
       body: JSON.stringify({
         model,
-        messages,
-        max_tokens: MAX_TOKENS_BY_MODE[body.mode],
+        instructions,
+        input,
+        max_output_tokens: MAX_OUTPUT_TOKENS_BY_MODE[body.mode],
         ...(tools ? { tools, tool_choice: 'auto' } : {}),
+        ...(body.previousResponseId ? { previous_response_id: body.previousResponseId } : {}),
       }),
       signal: controller.signal,
     });
@@ -259,28 +345,29 @@ export async function POST(request: NextRequest): Promise<NextResponse<NovaAIRes
       return errorResponse('invalid_json', 'Resposta da OpenAI não é um JSON válido.', 502);
     }
 
-    const parsed = parseOpenAIResponse(json);
+    const parsed = parseResponsesApiResult(json);
     if (!parsed) {
       return errorResponse('invalid_response', 'Resposta da OpenAI em formato inesperado.', 502);
     }
 
-    let toolCall: NovaAIToolCall | undefined;
-    if (parsed.toolCall) {
-      const args = parseToolCallArguments(parsed.toolCall.function.arguments);
+    const toolCalls: NovaAIToolCall[] = [];
+    for (const call of parsed.functionCalls) {
+      const args = parseToolCallArguments(call.arguments);
       if (args === null) {
-        return errorResponse('invalid_json', 'Argumentos da tool call vieram mal formatados.', 502);
+        return errorResponse('invalid_json', 'Argumentos de uma tool call vieram mal formatados.', 502);
       }
-      toolCall = { name: parsed.toolCall.function.name, arguments: args };
+      toolCalls.push({ callId: call.callId, name: call.name, arguments: args });
     }
 
     logDebug('success', {
       elapsedMs: Date.now() - startedAt,
       mode: body.mode,
-      tool: toolCall?.name ?? 'nenhuma',
+      tools: toolCalls.length > 0 ? toolCalls.map((call) => call.name).join(',') : 'nenhuma',
       totalTokens: parsed.usage?.totalTokens ?? 0,
+      reasoningTokens: parsed.usage?.reasoningTokens ?? 0,
     });
 
-    const result: NovaAIResponseBody = { ok: true, content: parsed.content ?? '', toolCall };
+    const result: NovaAIResponseBody = { ok: true, content: parsed.outputText, toolCalls, responseId: parsed.responseId };
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {

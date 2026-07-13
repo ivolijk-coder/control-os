@@ -31,6 +31,16 @@ export function runIntent(ctx: NovaContext, intent: NovaIntent): NovaActionResul
       return createProject(ctx, intent);
     case 'registrar_divida':
       return createDebt(ctx, intent);
+    case 'criar_habito':
+    case 'criar_viagem':
+    case 'criar_documento':
+    case 'criar_bem':
+    case 'criar_nota':
+      // Nunca alcançado em runtime — `IntentResolver` (services/ai) sempre
+      // resolve uma Action dedicada pra esses 5 kinds (CONTROL OS — Etapa
+      // 5), então `ActionExecutor` nunca cai neste fallback legado pra
+      // eles. Caso aqui só pra satisfazer o `switch` exaustivo.
+      return [];
     case 'consultar_dividas':
     case 'consultar_dia':
       // Leitura — tratada direto em `conversation/`, sem passar por aqui.

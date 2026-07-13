@@ -1,13 +1,14 @@
 import { buildDailyCheckIn, buildDebtsSummary, buildPlan, buildReply, recallFacts, rememberTurn } from '@/services/nova';
-import type { NovaContext, NovaIntent, NovaTurnResult } from '@/services/nova';
-import { getAIProvider } from '../config';
+import type { NovaActionResult, NovaContext, NovaIntent, NovaTurnResult } from '@/services/nova';
+import { AI_PROVIDER, getAIProvider } from '../config';
 import { AIProviderError, AI_ERROR_FRIENDLY_MESSAGES } from '../errors';
+import type { AIProvider, ReasoningProvider, ReasoningTurn, ToolExecutionOutput } from '../interfaces';
 import { buildOlderTurnsText, type ConversationTurnLike } from '../memory/condense-conversation';
 import { MockAIProvider } from '../providers/MockAIProvider';
 import type { AIConversationContext } from '../types';
 import type { Action } from '../actions';
 import { ActionExecutor } from './ActionExecutor';
-import { buildConfirmationPreview, CANCEL_PATTERN, CONFIRM_PATTERN, isSensitiveIntent } from './confirmation';
+import { buildBatchConfirmationPreview, buildConfirmationPreview, CANCEL_PATTERN, CONFIRM_PATTERN, isSensitiveIntent } from './confirmation';
 import { IntentResolver } from './IntentResolver';
 
 const intentResolver = new IntentResolver();
@@ -28,11 +29,26 @@ const DEFAULT_SESSION_ID = 'default';
  * (CONTROL OS — Etapa 4.5: Auditoria de Segurança — "fallback automático
  * para MockAIProvider quando configurado"). Desligado por padrão: sem essa
  * variável, uma falha da OpenAI continua devolvendo a mensagem amigável de
- * erro (comportamento inalterado desde a Etapa 4). Fica atrás de
- * `NEXT_PUBLIC_` porque `ConversationService` roda no cliente
- * (`NovaWorkspace`), mesmo padrão de `services/ai/config.ts`.
+ * erro. Fica atrás de `NEXT_PUBLIC_` porque `ConversationService` roda no
+ * cliente (`NovaWorkspace`), mesmo padrão de `services/ai/config.ts`.
  */
 const FALLBACK_TO_MOCK_ON_ERROR = process.env.NEXT_PUBLIC_AI_FALLBACK_TO_MOCK === '1';
+
+/**
+ * Logs de execução de Tool no cliente (CONTROL OS — Etapa 5: "Registrar...
+ * Tool utilizada, tempo da Tool... sem expor dados sensíveis"). A execução
+ * de fato (`ActionExecutor`) roda no cliente, contra `useDataStore` — só
+ * aqui dá pra medir "tempo da Tool"; "tempo da IA"/tokens ficam no log do
+ * servidor (`app/api/ai/nova/route.ts`, `AI_DEBUG_LOGS`). Nunca loga valor,
+ * descrição ou qualquer conteúdo — só o nome do tipo de ação e tempo.
+ */
+const CLIENT_DEBUG_LOGS = process.env.NEXT_PUBLIC_AI_DEBUG_LOGS === '1';
+
+function logToolExecution(detail: Record<string, string | number>): void {
+  if (!CLIENT_DEBUG_LOGS) return;
+  // eslint-disable-next-line no-console -- log de desenvolvimento, desligado em produção por padrão.
+  console.log('[nova-tools] tool_executed', detail);
+}
 
 /**
  * Mesmo texto de `services/nova/conversation/index.ts` (`FALLBACK_REPLY`) —
@@ -71,41 +87,66 @@ function toAIConversationContext(ctx: NovaContext): AIConversationContext {
   };
 }
 
-interface PendingTurn {
+/**
+ * `AIProvider` (interface base, `chat`/`classifyIntent`/etc.) só ganha os
+ * métodos de raciocínio (`converse`/`continueWithToolResults`) quando é de
+ * fato um `OpenAIProvider` — checagem por VALOR (`AI_PROVIDER`, a mesma
+ * fonte de verdade que `getAIProvider()` usa pra decidir qual classe
+ * instanciar), nunca `instanceof`: mais barato, e consistente com o resto
+ * do módulo (`services/ai/config.ts`).
+ */
+function isReasoningProvider(provider: AIProvider): provider is AIProvider & ReasoningProvider {
+  return AI_PROVIDER === 'openai';
+}
+
+/** Um item de um lote de tool calls propostas — resolvido, pronto pra executar ou aguardar confirmação. */
+interface PendingItem {
   intent: NovaIntent;
   action: Action | undefined;
+  /** Só presente no caminho de raciocínio (Etapa 5) — correlaciona com a tool call original da OpenAI. */
+  callId?: string;
+}
+
+interface PendingTurn {
+  items: PendingItem[];
+  /** Só presente no caminho de raciocínio — necessário pra `continueWithToolResults` depois da confirmação. */
+  continuationToken?: string;
+}
+
+/** Formata o resultado de uma tool call em texto pro modelo interpretar — nunca o `NovaActionResult` bruto (que carrega tipos internos). */
+function formatResultForModel(results: NovaActionResult[]): string {
+  if (results.length === 0) return 'Nenhuma alteração foi feita.';
+  return results.map((result) => `${result.ok ? 'OK' : 'ERRO'}: ${result.action.label}${result.detail ? ` — ${result.detail}` : ''}`).join('\n');
 }
 
 /**
  * Ponto de entrada único da camada de IA (CONTROL OS — Preparação para
- * OpenAI GPT-5.5 / Evolução da experiência NOVA): Nova (UI) →
- * `ConversationService` → `AIProvider` → `IntentResolver` →
- * `ActionExecutor` → Banco de Dados.
+ * OpenAI GPT-5.5 / Evolução da experiência NOVA / Etapa 5: OpenAI GPT-5.5
+ * como cérebro da NOVA).
+ *
+ * Dois caminhos, escolhidos por `AI_PROVIDER` (nunca pela UI):
+ *   - `AI_PROVIDER=mock`: Nova → `ConversationService` → `MockAIProvider`
+ *     (`classifyIntent`, determinístico) → `IntentResolver` →
+ *     `ActionExecutor` → Banco de Dados. Fluxo intocado desde a Etapa 4.
+ *   - `AI_PROVIDER=openai`: Nova → `ConversationService` → `OpenAIProvider`
+ *     (`converse`/`continueWithToolResults`, Responses API) → Tool Calling
+ *     → `IntentResolver` → `ActionExecutor` → Banco de Dados → Resultado →
+ *     `OpenAIProvider` → Resposta final. "Em hipótese alguma a OpenAI
+ *     poderá gravar dados diretamente" — a OpenAI só propõe tool calls
+ *     (nome + argumentos); quem resolve (`IntentResolver`) e executa
+ *     (`ActionExecutor`) é sempre este serviço, nunca o provider.
  *
  * "Nenhuma tela pode acessar a IA diretamente" — `NovaWorkspace` chama só
  * `processTurn`/`confirmPending`/`cancelPending`, nunca
- * `getAIProvider()`/`MockAIProvider` diretamente. "Toda conversa deve
- * passar pelo MockAIProvider" — `getAIProvider()` hoje sempre devolve o
- * Mock (`AI_PROVIDER=mock`), então toda classificação de intenção passa
- * por ele.
+ * `getAIProvider()`/`OpenAIProvider`/`MockAIProvider` diretamente.
  *
  * Ações sensíveis (dívida, ou despesa/receita de valor alto — ver
  * `isSensitiveIntent`) não executam na hora: ficam guardadas em
  * `pendingBySession` até o usuário confirmar (pelo botão na UI ou digitando
- * algo como "sim") ou cancelar — no máximo uma ação pendente por sessão;
- * uma nova mensagem que não seja claramente uma confirmação descarta a
- * pendência daquela sessão em vez de arriscar executar por engano.
- *
- * Estado de pendência é mantido POR `sessionId` (nunca por instância) desde
- * a auditoria da Etapa 4.5: `NovaWorkspace` usa uma única instância
- * compartilhada deste serviço (ver comentário lá) e, antes desta mudança,
- * um `this.pending` único misturaria a confirmação pendente de conversas
- * diferentes se este mesmo serviço um dia atender mais de um usuário ao
- * mesmo tempo (ex.: `services/channels/whatsapp`, hoje um stub desconectado
- * de qualquer webhook, mas desenhado pra reaproveitar esta classe sem
- * modificação quando for conectado de verdade). Quem chama sem informar
- * `sessionId` (todo código atual) continua usando `DEFAULT_SESSION_ID` — o
- * comportamento de hoje, para um usuário só, não muda em nada.
+ * algo como "sim") ou cancelar. No caminho de raciocínio, um lote inteiro de
+ * tool calls propostas no mesmo turno pausa se QUALQUER uma for sensível —
+ * o usuário confirma ou cancela o lote inteiro, nunca uma ação sensível
+ * escondida atrás de outras não sensíveis.
  */
 export class ConversationService {
   private pendingBySession = new Map<string, PendingTurn>();
@@ -127,6 +168,10 @@ export class ConversationService {
       }
     }
 
+    if (AI_PROVIDER === 'openai') {
+      return this.processTurnWithReasoning(text, ctx, sessionId);
+    }
+
     const provider = getAIProvider();
     const aiContext = toAIConversationContext(ctx);
 
@@ -134,13 +179,11 @@ export class ConversationService {
     try {
       intent = await provider.classifyIntent(text, aiContext);
     } catch (error) {
-      // `MockAIProvider` nunca lança — só `OpenAIProvider` (rede real). Se
-      // o fallback estiver ligado (`NEXT_PUBLIC_AI_FALLBACK_TO_MOCK=1`),
-      // tenta o Mock antes de desistir — mesmo padrão determinístico que já
-      // roda em produção quando `AI_PROVIDER=mock`. Sem o fallback (padrão),
-      // ou se o próprio Mock falhar (não deveria, mas nunca deixa uma
-      // Promise rejeitar sem tratamento até a UI), devolve a mensagem
-      // amigável de erro.
+      // `MockAIProvider` nunca lança — só `OpenAIProvider` (rede real), e
+      // este ramo só roda quando `AI_PROVIDER` NÃO é `'openai'` — na
+      // prática, nunca lança de verdade. O fallback continua aqui por
+      // simetria com `processTurnWithReasoning` e por segurança: nunca
+      // deixa uma Promise rejeitar sem tratamento até a UI.
       const fallbackIntent = await this.tryMockFallback(text);
       if (!fallbackIntent) {
         rememberTurn(text);
@@ -150,43 +193,10 @@ export class ConversationService {
       intent = fallbackIntent;
     }
 
-    if (intent.kind === 'desconhecido') {
-      rememberTurn(text);
-      return { status: 'concluido', reply: FALLBACK_REPLY, checklist: [], results: [] };
-    }
-
-    if (intent.kind === 'consultar_dividas') {
-      rememberTurn(text);
-      return { status: 'concluido', reply: buildDebtsSummary(ctx.debts), checklist: [], results: [] };
-    }
-
-    if (intent.kind === 'consultar_dia') {
-      rememberTurn(text);
-      const reply = buildDailyCheckIn(ctx.missions, ctx.agendaEvents, ctx.financeEntries, ctx.habits, ctx.userName);
-      return { status: 'concluido', reply, checklist: [], results: [] };
-    }
-
-    if (isSensitiveIntent(intent)) {
-      this.pendingBySession.set(sessionId, { intent, action: intentResolver.resolve(intent) });
-      rememberTurn(text);
-      return { status: 'aguardando_confirmacao', reply: buildConfirmationPreview(intent), checklist: [], results: [] };
-    }
-
-    const action = intentResolver.resolve(intent);
-    const checklist = buildPlan(intent).map((step) => step.label);
-    const results = actionExecutor.execute(ctx, intent, action);
-    const ok = results.length > 0 && results.every((result) => result.ok);
-    rememberTurn(text);
-
-    return {
-      status: ok ? 'concluido' : 'erro',
-      reply: buildReply(intent, ok),
-      checklist,
-      results,
-    };
+    return this.finishWithClassifiedIntent(intent, ctx, text, sessionId);
   }
 
-  /** Chamado pelo botão "Confirmar" na UI — executa a ação guardada em `pendingBySession`. */
+  /** Chamado pelo botão "Confirmar" na UI — executa o lote guardado em `pendingBySession`. */
   async confirmPending(ctx: NovaContext, sessionId: string = DEFAULT_SESSION_ID): Promise<NovaTurnResult> {
     if (!this.pendingBySession.has(sessionId)) {
       return { status: 'concluido', reply: NO_PENDING_ACTION_REPLY, checklist: [], results: [] };
@@ -213,6 +223,105 @@ export class ConversationService {
   }
 
   /**
+   * Caminho de raciocínio (CONTROL OS — Etapa 5): manda a mensagem pra
+   * `OpenAIProvider.converse`, que devolve OU uma resposta final pronta
+   * (nenhuma tool call necessária — ex.: "Analise meus gastos", respondida
+   * a partir do contexto já enviado) OU uma ou mais tool calls propostas.
+   * Tool calls sensíveis pausam o lote inteiro pra confirmação; as demais
+   * executam na hora e voltam pra OpenAI narrar o resultado
+   * (`executeAndNarrate`).
+   */
+  private async processTurnWithReasoning(text: string, ctx: NovaContext, sessionId: string): Promise<NovaTurnResult> {
+    const provider = getAIProvider();
+    if (!isReasoningProvider(provider)) {
+      // Nunca alcançado em runtime — só chega aqui quando `AI_PROVIDER === 'openai'`, e só `OpenAIProvider` é instanciado nesse caso.
+      rememberTurn(text);
+      return { status: 'erro', reply: AI_ERROR_FRIENDLY_MESSAGES.unavailable, checklist: [], results: [] };
+    }
+
+    const aiContext = toAIConversationContext(ctx);
+
+    let turn: ReasoningTurn;
+    try {
+      turn = await provider.converse(text, aiContext);
+    } catch (error) {
+      const fallbackIntent = await this.tryMockFallback(text);
+      if (!fallbackIntent) {
+        rememberTurn(text);
+        const message = error instanceof AIProviderError ? error.friendlyMessage : AI_ERROR_FRIENDLY_MESSAGES.unavailable;
+        return { status: 'erro', reply: message, checklist: [], results: [] };
+      }
+      return this.finishWithClassifiedIntent(fallbackIntent, ctx, text, sessionId);
+    }
+
+    if (turn.toolCalls.length === 0) {
+      rememberTurn(text);
+      return { status: 'concluido', reply: turn.replyText ?? FALLBACK_REPLY, checklist: [], results: [] };
+    }
+
+    const items: PendingItem[] = turn.toolCalls.map((call) => ({
+      callId: call.callId,
+      intent: call.intent,
+      action: intentResolver.resolve(call.intent),
+    }));
+
+    const anySensitive = items.some((item) => isSensitiveIntent(item.intent));
+    if (anySensitive) {
+      this.pendingBySession.set(sessionId, { items, continuationToken: turn.continuationToken });
+      rememberTurn(text);
+      return {
+        status: 'aguardando_confirmacao',
+        reply: buildBatchConfirmationPreview(items.map((item) => item.intent)),
+        checklist: [],
+        results: [],
+      };
+    }
+
+    rememberTurn(text);
+    return this.executeAndNarrate(ctx, items, turn.continuationToken);
+  }
+
+  /**
+   * Trata uma intent já classificada (`MockAIProvider.classifyIntent`, ou o
+   * fallback determinístico depois de uma falha da OpenAI) — compartilhado
+   * pelos dois pontos de entrada que produzem uma intent única em vez de um
+   * lote de tool calls. Consultas (`consultar_dividas`/`consultar_dia`) e
+   * `desconhecido` respondem direto, sem passar por `IntentResolver`/
+   * `ActionExecutor` — igual ao comportamento desde a Etapa 3.
+   */
+  private async finishWithClassifiedIntent(
+    intent: NovaIntent,
+    ctx: NovaContext,
+    text: string,
+    sessionId: string
+  ): Promise<NovaTurnResult> {
+    if (intent.kind === 'desconhecido') {
+      rememberTurn(text);
+      return { status: 'concluido', reply: FALLBACK_REPLY, checklist: [], results: [] };
+    }
+
+    if (intent.kind === 'consultar_dividas') {
+      rememberTurn(text);
+      return { status: 'concluido', reply: buildDebtsSummary(ctx.debts), checklist: [], results: [] };
+    }
+
+    if (intent.kind === 'consultar_dia') {
+      rememberTurn(text);
+      const reply = buildDailyCheckIn(ctx.missions, ctx.agendaEvents, ctx.financeEntries, ctx.habits, ctx.userName);
+      return { status: 'concluido', reply, checklist: [], results: [] };
+    }
+
+    if (isSensitiveIntent(intent)) {
+      this.pendingBySession.set(sessionId, { items: [{ intent, action: intentResolver.resolve(intent) }] });
+      rememberTurn(text);
+      return { status: 'aguardando_confirmacao', reply: buildConfirmationPreview(intent), checklist: [], results: [] };
+    }
+
+    rememberTurn(text);
+    return this.executeAndNarrate(ctx, [{ intent, action: intentResolver.resolve(intent) }], undefined);
+  }
+
+  /**
    * Tenta classificar com `MockAIProvider` depois de uma falha do provedor
    * ativo — só faz sentido, e só é chamada, quando o fallback está ligado
    * (ver `FALLBACK_TO_MOCK_ON_ERROR`). `MockAIProvider.classifyIntent` não
@@ -231,23 +340,64 @@ export class ConversationService {
     }
   }
 
-  private executePending(ctx: NovaContext, sessionId: string): NovaTurnResult {
+  private async executePending(ctx: NovaContext, sessionId: string): Promise<NovaTurnResult> {
     const pending = this.pendingBySession.get(sessionId);
     this.pendingBySession.delete(sessionId);
     if (!pending) {
       return { status: 'concluido', reply: NO_PENDING_ACTION_REPLY, checklist: [], results: [] };
     }
+    return this.executeAndNarrate(ctx, pending.items, pending.continuationToken);
+  }
 
-    const { intent, action } = pending;
-    const checklist = buildPlan(intent).map((step) => step.label);
-    const results = actionExecutor.execute(ctx, intent, action);
+  /**
+   * Último elo antes da resposta: executa cada item via `ActionExecutor`
+   * (nunca a IA — "em hipótese alguma a OpenAI poderá gravar dados
+   * diretamente") e formula a resposta final.
+   *
+   * Sem `continuationToken` (caminho Mock, ou fallback determinístico): a
+   * resposta vem do template de sempre (`buildReply`), comportamento
+   * idêntico a antes da Etapa 5. Com `continuationToken` (caminho de
+   * raciocínio real): devolve os resultados pra OpenAI narrar
+   * (`continueWithToolResults`) — "OpenAI monta resposta" — e usa o
+   * template só como rede de segurança se essa segunda chamada falhar (a
+   * ação já foi executada; o usuário nunca fica sem saber o que aconteceu).
+   */
+  private async executeAndNarrate(
+    ctx: NovaContext,
+    items: PendingItem[],
+    continuationToken: string | undefined
+  ): Promise<NovaTurnResult> {
+    const perItemResults = items.map((item) => {
+      const toolStartedAt = Date.now();
+      const results = actionExecutor.execute(ctx, item.intent, item.action);
+      logToolExecution({ tool: item.intent.kind, elapsedMs: Date.now() - toolStartedAt, ok: results.every((result) => result.ok) ? 1 : 0 });
+      return { callId: item.callId, intent: item.intent, results };
+    });
+
+    const checklist = items.flatMap((item) => buildPlan(item.intent).map((step) => step.label));
+    const results = perItemResults.flatMap((entry) => entry.results);
     const ok = results.length > 0 && results.every((result) => result.ok);
+    const [firstItem] = items;
+    const templateReply = firstItem ? buildReply(firstItem.intent, ok) : FALLBACK_REPLY;
 
-    return {
-      status: ok ? 'concluido' : 'erro',
-      reply: buildReply(intent, ok),
-      checklist,
-      results,
-    };
+    const provider = getAIProvider();
+    if (!isReasoningProvider(provider) || !continuationToken) {
+      return { status: ok ? 'concluido' : 'erro', reply: templateReply, checklist, results };
+    }
+
+    const aiContext = toAIConversationContext(ctx);
+    const outputs: ToolExecutionOutput[] = perItemResults.map((entry, index) => ({
+      callId: entry.callId ?? `item-${index}`,
+      output: formatResultForModel(entry.results),
+    }));
+
+    try {
+      const final = await provider.continueWithToolResults(continuationToken, outputs, aiContext);
+      return { status: ok ? 'concluido' : 'erro', reply: final.replyText ?? templateReply, checklist, results };
+    } catch {
+      // A ação já foi executada de verdade — só a narração final falhou.
+      // Nunca esconde isso do usuário: devolve o template em vez de um erro.
+      return { status: ok ? 'concluido' : 'erro', reply: templateReply, checklist, results };
+    }
   }
 }

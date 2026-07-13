@@ -1,6 +1,7 @@
 /**
  * Descrição das Tools no formato "function calling" da OpenAI (CONTROL OS
- * — Etapa 4: Preparação profissional para OpenAI GPT-5.5).
+ * — Etapa 4: Preparação profissional para OpenAI GPT-5.5 / Etapa 5: OpenAI
+ * GPT-5.5 como cérebro da NOVA).
  *
  * Puramente descritivo — nenhuma função aqui executa nada. A OpenAI só usa
  * isto para ESCOLHER qual ferramenta chamar e com quais argumentos; quem de
@@ -9,11 +10,15 @@
  * OpenAI nunca grava diretamente no banco. Ela apenas escolhe qual Tool
  * executar."
  *
- * Um schema por `NovaIntentKind` que já tem uma Action dedicada
- * (`services/ai/actions/`) — os mesmos 5 + dívida que `IntentResolver` já
- * resolve hoje. `criar_projeto`/`registrar_divida` cobrem o restante do
- * ciclo (dívida tem Action; projeto ainda cai no executor legado — ver
- * `IntentResolver` —, mas continua útil ter o schema pra classificação).
+ * Cobre os 12 domínios acionáveis do CONTROL OS — um schema por
+ * `NovaIntentKind` que tem uma Action ou executor dedicado (`criar_projeto`
+ * e `registrar_divida` caem no executor legado — ver `IntentResolver` —,
+ * mas o schema segue igual, só quem executa por baixo muda). As intents de
+ * consulta (`consultar_dividas`, `consultar_dia`) NÃO viram tool: no modo
+ * `reason` (Etapa 5) a OpenAI já recebe um resumo do contexto real em
+ * `instructions` e responde direto a partir dele — "nunca enviar contexto
+ * desnecessário" também vale ao contrário, não faz sentido uma tool
+ * só para reler o que já está na mensagem.
  */
 
 export interface ToolSchemaProperty {
@@ -113,6 +118,72 @@ export const INTENT_TOOL_SCHEMAS: ToolSchema[] = [
         description: { type: 'string', description: 'Descrição curta da dívida.' },
       },
       required: ['totalAmount', 'description'],
+    },
+  },
+  {
+    name: 'criar_habito',
+    description: 'Criar um hábito recorrente que o usuário quer acompanhar (ex.: malhar, ler, meditar).',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Nome do hábito.' },
+        category: { type: 'string', description: 'Categoria do hábito (ex.: Saúde, Estudo). Se não mencionada, pode omitir.' },
+      },
+      required: ['title'],
+    },
+  },
+  {
+    name: 'criar_viagem',
+    description:
+      'Criar uma viagem planejada pelo usuário. Só chamar quando destino E as duas datas (ida e volta) forem conhecidos — se faltar alguma, pergunte antes de chamar esta ferramenta.',
+    parameters: {
+      type: 'object',
+      properties: {
+        destination: { type: 'string', description: 'Cidade ou país de destino.' },
+        startDate: { type: 'string', description: 'Data de ida, formato AAAA-MM-DD.' },
+        endDate: { type: 'string', description: 'Data de volta, formato AAAA-MM-DD.' },
+        budget: { type: 'number', description: 'Orçamento estimado da viagem, em reais, se mencionado.' },
+      },
+      required: ['destination', 'startDate', 'endDate'],
+    },
+  },
+  {
+    name: 'criar_documento',
+    description: 'Adicionar um documento pessoal do usuário (ex.: RG, passaporte, contrato).',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Nome do documento.' },
+        category: { type: 'string', description: 'Categoria do documento (ex.: Identidade, Contrato). Se não mencionada, pode omitir.' },
+        expiresAt: { type: 'string', description: 'Data de validade, formato AAAA-MM-DD, se mencionada.' },
+      },
+      required: ['title'],
+    },
+  },
+  {
+    name: 'criar_bem',
+    description: 'Registrar um bem patrimonial do usuário (ex.: carro, imóvel, equipamento).',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Nome do bem.' },
+        estimatedValue: { type: 'number', description: 'Valor estimado do bem, em reais.' },
+        category: { type: 'string', description: 'Categoria do bem (ex.: Veículo, Imóvel). Se não mencionada, pode omitir.' },
+      },
+      required: ['name', 'estimatedValue'],
+    },
+  },
+  {
+    name: 'criar_nota',
+    description: 'Criar uma nota de texto livre pedida pelo usuário.',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Título da nota.' },
+        content: { type: 'string', description: 'Conteúdo da nota.' },
+        category: { type: 'string', description: 'Categoria da nota, se mencionada.' },
+      },
+      required: ['title', 'content'],
     },
   },
 ];
