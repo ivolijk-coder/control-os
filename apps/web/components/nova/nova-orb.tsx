@@ -3,7 +3,10 @@
 import * as React from 'react';
 import { useMediaQuery } from '@control-os/hooks';
 
-export type NovaOrbStatus = 'idle' | 'pensando' | 'executando';
+// CONTROL OS — Etapa 8: `'ouvindo'`/`'respondendo'` adicionados de forma
+// aditiva (Modo Conversa por voz) — os três estados originais continuam
+// valendo pra conversa por texto, sem quebrar nenhum consumidor existente.
+export type NovaOrbStatus = 'idle' | 'pensando' | 'executando' | 'ouvindo' | 'respondendo';
 
 interface OrbPoint {
   theta: number; // longitude
@@ -17,6 +20,12 @@ const ROTATION_SPEED: Record<NovaOrbStatus, number> = {
   idle: 0.0018,
   pensando: 0.004,
   executando: 0.009,
+  // 'ouvindo' gira um pouco mais que idle — presença ativa, mas calma (a
+  // NOVA está atenta, não processando). 'respondendo' usa a mesma
+  // velocidade de 'executando' — ambos comunicam "a NOVA está fazendo algo
+  // agora", só muda o rótulo/legenda mostrado ao lado.
+  ouvindo: 0.003,
+  respondendo: 0.009,
 };
 
 const CORE_GLOW = 'rgba(139, 92, 246, 0.35)';

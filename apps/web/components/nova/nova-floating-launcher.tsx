@@ -1,8 +1,9 @@
 'use client';
 
+import * as React from 'react';
+import dynamic from 'next/dynamic';
 import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Sparkles } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { hoverLift } from '@/lib/motion';
 
@@ -10,17 +11,29 @@ import { hoverLift } from '@/lib/motion';
 // faz sentido empilhar duas superfícies de conversa uma sobre a outra.
 const HIDDEN_ON_PREFIXES = ['/nova'];
 
+// Canvas é inerentemente client-only — mesmo tratamento do BackgroundNetwork.
+const NovaOrb = dynamic(() => import('@/components/nova/nova-orb').then((mod) => mod.NovaOrb), {
+  ssr: false,
+});
+
 /**
  * NovaFloatingLauncher — botão flutuante permanente da Nova
- * (CONTROL OS — Etapa 3).
+ * (CONTROL OS — Etapa 3; reformulado na Etapa 8 — NOVA Voice Experience).
  *
- * "A IA deve acompanhar o usuário em qualquer módulo." Canto inferior
+ * "Não é apenas um microfone. É o centro do sistema." Canto inferior
  * direito, desktop e mobile, sempre visível por cima do conteúdo da
- * página. Abre o `NovaFloatingPanel` sem navegar para nenhuma rota.
+ * página — antes um ícone estático (`Sparkles`), agora a própria `NovaOrb`
+ * em miniatura, "respirando" (animação `breathe`, ver `tailwind.config.ts`)
+ * enquanto ociosa, para comunicar presença viva, não um botão qualquer.
+ *
+ * Ao tocar, abre o Modo Conversa por voz em tela cheia (`NovaVoiceOverlay`)
+ * — não mais o painel de texto (`NovaFloatingPanel`/`novaPanelOpen`, que
+ * continua existindo no código e acessível pela Home em `/nova`, só deixou
+ * de ser o que este botão abre).
  */
 export function NovaFloatingLauncher() {
   const pathname = usePathname();
-  const setNovaPanelOpen = useAppStore((state) => state.setNovaPanelOpen);
+  const setNovaVoiceOpen = useAppStore((state) => state.setNovaVoiceOpen);
 
   if (pathname && HIDDEN_ON_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return null;
@@ -29,15 +42,22 @@ export function NovaFloatingLauncher() {
   return (
     <motion.button
       type="button"
-      onClick={() => setNovaPanelOpen(true)}
+      onClick={() => setNovaVoiceOpen(true)}
       aria-label="Conversar com a Nova"
-      className="fixed bottom-6 right-6 z-30 flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-accent-purple text-white shadow-e5 backdrop-blur-md"
+      className="fixed bottom-6 right-6 z-30 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-accent-purple/90 shadow-e5 backdrop-blur-md"
       {...hoverLift}
       initial={{ opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
     >
-      <Sparkles className="h-6 w-6" />
+      {/* Animação `breathe` (CSS) fica num `div` interno, separado do
+          `motion.button` externo — o `motion.button` já anima `opacity`/
+          `scale` via Framer Motion (entrada + hover); duas animações de
+          `transform` competindo pelo mesmo elemento causaria disputa entre
+          o loop de "respiração" e a transição de entrada/hover. */}
+      <div className="h-full w-full animate-breathe">
+        <NovaOrb status="idle" className="h-full w-full" />
+      </div>
     </motion.button>
   );
 }

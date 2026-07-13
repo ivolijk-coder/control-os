@@ -83,10 +83,18 @@ const config: Config = {
           from: { opacity: '0', transform: 'translateY(8px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
+        // CONTROL OS — Etapa 8: "respiração lenta" do botão flutuante da
+        // NOVA em estado ocioso — leve variação de escala/opacidade, nunca
+        // brusca, pra comunicar presença viva sem chamar atenção demais.
+        breathe: {
+          '0%, 100%': { transform: 'scale(1)', opacity: '0.9' },
+          '50%': { transform: 'scale(1.06)', opacity: '1' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 260ms cubic-bezier(.16,1,.3,1)',
         'slide-up': 'slide-up 260ms cubic-bezier(.16,1,.3,1)',
+        breathe: 'breathe 3200ms ease-in-out infinite',
       },
     },
   },

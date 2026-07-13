@@ -44,6 +44,16 @@ interface AppState {
   setNovaPanelOpen: (open: boolean) => void;
 
   /**
+   * Modo Conversa por voz (CONTROL OS — Etapa 8 — NOVA Voice Experience).
+   * Separado de `novaPanelOpen` (o painel de texto) — o botão flutuante
+   * global agora abre este overlay de tela cheia (`NovaVoiceOverlay`), não
+   * mais o painel de texto; ver `NovaFloatingLauncher`. Efêmero como
+   * `novaPanelOpen`: não sobrevive a um reload.
+   */
+  novaVoiceOpen: boolean;
+  setNovaVoiceOpen: (open: boolean) => void;
+
+  /**
    * Histórico da conversa com a NOVA (CONTROL OS — Evolução da experiência
    * NOVA). Antes vivia num `useState` local dentro de `NovaWorkspace`, que
    * reseta a cada montagem — como o painel flutuante desmonta o conteúdo ao
@@ -89,6 +99,9 @@ export const useAppStore = create<AppState>()(
 
       novaPanelOpen: false,
       setNovaPanelOpen: (open) => set({ novaPanelOpen: open }),
+
+      novaVoiceOpen: false,
+      setNovaVoiceOpen: (open) => set({ novaVoiceOpen: open }),
 
       novaMessages: [],
       addNovaMessage: (message) =>

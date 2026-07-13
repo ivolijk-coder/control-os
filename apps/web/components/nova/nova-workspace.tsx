@@ -11,18 +11,11 @@ import type { NovaThinkingStatus } from '@/components/nova/nova-thinking';
 import type { NovaOrbStatus } from '@/components/nova/nova-orb';
 import { QuickAction } from '@/components/ui/quick-action';
 import { IntelligentPanel } from '@/components/home/intelligent-panel';
-import { ConversationService, KEEP_RECENT_TURNS, shouldCondense } from '@/services/ai';
-import type { NovaContext, NovaStatus } from '@/services/nova';
-import { useDataStore } from '@/lib/data-store';
+import { conversationService, KEEP_RECENT_TURNS, shouldCondense } from '@/services/ai';
+import type { NovaStatus } from '@/services/nova';
 import { useAppStore } from '@/lib/store';
-import { MOCK_USER } from '@/lib/mock-data';
+import { useNovaContext } from '@/lib/use-nova-context';
 import { transitionOut, transitionSpring } from '@/lib/motion';
-
-// Primeiro nome do usuário — usado pra personalizar a resposta da Nova a
-// uma saudação simples ("oi", "bom dia"). Mesmo cálculo que `HomeHero` já
-// faz em `/nova/page.tsx`; um one-liner não justifica um novo export
-// compartilhado só pra isso.
-const NOVA_USER_FIRST_NAME = MOCK_USER.name.split(' ')[0] ?? MOCK_USER.name;
 
 // Canvas é inerentemente client-only — mesmo tratamento do BackgroundNetwork.
 const NovaOrb = dynamic(() => import('@/components/nova/nova-orb').then((mod) => mod.NovaOrb), {
@@ -37,19 +30,14 @@ const QUICK_ACTIONS = [
   { icon: CalendarClock, label: 'Ver meus compromissos' },
 ] as const;
 
-// Sem seletor de Space na conversa ainda — toda ação criada pela Nova cai
-// num Space padrão. Trocado de "Minha Empresa" para "Minha Vida" no Sistema
-// Operacional Pessoal: o foco deixa de ser empresa, passa a ser a vida do
-// usuário — reflete isso também nos dados que a Nova cria por conversa,
-// não só na interface.
-const DEFAULT_SPACE_ID = 'sp_vida';
-
 // Nenhuma tela acessa a IA diretamente (CONTROL OS — Preparação para OpenAI
 // GPT-5.5): o único jeito de conversar com a NOVA é através do
 // `ConversationService`, que por sua vez decide o `AIProvider` internamente
-// (`services/ai/config.ts`). `ConversationService` é stateless — uma
-// instância única do módulo evita recriá-la a cada turno.
-const conversationService = new ConversationService();
+// (`services/ai/config.ts`). Desde a Etapa 8, `conversationService` é o
+// singleton compartilhado exportado por `services/ai` — não uma instância
+// própria deste componente — porque o Modo Conversa por voz é um segundo
+// consumidor que precisa enxergar a mesma confirmação de ação sensível
+// pendente (`pendingBySession`) que a conversa por texto.
 
 const THINKING_DELAY_MS = 700;
 const EXECUTING_DELAY_MS = 500;
@@ -127,83 +115,11 @@ export function NovaWorkspace({
   const [isThinking, setIsThinking] = React.useState(false);
   const [thinkingStatus, setThinkingStatus] = React.useState<NovaThinkingStatus>('pensando');
 
-  const addMission = useDataStore((state) => state.addMission);
-  const updateMission = useDataStore((state) => state.updateMission);
-  const addTimelineEvent = useDataStore((state) => state.addTimelineEvent);
-  const addFinanceEntry = useDataStore((state) => state.addFinanceEntry);
-  const addAgendaEvent = useDataStore((state) => state.addAgendaEvent);
-  const addDebt = useDataStore((state) => state.addDebt);
-  const addHabit = useDataStore((state) => state.addHabit);
-  const addDocument = useDataStore((state) => state.addDocument);
-  const addAsset = useDataStore((state) => state.addAsset);
-  const addTrip = useDataStore((state) => state.addTrip);
-  const addNote = useDataStore((state) => state.addNote);
-  const debts = useDataStore((state) => state.debts);
-  const missions = useDataStore((state) => state.missions);
-  const agendaEvents = useDataStore((state) => state.agendaEvents);
-  const financeEntries = useDataStore((state) => state.financeEntries);
-  const habits = useDataStore((state) => state.habits);
-  const trips = useDataStore((state) => state.trips);
-  const documents = useDataStore((state) => state.documents);
-  const assets = useDataStore((state) => state.assets);
-  const notes = useDataStore((state) => state.notes);
-
-  // As actions do Zustand são referências estáveis entre renders. Os
-  // snapshots de leitura (debts, missions, agendaEvents, financeEntries,
-  // habits) não são — mudam a cada criação/edição — então este memo passa a
-  // recalcular nesses momentos (correto: intents de consulta como "quanto
-  // eu devo" ou "o que preciso fazer hoje" precisam sempre do snapshot mais
-  // recente).
-  const novaContext: NovaContext = React.useMemo(
-    () => ({
-      actions: {
-        addMission,
-        updateMission,
-        addTimelineEvent,
-        addFinanceEntry,
-        addAgendaEvent,
-        addDebt,
-        addHabit,
-        addDocument,
-        addAsset,
-        addTrip,
-        addNote,
-      },
-      defaultSpaceId: DEFAULT_SPACE_ID,
-      debts,
-      missions,
-      agendaEvents,
-      financeEntries,
-      habits,
-      trips,
-      documents,
-      assets,
-      notes,
-      userName: NOVA_USER_FIRST_NAME,
-    }),
-    [
-      addMission,
-      updateMission,
-      addTimelineEvent,
-      addFinanceEntry,
-      addAgendaEvent,
-      addDebt,
-      addHabit,
-      addDocument,
-      addAsset,
-      addTrip,
-      addNote,
-      debts,
-      missions,
-      agendaEvents,
-      financeEntries,
-      habits,
-      trips,
-      documents,
-      assets,
-      notes,
-    ]
-  );
+  // CONTROL OS — Etapa 8: extraído para `useNovaContext` (`lib/`) — o novo
+  // Modo Conversa por voz (`NovaVoiceOverlay`) precisa do mesmo `NovaContext`
+  // real, e duplicar esta montagem em dois lugares arriscaria os dois
+  // divergirem com o tempo.
+  const novaContext = useNovaContext();
 
   /**
    * Resumo automático de conversa (CONTROL OS — Etapa 4): quando o

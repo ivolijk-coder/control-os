@@ -7,6 +7,7 @@ import { Topbar } from './topbar';
 import { CommandCenter } from '@/components/command/command-center';
 import { NovaFloatingLauncher } from '@/components/nova/nova-floating-launcher';
 import { NovaFloatingPanel } from '@/components/nova/nova-floating-panel';
+import { NovaVoiceOverlay } from '@/components/nova/nova-voice-overlay';
 
 // Canvas + randomização de posição são inerentemente client-only. `ssr:
 // false` evita mismatch de hidratação e mantém o SSR/streaming do restante
@@ -35,6 +36,7 @@ export function LayoutPrincipal({ children }: { children: React.ReactNode }) {
       <CommandCenter />
       <NovaFloatingLauncher />
       <NovaFloatingPanel />
+      <NovaVoiceOverlay />
     </div>
   );
 }

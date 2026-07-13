@@ -26,7 +26,7 @@
  * `OpenAIProvider`/`OPENAI_MODEL` — a NOVA CORE (identidade, regras,
  * execução) não muda: o modelo é o motor, a NOVA é quem dirige.
  */
-export { ConversationService } from './conversation';
+export { ConversationService, conversationService } from './conversation';
 export { getAIProvider, AI_PROVIDER } from './config';
 export { MockAIProvider } from './providers/MockAIProvider';
 export { OpenAIProvider } from './providers/OpenAIProvider';
