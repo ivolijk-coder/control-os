@@ -255,3 +255,13 @@ export interface NovaTurnResult {
   checklist: string[];
   results: NovaActionResult[];
 }
+
+/**
+ * Projeção somente-leitura de `NovaContext` (CONTROL OS — Etapa 7: IA-Native
+ * — Event Bus). Usada como payload de `NovaEvent` e como entrada do
+ * `RecommendationEngine`/`NovaObserver` — nunca carrega `actions` (a
+ * superfície de escrita), porque um observador de evento só analisa dados,
+ * nunca grava nada. `Omit`, não um tipo novo duplicado — qualquer campo que
+ * `NovaContext` ganhar no futuro chega aqui automaticamente.
+ */
+export type NovaReadOnlyContext = Omit<NovaContext, 'actions'>;

@@ -1,3 +1,5 @@
+import { getNovaState } from '@/services/nova';
+import { buildUserMemoryProfile } from '../memory';
 import type { AIConversationContext } from '../types';
 
 /** Quantas categorias de despesa do mês entram no resumo — top N por valor total, não a lista inteira. */
@@ -36,6 +38,13 @@ function topExpenseCategoriesThisMonth(ctx: AIConversationContext, monthPrefix: 
  * cada domínio em totais/contagens/destaques, como um humano resumiria o
  * próprio dia pra outra pessoa. `MockAIProvider` nunca usa isto — só
  * `OpenAIProvider`, ao montar o payload pra `app/api/ai/nova/route.ts`.
+ *
+ * Etapa 7 — IA-Native: também lê o Memory Engine (`buildUserMemoryProfile`
+ * — objetivo principal, prioridades, estilo de resposta) e o NOVA State
+ * (`getNovaState` — última recomendação, calculada continuamente pelo
+ * `NovaObserver`, não só quando alguém pergunta). Todos os campos são
+ * opcionais e só entram no texto quando preenchidos — nenhum "objetivo
+ * principal: nenhum" forçado, pra não sujar o prompt com ausência de dado.
  */
 export function buildModelContextSummary(ctx: AIConversationContext): string {
   const today = new Date().toISOString().slice(0, 10);
@@ -93,6 +102,22 @@ export function buildModelContextSummary(ctx: AIConversationContext): string {
   }
   if (ctx.preferences.length > 0) {
     lines.push(`Preferências conhecidas: ${ctx.preferences.join('; ')}`);
+  }
+
+  const memoryProfile = buildUserMemoryProfile();
+  if (memoryProfile.mainGoal) {
+    lines.push(`Objetivo principal do usuário: ${memoryProfile.mainGoal}`);
+  }
+  if (memoryProfile.priorities.length > 0) {
+    lines.push(`Prioridades conhecidas: ${memoryProfile.priorities.join('; ')}`);
+  }
+  if (memoryProfile.responseStyle) {
+    lines.push(`Estilo de resposta preferido: ${memoryProfile.responseStyle}`);
+  }
+
+  const novaState = getNovaState();
+  if (novaState.lastRecommendation) {
+    lines.push(`Última recomendação gerada pela NOVA (uso interno, só mencione se fizer sentido na conversa): ${novaState.lastRecommendation}`);
   }
 
   return lines.join('\n');

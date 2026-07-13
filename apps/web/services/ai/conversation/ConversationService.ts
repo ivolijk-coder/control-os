@@ -1,5 +1,14 @@
-import { buildDailyCheckIn, buildDebtsSummary, buildPlan, buildReply, recallFacts, rememberTurn } from '@/services/nova';
-import type { NovaActionResult, NovaContext, NovaIntent, NovaTurnResult } from '@/services/nova';
+import {
+  buildDailyCheckIn,
+  buildDebtsSummary,
+  buildPlan,
+  buildReply,
+  eventTypeForIntentKind,
+  publish,
+  recallFacts,
+  rememberTurn,
+} from '@/services/nova';
+import type { NovaActionResult, NovaContext, NovaIntent, NovaReadOnlyContext, NovaTurnResult } from '@/services/nova';
 import { AI_PROVIDER, getAIProvider } from '../config';
 import { AIProviderError, AI_ERROR_FRIENDLY_MESSAGES } from '../errors';
 import type { AIProvider, ReasoningProvider, ReasoningTurn, ToolExecutionOutput } from '../interfaces';
@@ -85,6 +94,17 @@ function toAIConversationContext(ctx: NovaContext): AIConversationContext {
     notes: ctx.notes,
     preferences: recallFacts('preferencia').map((fact) => fact.text),
   };
+}
+
+/**
+ * Projeção somente-leitura de `NovaContext` pro Event Bus (CONTROL OS —
+ * Etapa 7: IA-Native) — nunca inclui `actions`, pelo mesmo motivo de
+ * `toAIConversationContext`: quem recebe isto (`NovaObserver`,
+ * `RecommendationEngine`) só analisa, nunca grava.
+ */
+function toNovaReadOnlyContext(ctx: NovaContext): NovaReadOnlyContext {
+  const { actions: _actions, ...readOnly } = ctx;
+  return readOnly;
 }
 
 /**
@@ -278,7 +298,7 @@ export class ConversationService {
     }
 
     rememberTurn(text);
-    return this.executeAndNarrate(ctx, items, turn.continuationToken);
+    return this.executeAndNarrate(ctx, items, turn.continuationToken, sessionId);
   }
 
   /**
@@ -318,7 +338,7 @@ export class ConversationService {
     }
 
     rememberTurn(text);
-    return this.executeAndNarrate(ctx, [{ intent, action: intentResolver.resolve(intent) }], undefined);
+    return this.executeAndNarrate(ctx, [{ intent, action: intentResolver.resolve(intent) }], undefined, sessionId);
   }
 
   /**
@@ -346,7 +366,7 @@ export class ConversationService {
     if (!pending) {
       return { status: 'concluido', reply: NO_PENDING_ACTION_REPLY, checklist: [], results: [] };
     }
-    return this.executeAndNarrate(ctx, pending.items, pending.continuationToken);
+    return this.executeAndNarrate(ctx, pending.items, pending.continuationToken, sessionId);
   }
 
   /**
@@ -361,11 +381,19 @@ export class ConversationService {
    * (`continueWithToolResults`) — "OpenAI monta resposta" — e usa o
    * template só como rede de segurança se essa segunda chamada falhar (a
    * ação já foi executada; o usuário nunca fica sem saber o que aconteceu).
+   *
+   * Etapa 7 — IA-Native (Event Bus): depois de executar tudo, publica um
+   * `NovaEvent` pra cada item que escreveu com sucesso — este é o único
+   * lugar do sistema que chama `publish`, porque é o único lugar por onde
+   * toda escrita real (Mock, OpenAI, ou confirmação de ação sensível)
+   * necessariamente passa (ver `ActionExecutor.execute` acima). Nenhuma
+   * `Action` sabe que este barramento existe.
    */
   private async executeAndNarrate(
     ctx: NovaContext,
     items: PendingItem[],
-    continuationToken: string | undefined
+    continuationToken: string | undefined,
+    sessionId: string
   ): Promise<NovaTurnResult> {
     const perItemResults = items.map((item) => {
       const toolStartedAt = Date.now();
@@ -373,6 +401,19 @@ export class ConversationService {
       logToolExecution({ tool: item.intent.kind, elapsedMs: Date.now() - toolStartedAt, ok: results.every((result) => result.ok) ? 1 : 0 });
       return { callId: item.callId, intent: item.intent, results };
     });
+
+    // Snapshot único, calculado depois de todas as escritas do turno — cada
+    // evento publicado abaixo carrega o mesmo estado real e já atualizado,
+    // nunca um instantâneo parcial de um item anterior do mesmo lote.
+    const readOnlyCtx = toNovaReadOnlyContext(ctx);
+    const occurredAt = new Date().toISOString();
+    for (const entry of perItemResults) {
+      const eventType = eventTypeForIntentKind(entry.intent.kind);
+      const succeeded = entry.results.length > 0 && entry.results.every((result) => result.ok);
+      if (!eventType || !succeeded) continue;
+      const [firstResult] = entry.results;
+      publish({ type: eventType, occurredAt, summary: firstResult?.detail ?? entry.intent.raw, sessionId, context: readOnlyCtx });
+    }
 
     const checklist = items.flatMap((item) => buildPlan(item.intent).map((step) => step.label));
     const results = perItemResults.flatMap((entry) => entry.results);

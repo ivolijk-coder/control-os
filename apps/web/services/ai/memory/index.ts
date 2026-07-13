@@ -1,3 +1,5 @@
+import { getNovaState, recallFacts } from '@/services/nova';
+
 /**
  * Contratos de memória da camada de IA (CONTROL OS — Preparação para
  * OpenAI GPT-5.5). Apenas interfaces — sem implementação real ainda,
@@ -49,4 +51,40 @@ export interface MemoryService {
   remember(sessionId: string, message: ChatMessageRecord): Promise<void>;
   recall(sessionId: string): Promise<ChatMessageRecord[]>;
   getUserContext(): Promise<UserContext>;
+}
+
+/**
+ * Memory Engine (CONTROL OS — Etapa 7: IA-Native). "Ainda sem banco
+ * vetorial. Apenas estrutura... Ela nunca depende apenas do histórico do
+ * chat." — diferente das interfaces acima (que descrevem uma implementação
+ * FUTURA, ainda não construída), `UserMemoryProfile`/`buildUserMemoryProfile`
+ * são reais e funcionam hoje: montados sobre a memória durável que já
+ * existe (`NovaFact`, em `services/nova/memory` — `localStorage`, sobrevive
+ * entre sessões) e sobre o NOVA State (`services/nova/state` — atualizado
+ * continuamente pelo `NovaObserver`, nunca só quando o usuário conversa).
+ * `currentContext` é o único campo que não vem de `NovaFact` — vem do
+ * último evento observado, porque "contexto atual" é inerentemente algo que
+ * muda a cada ação do sistema, não um fato estável sobre o usuário.
+ */
+export interface UserMemoryProfile {
+  mainGoal: string | undefined;
+  preferences: string[];
+  priorities: string[];
+  responseStyle: string | undefined;
+  routineSummary: string | undefined;
+  currentContext: string | undefined;
+}
+
+export function buildUserMemoryProfile(): UserMemoryProfile {
+  const [mainGoal] = recallFacts('objetivo_principal').map((fact) => fact.text);
+  const [responseStyle] = recallFacts('estilo_resposta').map((fact) => fact.text);
+  const [routineSummary] = recallFacts('rotina').map((fact) => fact.text);
+  return {
+    mainGoal,
+    preferences: recallFacts('preferencia').map((fact) => fact.text),
+    priorities: recallFacts('prioridade').map((fact) => fact.text),
+    responseStyle,
+    routineSummary,
+    currentContext: getNovaState().lastEventSummary,
+  };
 }

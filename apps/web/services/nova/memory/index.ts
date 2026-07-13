@@ -76,8 +76,15 @@ export function recallRecent(limit = 5): NovaMemoryEntry[] {
  * funciona (`rememberFact`/`recallFacts`), pronta para um LLM real chamar
  * no futuro; por enquanto os fatos vêm de um seed inicial (ver
  * `SEED_FACTS`), demonstrando o formato.
+ *
+ * Categorias estendidas (CONTROL OS — Etapa 7: IA-Native — Memory Engine):
+ * `objetivo_principal`, `prioridade` e `estilo_resposta` cobrem os campos
+ * que o Memory Engine (`services/ai/memory`, `buildUserMemoryProfile`)
+ * precisa e que as 3 categorias antigas não modelavam — extensão aditiva
+ * (só cresce o union), nenhum fato existente muda de categoria, nenhum
+ * comportamento de `rememberFact`/`recallFacts` muda.
  */
-export type NovaFactCategory = 'preferencia' | 'familia' | 'rotina';
+export type NovaFactCategory = 'preferencia' | 'familia' | 'rotina' | 'objetivo_principal' | 'prioridade' | 'estilo_resposta';
 
 export interface NovaFact {
   id: string;
@@ -95,7 +102,14 @@ const SEED_FACTS: readonly Omit<NovaFact, 'id' | 'createdAt'>[] = [
 ];
 
 function isNovaFactCategory(value: unknown): value is NovaFactCategory {
-  return value === 'preferencia' || value === 'familia' || value === 'rotina';
+  return (
+    value === 'preferencia' ||
+    value === 'familia' ||
+    value === 'rotina' ||
+    value === 'objetivo_principal' ||
+    value === 'prioridade' ||
+    value === 'estilo_resposta'
+  );
 }
 
 function isNovaFact(value: unknown): value is NovaFact {
