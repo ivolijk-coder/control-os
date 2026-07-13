@@ -27,6 +27,10 @@ const GLOW_CLASSES: Record<NonNullable<GlassCardProps['glow']>, string> = {
  * Diferente do `Card` de `@control-os/ui` (superfície estática de exibição
  * de dados), o `GlassCard` é feito para contextos hero/CTA que respondem ao
  * usuário: eleva no hover, comprime no tap, e pode carregar um glow ambiente.
+ *
+ * CONTROL OS — Etapa 10A: ganhou o mesmo realce de topo (linha de luz
+ * horizontal, quase imperceptível) que o `Card` de `@control-os/ui` ganhou,
+ * pra manter as duas superfícies de vidro do sistema com a mesma linguagem.
  */
 export const GlassCard = React.forwardRef<HTMLDivElement, GlassCardProps>(
   ({ className, children, interactive = true, glow = 'none', ...props }, ref) => (
@@ -35,7 +39,8 @@ export const GlassCard = React.forwardRef<HTMLDivElement, GlassCardProps>(
       variants={scaleIn}
       className={cn(
         'relative overflow-hidden rounded-xl border border-white/[0.08] bg-card/60 shadow-e3 backdrop-blur-md',
-        interactive && 'cursor-pointer',
+        'before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:z-10 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/20 before:to-transparent',
+        interactive && 'cursor-pointer hover:shadow-e4',
         className
       )}
       {...(interactive ? hoverLift : {})}

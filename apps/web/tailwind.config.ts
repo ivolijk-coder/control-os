@@ -54,6 +54,11 @@ const config: Config = {
         e3: '0 8px 24px rgba(0,0,0,.5)',
         e4: '0 16px 48px rgba(0,0,0,.55)',
         e5: '0 24px 64px rgba(0,0,0,.6)',
+        // CONTROL OS — Etapa 10A: glow colorido e discreto para hover de
+        // cards/botões premium — sempre combinado com uma sombra e1/e2 de
+        // base (nunca substitui a elevação, só adiciona um halo de cor).
+        'glow-purple': '0 0 0 1px rgba(139,92,246,.16), 0 8px 32px rgba(139,92,246,.18)',
+        'glow-blue': '0 0 0 1px rgba(59,130,246,.16), 0 8px 32px rgba(59,130,246,.18)',
       },
       backdropBlur: {
         sm: '8px',
@@ -74,6 +79,15 @@ const config: Config = {
         sans: ['var(--font-inter)', 'Inter', 'sans-serif'],
         mono: ['var(--font-jetbrains-mono)', 'JetBrains Mono', 'monospace'],
       },
+      // CONTROL OS — Etapa 10A: "remover preto chapado, criar profundidade,
+      // gradientes extremamente suaves, glow discreto, sensação de
+      // ambiente". Duas manchas radiais bem sutis (intensidade baixa,
+      // nunca poluir) — aplicado sobre `bg-bg` (cor sólida continua como
+      // base/fallback), nunca no lugar dela.
+      backgroundImage: {
+        'ambient-glow':
+          'radial-gradient(ellipse 140% 70% at 12% -10%, rgba(139,92,246,0.14), transparent 60%), radial-gradient(ellipse 120% 60% at 100% 110%, rgba(59,130,246,0.10), transparent 60%)',
+      },
       keyframes: {
         'fade-in': {
           from: { opacity: '0' },
@@ -90,11 +104,20 @@ const config: Config = {
           '0%, 100%': { transform: 'scale(1)', opacity: '0.9' },
           '50%': { transform: 'scale(1.06)', opacity: '1' },
         },
+        // CONTROL OS — Etapa 10A: deriva quase imperceptível do glow de
+        // fundo — "sensação de ambiente", nunca uma animação chamativa.
+        // Sempre usado com o variant `motion-safe:` (Tailwind já respeita
+        // `prefers-reduced-motion` nesse variant, sem precisar de JS).
+        'ambient-drift': {
+          '0%, 100%': { backgroundPosition: '0% 0%, 100% 100%' },
+          '50%': { backgroundPosition: '2% 1%, 98% 99%' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 260ms cubic-bezier(.16,1,.3,1)',
         'slide-up': 'slide-up 260ms cubic-bezier(.16,1,.3,1)',
         breathe: 'breathe 3200ms ease-in-out infinite',
+        'ambient-drift': 'ambient-drift 24000ms ease-in-out infinite',
       },
     },
   },

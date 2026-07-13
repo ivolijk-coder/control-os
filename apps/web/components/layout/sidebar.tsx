@@ -31,6 +31,11 @@ const SPACE_COLOR_CLASSES: Record<string, string> = {
  * Um grupo de itens de navegação com rótulo — usado para separar "Minha
  * Vida" (destaque) de "Empresa" (secundário) na Sidebar (CONTROL OS —
  * Etapa 3, Sistema Operacional Pessoal).
+ *
+ * CONTROL OS — Etapa 10A: o item ativo ganhou um leve gradiente de fundo
+ * (em vez de um cinza chapado) e o ícone assume a cor de acento — junto com
+ * a barra indicadora já existente (agora com um glow sutil), fica claro qual
+ * página está aberta sem precisar de mais contraste bruto.
  */
 function NavGroup({
   label,
@@ -60,18 +65,23 @@ function NavGroup({
             className={cn(
               'group relative flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-all duration-fast ease-out hover:scale-[1.01] active:scale-[0.98]',
               isActive
-                ? 'bg-white/[0.08] text-text-primary'
+                ? 'bg-gradient-to-r from-accent-purple/[0.14] via-white/[0.05] to-transparent text-text-primary'
                 : 'text-text-secondary hover:bg-white/[0.04] hover:text-text-primary'
             )}
           >
             {isActive && (
               <motion.span
                 layoutId="sidebar-active-indicator"
-                className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-accent-purple"
+                className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-accent-purple shadow-[0_0_8px_rgba(139,92,246,0.65)]"
                 transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
               />
             )}
-            <Icon className="h-4 w-4 shrink-0" />
+            <Icon
+              className={cn(
+                'h-4 w-4 shrink-0 transition-colors duration-fast ease-out',
+                isActive && 'text-accent-purple'
+              )}
+            />
             {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
             {!collapsed && item.badge ? (
               <Badge variant="purple" className="ml-auto">
@@ -144,8 +154,8 @@ export function Sidebar() {
       >
         {/* Cabeçalho / marca — leva para a Home conversacional (/nova) */}
         <div className="flex h-16 items-center gap-3 px-5">
-          <Link href="/nova" className="flex min-w-0 flex-1 items-center gap-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white text-xs font-bold text-black">
+          <Link href="/nova" className="group flex min-w-0 flex-1 items-center gap-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-white to-white/85 text-xs font-bold text-black shadow-e1 transition-transform duration-fast ease-out group-hover:scale-105">
               C
             </span>
             {!effectiveCollapsed && (
@@ -218,7 +228,7 @@ export function Sidebar() {
 
       {/* Rodapé: usuário + colapsar */}
       <div className="flex items-center gap-3 p-3">
-        <Avatar className="h-8 w-8">
+        <Avatar className="h-8 w-8 ring-1 ring-white/10 transition-all duration-fast ease-out hover:ring-white/20">
           <AvatarFallback>{getInitials(MOCK_USER.name)}</AvatarFallback>
         </Avatar>
         {!effectiveCollapsed && (

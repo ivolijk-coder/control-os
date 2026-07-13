@@ -26,7 +26,7 @@ const BackgroundNetwork = dynamic(
  */
 export function LayoutPrincipal({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative flex h-screen w-full overflow-hidden bg-bg">
+    <div className="relative flex h-screen w-full overflow-hidden bg-bg bg-ambient-glow bg-fixed motion-safe:animate-ambient-drift">
       <BackgroundNetwork />
       <Sidebar />
       <div className="relative flex min-w-0 flex-1 flex-col">

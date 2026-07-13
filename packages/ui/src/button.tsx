@@ -8,15 +8,22 @@ import { cn } from '@control-os/utils';
 /**
  * Botão base do CONTROL OS. Segue a escala de movimento da Etapa 1
  * (dur-fast / ease-out) e nunca usa cantos totalmente quadrados.
+ *
+ * CONTROL OS — Etapa 10A: Premium Visual Identity — cada variante ganhou um
+ * leve gradiente (em vez de cor chapada) e uma sombra/glow discreta no
+ * hover, além do `active:scale` de tato que já existia. Nunca um segundo
+ * gradiente/glow no MESMO estado (hover OU idle, nunca os dois se somando) —
+ * "nada de exagero".
  */
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all duration-fast ease-out disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all duration-fast ease-out disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-purple/40 focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
   {
     variants: {
       variant: {
-        primary: 'bg-white text-black hover:bg-white/90 active:scale-[0.98]',
+        primary:
+          'bg-gradient-to-b from-white to-white/90 text-black shadow-e1 hover:shadow-glow-purple active:scale-[0.98]',
         secondary:
-          'bg-white/[0.06] text-text-primary border border-white/10 hover:bg-white/[0.1] active:scale-[0.98]',
+          'bg-white/[0.06] text-text-primary border border-white/10 hover:border-white/20 hover:bg-white/[0.1] active:scale-[0.98]',
         ghost: 'text-text-secondary hover:text-text-primary hover:bg-white/[0.06]',
         danger: 'bg-accent-red text-white hover:bg-accent-red/90 active:scale-[0.98]',
         link: 'text-text-primary underline-offset-4 hover:underline',

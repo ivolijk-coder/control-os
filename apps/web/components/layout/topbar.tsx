@@ -18,6 +18,11 @@ function pageTitleFromPath(pathname: string | null): string {
 /**
  * Topbar — busca universal, Command Center (⌘K) e presença do usuário.
  * Fixa no topo da área de conteúdo, dentro do Layout Principal.
+ *
+ * CONTROL OS — Etapa 10A: busca ganhou glow de foco (mesma cor de acento do
+ * resto do sistema), o avatar ganhou um anel sutil e o indicador de
+ * notificação ganhou um brilho discreto — nada de novo funcionalmente, só a
+ * barra parecendo mais "viva" ao toque.
  */
 export function Topbar() {
   const pathname = usePathname();
@@ -41,7 +46,7 @@ export function Topbar() {
       <div className="flex flex-1 items-center justify-center px-8">
         <button
           onClick={() => setCommandCenterOpen(true)}
-          className="flex w-full max-w-md items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-text-tertiary backdrop-blur-sm transition-all duration-fast ease-out hover:scale-[1.01] hover:border-white/20 hover:bg-white/[0.05] active:scale-[0.99]"
+          className="flex w-full max-w-md items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-text-tertiary backdrop-blur-sm transition-all duration-fast ease-out hover:scale-[1.01] hover:border-white/20 hover:bg-white/[0.05] active:scale-[0.99] focus-visible:scale-[1.01] focus-visible:border-accent-purple/40 focus-visible:shadow-glow-purple focus-visible:outline-none"
           aria-label="Busca universal (⌘K)"
         >
           <ICON_MAP.Search className="h-4 w-4" />
@@ -62,9 +67,9 @@ export function Topbar() {
           className="relative flex h-9 w-9 items-center justify-center rounded-md text-text-secondary transition-all duration-fast ease-out hover:scale-110 hover:bg-white/[0.06] hover:text-text-primary active:scale-95"
         >
           <ICON_MAP.Bell className="h-4 w-4" />
-          <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-accent-red" />
+          <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-accent-red shadow-[0_0_6px_2px_rgba(239,68,68,0.4)]" />
         </button>
-        <Avatar className="h-8 w-8 cursor-pointer transition-transform duration-fast ease-out hover:scale-105 active:scale-95">
+        <Avatar className="h-8 w-8 cursor-pointer ring-1 ring-white/10 transition-all duration-fast ease-out hover:scale-105 hover:ring-white/20 active:scale-95">
           <AvatarFallback>{getInitials(MOCK_USER.name)}</AvatarFallback>
         </Avatar>
       </div>

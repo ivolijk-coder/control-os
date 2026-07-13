@@ -101,6 +101,22 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* CONTROL OS — Etapa 10A: hierarquia tipográfica premium ("sensação de
+   software Apple") — tracking mais fechado e peso mais controlado nos
+   títulos, nunca alterando o tamanho definido por cada componente (que
+   continua vindo das classes Tailwind, ex.: text-3xl). Só a MICRO-ajuste de
+   tracking/leading que faz um título parecer desenhado, não só "grande". */
+h1,
+h2,
+h3 {
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+p {
+  line-height: 1.6;
+}
+
 ::selection {
   background: rgba(139, 92, 246, 0.35);
   color: #ffffff;

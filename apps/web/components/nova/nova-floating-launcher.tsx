@@ -23,8 +23,10 @@ const NovaOrb = dynamic(() => import('@/components/nova/nova-orb').then((mod) =>
  * "Não é apenas um microfone. É o centro do sistema." Canto inferior
  * direito, desktop e mobile, sempre visível por cima do conteúdo da
  * página — antes um ícone estático (`Sparkles`), agora a própria `NovaOrb`
- * em miniatura, "respirando" (animação `breathe`, ver `tailwind.config.ts`)
- * enquanto ociosa, para comunicar presença viva, não um botão qualquer.
+ * em miniatura. A respiração vem de dentro da própria orb desde a Etapa
+ * 10A (overhaul visual — respiração, pulso, ondas), não mais de uma classe
+ * `animate-breathe` externa — evita duas animações de escala competindo no
+ * mesmo elemento.
  *
  * Ao tocar, abre o Modo Conversa por voz em tela cheia (`NovaVoiceOverlay`)
  * — não mais o painel de texto (`NovaFloatingPanel`/`novaPanelOpen`, que
@@ -50,14 +52,7 @@ export function NovaFloatingLauncher() {
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
     >
-      {/* Animação `breathe` (CSS) fica num `div` interno, separado do
-          `motion.button` externo — o `motion.button` já anima `opacity`/
-          `scale` via Framer Motion (entrada + hover); duas animações de
-          `transform` competindo pelo mesmo elemento causaria disputa entre
-          o loop de "respiração" e a transição de entrada/hover. */}
-      <div className="h-full w-full animate-breathe">
-        <NovaOrb status="idle" className="h-full w-full" />
-      </div>
+      <NovaOrb status="idle" className="h-full w-full" />
     </motion.button>
   );
 }

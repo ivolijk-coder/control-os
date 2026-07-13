@@ -18,8 +18,13 @@ const GLOW_BLUE = 'rgba(59, 130, 246, 0.55)';
 const MAX_NODES = 46;
 const MIN_NODES = 18;
 const LINK_DISTANCE = 140;
-const NODE_SPEED = 0.12;
+// CONTROL OS — Etapa 10A: "partículas lentas... sensação de ambiente" —
+// reduzida de 0.12 (mais nervosa) pra uma deriva quase parada, mais perto de
+// poeira suspensa do que de um gráfico de rede se movendo.
+const NODE_SPEED = 0.05;
 const TARGET_FRAME_MS = 33; // ~30fps — leve o suficiente para não pesar no Lighthouse.
+/** Raio do halo de glow (canvas `shadowBlur`) dos nós de destaque — custo desprezível, só ~3-4 nós por vez. */
+const GLOW_NODE_SHADOW_BLUR = 10;
 
 function createNodes(width: number, height: number): NetworkNode[] {
   const area = width * height;
@@ -99,10 +104,21 @@ export function BackgroundNetwork({ className }: { className?: string }) {
 
       nodes.forEach((node, index) => {
         const isGlowNode = index % 7 === 0;
-        ctx.fillStyle = isGlowNode ? (index % 14 === 0 ? GLOW_PURPLE : GLOW_BLUE) : NODE_COLOR;
+        const color = isGlowNode ? (index % 14 === 0 ? GLOW_PURPLE : GLOW_BLUE) : NODE_COLOR;
+        ctx.fillStyle = color;
+        // CONTROL OS — Etapa 10A: halo suave nos nós de destaque — "glow
+        // discreto" pedido explicitamente. Reset sempre depois de desenhar,
+        // pra nunca vazar sombra pras linhas de conexão desenhadas antes.
+        if (isGlowNode) {
+          ctx.shadowColor = color;
+          ctx.shadowBlur = GLOW_NODE_SHADOW_BLUR;
+        }
         ctx.beginPath();
         ctx.arc(node.x, node.y, isGlowNode ? 2.2 : 1.3, 0, Math.PI * 2);
         ctx.fill();
+        if (isGlowNode) {
+          ctx.shadowBlur = 0;
+        }
       });
     };
 

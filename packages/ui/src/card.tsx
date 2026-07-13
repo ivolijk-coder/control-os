@@ -37,13 +37,23 @@ export interface CardFooterProps extends React.ComponentPropsWithoutRef<'div'> {
  * #050505. `bg-card/80` + `backdrop-blur-sm` deixam o Background vivo (Fase
  * 2: Nova Experience) sutilmente visível através da superfície, mantendo
  * legibilidade total do conteúdo.
+ *
+ * CONTROL OS — Etapa 10A: Premium Visual Identity. Ganhou um realce sutil
+ * no topo da borda (gradiente quase imperceptível, como luz incidindo numa
+ * superfície de vidro) e uma resposta de hover consistente com o resto do
+ * sistema (borda e sombra crescem levemente) — antes era uma superfície
+ * puramente estática, sem nenhuma microinteração, diferente do `GlassCard`
+ * (`apps/web/components/ui/glass-card.tsx`) que já tinha isso. Continua
+ * `border-box`/props idênticas — nenhum consumidor precisa mudar nada.
  */
 export const Card = React.forwardRef<HTMLDivElement, CardProps>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
       className={cn(
-        'rounded-lg border border-white/[0.08] bg-card/80 shadow-e2 backdrop-blur-sm transition-colors duration-base ease-out',
+        'relative overflow-hidden rounded-lg border border-white/[0.08] bg-card/80 shadow-e2 backdrop-blur-sm transition-all duration-base ease-out',
+        'before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/20 before:to-transparent',
+        'hover:border-white/[0.14] hover:shadow-e3',
         className
       )}
       {...props}

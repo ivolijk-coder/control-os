@@ -313,15 +313,10 @@ export function NovaWorkspace({
               className="flex h-64 w-64 shrink-0 items-center justify-center sm:h-80 sm:w-80"
             >
               {/* CONTROL OS — Etapa 9: "NOVA ORB. Grande. Viva. Respirando."
-                  — respiração (`animate-breathe`, CSS) só quando ociosa, num
-                  `div` interno separado do `motion.div` externo (que já
-                  anima `scale` via Framer Motion enquanto pensa/executa) —
-                  mesmo motivo do botão flutuante em `nova-floating-launcher.tsx`:
-                  duas animações de `transform` no mesmo elemento competiriam
-                  entre si. */}
-              <div className={orbStatus === 'idle' ? 'h-full w-full animate-breathe' : 'h-full w-full'}>
-                <NovaOrb status={orbStatus} />
-              </div>
+                  A respiração em si vem de dentro da própria `NovaOrb` desde
+                  a Etapa 10A (overhaul visual) — não precisa mais de uma
+                  classe CSS externa aqui. */}
+              <NovaOrb status={orbStatus} />
             </motion.div>
 
             <div className="flex w-full flex-col gap-6">{conversationArea}</div>
