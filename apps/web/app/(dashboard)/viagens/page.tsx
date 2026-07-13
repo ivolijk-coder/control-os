@@ -1,23 +1,36 @@
 'use client';
 
-import { Check } from 'lucide-react';
+import { AlertTriangle, Check, FileText, MapPin, Plane } from 'lucide-react';
 import { FadeIn } from '@/components/dashboard/fade-in';
 import { GlassCard } from '@/components/ui/glass-card';
-import { ICON_MAP } from '@/components/layout/icon-map';
+import { EmptyState } from '@/components/ui/empty-state';
+import { SectionHeader } from '@/components/dashboard/section-header';
+import { ProgressRing } from '@/components/dashboard/progress-ring';
+import { InsightCard } from '@/components/dashboard/insight-card';
 import { useDataStore } from '@/lib/data-store';
 import { cn, formatCurrency } from '@/lib/utils';
+
+const DOCUMENT_KEYWORDS = ['passaporte', 'visto', 'seguro', 'identidade', 'rg', 'cnh', 'vacina'];
 
 function formatRange(start: string, end: string): string {
   const format = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' });
   return `${format.format(new Date(start))} – ${format.format(new Date(end))}`;
 }
 
+function daysUntil(date: string): number {
+  return Math.ceil((new Date(date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+}
+
 /**
- * Viagens — módulo pessoal (CONTROL OS — Sistema Operacional Pessoal).
+ * Viagens — módulo premium (CONTROL OS — Etapa 10B), "Trip Planner".
  *
- * Cada viagem tem seu próprio checklist (`Trip.checklist`) — clicável
- * direto na tela (`toggleTripChecklistItem`), sem precisar passar pela
- * Nova pra marcar um item como feito.
+ * Continua sendo `Trip.checklist` (`toggleTripChecklistItem`, sem mudança).
+ * "Documentos necessários" é um filtro sobre os próprios itens do checklist
+ * cujo texto sugere documento (passaporte, visto, seguro...) — não existe
+ * relação `Trip↔PersonalDocument` no modelo de dado, então não finjo que
+ * existe; é uma leitura mais inteligente do mesmo checklist. "Mapa" é um
+ * indicador ilustrativo de rota (não há coordenadas reais no dado) — deixa
+ * a tela com cara de planner sem fingir ter geolocalização.
  */
 export default function ViagensPage() {
   const trips = useDataStore((state) => state.trips);
@@ -26,31 +39,34 @@ export default function ViagensPage() {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
       <FadeIn>
-        <div className="flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-text-primary">Viagens</h1>
-          <span className="text-xs text-text-tertiary">{trips.length} planejadas</span>
-        </div>
+        <SectionHeader level="page" title="Viagens" meta={`${trips.length} planejadas`} />
       </FadeIn>
 
       {trips.length === 0 && (
         <FadeIn delay={0.05}>
-          <GlassCard interactive={false} className="p-8 text-center text-sm text-text-secondary">
-            Nenhuma viagem planejada ainda.
-          </GlassCard>
+          <EmptyState icon={Plane} title="Nenhuma viagem planejada ainda." />
         </FadeIn>
       )}
 
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-5">
         {trips.map((trip, index) => {
           const done = trip.checklist.filter((item) => item.done).length;
+          const progress = trip.checklist.length > 0 ? (done / trip.checklist.length) * 100 : 0;
+          const restante = daysUntil(trip.startDate);
+          const pendentes = trip.checklist.filter((item) => !item.done);
+          const documentItems = trip.checklist.filter((item) =>
+            DOCUMENT_KEYWORDS.some((keyword) => item.label.toLowerCase().includes(keyword))
+          );
+          const pendingDocuments = documentItems.filter((item) => !item.done);
+
           return (
             <FadeIn key={trip.id} delay={0.05 * (index + 1)}>
               <GlassCard interactive={false} className="p-5">
-                <div className="flex items-start gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-text-secondary">
-                    <ICON_MAP.Plane className="h-4 w-4" />
-                  </span>
-                  <div className="flex min-w-0 flex-1 flex-col">
+                <div className="flex items-start gap-4">
+                  <ProgressRing value={progress} size={52} strokeWidth={5} accent="purple">
+                    <span className="font-mono text-xs font-semibold text-text-primary">{Math.round(progress)}%</span>
+                  </ProgressRing>
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <p className="text-sm font-medium text-text-primary">{trip.destination}</p>
                     <p className="text-xs text-text-tertiary">
                       {formatRange(trip.startDate, trip.endDate)}
@@ -62,7 +78,48 @@ export default function ViagensPage() {
                   </span>
                 </div>
 
+                {/* Rota ilustrativa — sem geolocalização real, só reforça o "planner". */}
+                <div className="mt-4 flex items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-text-tertiary" />
+                  <span className="h-px flex-1 bg-gradient-to-r from-white/20 via-white/10 to-transparent" />
+                  <Plane className="h-3.5 w-3.5 shrink-0 -rotate-45 text-accent-purple" />
+                  <span className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-white/20" />
+                  <MapPin className="h-3.5 w-3.5 shrink-0 text-accent-purple" />
+                  <span className="shrink-0 text-xs text-text-secondary">{trip.destination}</span>
+                </div>
+
+                {restante >= 0 && pendentes.length > 0 && (
+                  <div className="mt-4">
+                    <InsightCard
+                      icon={AlertTriangle}
+                      accent={restante <= 14 ? 'red' : 'blue'}
+                      title={`Faltam ${restante} dia${restante === 1 ? '' : 's'} para a viagem`}
+                      description={`${pendentes.length} item${pendentes.length === 1 ? '' : 'ns'} do checklist ainda pendente${pendentes.length === 1 ? '' : 's'}.`}
+                    />
+                  </div>
+                )}
+
+                {pendingDocuments.length > 0 && (
+                  <div className="mt-4 flex flex-col gap-2">
+                    <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-text-tertiary">
+                      <FileText className="h-3 w-3" />
+                      Documentos necessários
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {pendingDocuments.map((item) => (
+                        <span
+                          key={item.id}
+                          className="rounded-full border border-accent-red/20 bg-accent-red/10 px-3 py-1 text-xs text-accent-red"
+                        >
+                          {item.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-4 flex flex-col gap-1.5">
+                  <p className="text-xs font-medium uppercase tracking-wider text-text-tertiary">Checklist</p>
                   {trip.checklist.map((item) => (
                     <button
                       key={item.id}

@@ -10,6 +10,7 @@ import type { ConversationMessage, ConversationMessageStatus } from '@/component
 import type { NovaThinkingStatus } from '@/components/nova/nova-thinking';
 import type { NovaOrbStatus } from '@/components/nova/nova-orb';
 import { QuickAction } from '@/components/ui/quick-action';
+import { Skeleton } from '@/components/ui/skeleton';
 import { IntelligentPanel } from '@/components/home/intelligent-panel';
 import { conversationService, KEEP_RECENT_TURNS, shouldCondense } from '@/services/ai';
 import { generateRecommendations, toReadOnlyContext } from '@/services/nova';
@@ -19,8 +20,11 @@ import { useNovaContext } from '@/lib/use-nova-context';
 import { transitionOut, transitionSpring } from '@/lib/motion';
 
 // Canvas é inerentemente client-only — mesmo tratamento do BackgroundNetwork.
+// `loading` (CONTROL OS — Etapa 10B) evita o "buraco" vazio enquanto o chunk
+// do canvas carrega.
 const NovaOrb = dynamic(() => import('@/components/nova/nova-orb').then((mod) => mod.NovaOrb), {
   ssr: false,
+  loading: () => <Skeleton className="h-full w-full rounded-full" />,
 });
 
 // Sugestões genéricas — só aparecem quando ainda não há nenhuma recomendação

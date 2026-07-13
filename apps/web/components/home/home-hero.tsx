@@ -2,11 +2,12 @@
 
 import * as React from 'react';
 import { motion } from 'framer-motion';
-import { Mic } from 'lucide-react';
+import { CalendarClock, Mic, Repeat, Sparkles, Trophy, Wallet, type LucideIcon } from 'lucide-react';
 import { buildHomeInsights, toReadOnlyContext } from '@/services/nova';
 import { blurIn, fadeUp, hoverLift, staggerContainer, transitionOut } from '@/lib/motion';
 import { useAppStore } from '@/lib/store';
 import { useNovaContext } from '@/lib/use-nova-context';
+import { InsightCard, type InsightCardProps } from '@/components/dashboard/insight-card';
 
 /** Saudação por horário do dia — parte do "parecer uma conversa", não um dashboard. */
 function getTimeOfDayGreeting(): string {
@@ -14,6 +15,20 @@ function getTimeOfDayGreeting(): string {
   if (hour < 12) return 'Bom dia';
   if (hour < 18) return 'Boa tarde';
   return 'Boa noite';
+}
+
+/**
+ * Escolhe um ícone/acento pro bullet (CONTROL OS — Etapa 10B) só a partir do
+ * texto que `buildHomeInsights` já devolve — não muda a Etapa 9, só decide
+ * como desenhar cada frase que ela já gera, na mesma ordem previsível
+ * (gasto → hábitos → meta → agenda → sugestão da Nova).
+ */
+function classifyInsight(text: string): { icon: LucideIcon; accent: InsightCardProps['accent'] } {
+  if (/gastou/i.test(text)) return { icon: Wallet, accent: 'blue' };
+  if (/hábito/i.test(text)) return { icon: Repeat, accent: 'green' };
+  if (/meta ".*" está/i.test(text)) return { icon: Trophy, accent: 'purple' };
+  if (/\bàs\b|hoje\.$/i.test(text)) return { icon: CalendarClock, accent: 'blue' };
+  return { icon: Sparkles, accent: 'purple' };
 }
 
 /**
@@ -31,6 +46,14 @@ function getTimeOfDayGreeting(): string {
  * conversa e painel inteligente vivem em `NovaWorkspace`, montado logo
  * abaixo deste componente em `app/(dashboard)/nova/page.tsx`. O CTA de voz
  * (Etapa 8) permanece como a ação principal sugerida.
+ *
+ * CONTROL OS — Etapa 10B: cada bullet do resumo (mesmo array de string que
+ * `buildHomeInsights` sempre devolveu, nenhuma mudança na Etapa 9) agora
+ * aparece como um `InsightCard` em vez de um item de lista com "•" — mais
+ * "cards inteligentes", zero lógica nova. A Home continua "só a bola" no
+ * sentido que importa: nenhuma seção de módulo, nenhum grid de métricas
+ * cruzadas — só a mesma saudação e o mesmo resumo, com um verniz visual
+ * melhor.
  */
 export function HomeHero({ firstName }: { firstName: string }) {
   const setNovaVoiceOpen = useAppStore((state) => state.setNovaVoiceOpen);
@@ -58,22 +81,21 @@ export function HomeHero({ firstName }: { firstName: string }) {
           initial="hidden"
           animate="visible"
           variants={staggerContainer(0.06, 0.15)}
-          className="flex max-w-md flex-col items-center gap-3"
+          className="flex w-full max-w-md flex-col items-center gap-3"
         >
           <motion.p variants={fadeUp} className="text-sm text-text-secondary">
             Hoje encontrei algumas coisas importantes para você.
           </motion.p>
-          <ul className="flex flex-col items-center gap-1.5">
-            {insights.map((insight) => (
-              <motion.li
-                key={insight}
-                variants={fadeUp}
-                className="text-sm leading-relaxed text-text-primary before:mr-2 before:text-text-tertiary before:content-['•']"
-              >
-                {insight}
-              </motion.li>
-            ))}
-          </ul>
+          <div className="flex w-full flex-col gap-2">
+            {insights.map((insight) => {
+              const { icon, accent } = classifyInsight(insight);
+              return (
+                <motion.div key={insight} variants={fadeUp}>
+                  <InsightCard icon={icon} accent={accent} title={insight} />
+                </motion.div>
+              );
+            })}
+          </div>
         </motion.div>
       )}
 

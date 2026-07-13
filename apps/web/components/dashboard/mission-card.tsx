@@ -1,19 +1,6 @@
-import { Badge, Card, Progress } from '@control-os/ui';
-import type { Mission, MissionStatus } from '@control-os/types';
-
-const STATUS_LABEL: Record<MissionStatus, string> = {
-  planejamento: 'Planejamento',
-  em_andamento: 'Em andamento',
-  em_risco: 'Em risco',
-  concluida: 'Concluída',
-};
-
-const STATUS_VARIANT: Record<MissionStatus, 'neutral' | 'green' | 'blue' | 'purple' | 'red'> = {
-  planejamento: 'neutral',
-  em_andamento: 'blue',
-  em_risco: 'red',
-  concluida: 'green',
-};
+import { Card, Progress } from '@control-os/ui';
+import type { Mission } from '@control-os/types';
+import { MissionStatusBadge } from '@/components/dashboard/status-badge';
 
 function formatDueDate(dueDate?: string): string | null {
   if (!dueDate) return null;
@@ -27,7 +14,7 @@ export function MissionCard({ mission }: { mission: Mission }) {
     <Card className="p-4 transition-colors duration-fast ease-out hover:border-white/20">
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-medium leading-snug text-text-primary">{mission.title}</p>
-        <Badge variant={STATUS_VARIANT[mission.status]}>{STATUS_LABEL[mission.status]}</Badge>
+        <MissionStatusBadge status={mission.status} />
       </div>
 
       <div className="mt-4 flex items-center gap-3">

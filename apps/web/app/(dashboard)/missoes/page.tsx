@@ -1,65 +1,112 @@
 'use client';
 
-import type { MissionStatus } from '@control-os/types';
+import { AlertTriangle, CalendarCheck, CheckCircle2, ListChecks, TrendingUp } from 'lucide-react';
 import { FadeIn } from '@/components/dashboard/fade-in';
+import { EmptyState } from '@/components/ui/empty-state';
+import { SectionHeader } from '@/components/dashboard/section-header';
+import { DashboardCard } from '@/components/dashboard/dashboard-card';
 import { MissionCard } from '@/components/dashboard/mission-card';
-import { GlassCard } from '@/components/ui/glass-card';
+import { ChartCard } from '@/components/dashboard/chart-card';
 import { useDataStore } from '@/lib/data-store';
+import type { Mission } from '@control-os/types';
 
-const STATUS_ORDER: MissionStatus[] = ['em_risco', 'em_andamento', 'planejamento', 'concluida'];
+function isoToday(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
-const STATUS_LABEL: Record<MissionStatus, string> = {
-  planejamento: 'Planejamento',
-  em_andamento: 'Em andamento',
-  em_risco: 'Em risco',
-  concluida: 'Concluída',
-};
+function MissionColumn({ title, missions, emptyLabel }: { title: string; missions: Mission[]; emptyLabel: string }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <SectionHeader title={title} meta={`${missions.length}`} />
+      {missions.length === 0 ? (
+        <p className="text-xs text-text-tertiary">{emptyLabel}</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {missions.map((mission) => (
+            <MissionCard key={mission.id} mission={mission} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
- * Missões — módulo completo (CONTROL OS 3.0).
+ * Missões — painel de produtividade premium (CONTROL OS — Etapa 10B).
  *
- * Lê de `useDataStore`: toda missão criada por conversa com a Nova (ex.:
- * "Lembrar de pagar o DAS", "Quero faturar R$ 500 mil", "Vou viajar em
- * novembro") aparece aqui automaticamente, agrupada por status — mesma
- * fonte de dados que o Dashboard e a conversa usam, sem duplicação.
+ * Continua lendo só `useDataStore.missions` — nenhum campo novo. Não existe
+ * "prioridade"/"impacto" no tipo `Mission`; em vez de inventar campos, uso
+ * "em risco + prazo próximo" como proxy real de prioridade (derivado, não
+ * persistido) e `objectivesTotal` (quantos objetivos a missão tem) como
+ * proxy honesto de "impacto" — maior escopo real, não uma nota fabricada.
  */
 export default function MissoesPage() {
   const missions = useDataStore((state) => state.missions);
+  const today = isoToday();
+
+  const emRisco = missions.filter((mission) => mission.status === 'em_risco');
+  const hoje = missions.filter((mission) => mission.dueDate === today && mission.status !== 'concluida');
+  const emAndamento = missions.filter((mission) => mission.status === 'em_andamento');
+  const concluidas = missions.filter((mission) => mission.status === 'concluida');
+  const planejamento = missions.filter((mission) => mission.status === 'planejamento');
+
+  const maiorImpacto = [...missions]
+    .filter((mission) => mission.status !== 'concluida')
+    .sort((a, b) => b.objectivesTotal - a.objectivesTotal)
+    .slice(0, 3);
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
       <FadeIn>
-        <div className="flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-text-primary">Missões</h1>
-          <span className="text-xs text-text-tertiary">{missions.length} no total</span>
-        </div>
+        <SectionHeader level="page" title="Missões" meta={`${missions.length} no total`} />
       </FadeIn>
 
-      {missions.length === 0 && (
+      {missions.length === 0 ? (
         <FadeIn delay={0.05}>
-          <GlassCard interactive={false} className="p-8 text-center text-sm text-text-secondary">
-            Nenhuma missão ainda. Conte para a Nova o que você precisa lembrar, alcançar ou organizar.
-          </GlassCard>
+          <EmptyState
+            icon={ListChecks}
+            title="Nenhuma missão ainda."
+            description="Conte para a Nova o que você precisa lembrar, alcançar ou organizar."
+          />
         </FadeIn>
-      )}
-
-      {STATUS_ORDER.map((status, index) => {
-        const missionsInStatus = missions.filter((mission) => mission.status === status);
-        if (missionsInStatus.length === 0) return null;
-
-        return (
-          <FadeIn key={status} delay={0.05 * (index + 1)}>
-            <div className="flex flex-col gap-3">
-              <h2 className="text-sm font-medium text-text-primary">{STATUS_LABEL[status]}</h2>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {missionsInStatus.map((mission) => (
-                  <MissionCard key={mission.id} mission={mission} />
-                ))}
-              </div>
+      ) : (
+        <>
+          <FadeIn delay={0.05}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <DashboardCard icon={AlertTriangle} label="Em risco" value={`${emRisco.length}`} accent={emRisco.length > 0 ? 'red' : 'green'} />
+              <DashboardCard icon={CalendarCheck} label="Para hoje" value={`${hoje.length}`} accent="blue" />
+              <DashboardCard icon={TrendingUp} label="Em andamento" value={`${emAndamento.length}`} accent="purple" />
+              <DashboardCard icon={CheckCircle2} label="Concluídas" value={`${concluidas.length}`} accent="green" />
             </div>
           </FadeIn>
-        );
-      })}
+
+          {maiorImpacto.length > 0 && (
+            <FadeIn delay={0.08}>
+              <ChartCard title="Maior impacto" description="Missões com mais objetivos pela frente">
+                <div className="flex flex-col gap-2">
+                  {maiorImpacto.map((mission) => (
+                    <div key={mission.id} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="min-w-0 truncate text-text-primary">{mission.title}</span>
+                      <span className="shrink-0 font-mono text-xs text-text-tertiary">
+                        {mission.objectivesDone}/{mission.objectivesTotal} objetivos
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </ChartCard>
+            </FadeIn>
+          )}
+
+          <FadeIn delay={0.11}>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <MissionColumn title="Em risco" missions={emRisco} emptyLabel="Nenhuma missão em risco. 🎉" />
+              <MissionColumn title="Para hoje" missions={hoje} emptyLabel="Nada com prazo para hoje." />
+              <MissionColumn title="Em andamento" missions={[...emAndamento, ...planejamento]} emptyLabel="Nenhuma missão em andamento." />
+              <MissionColumn title="Concluídas" missions={concluidas} emptyLabel="Nenhuma missão concluída ainda." />
+            </div>
+          </FadeIn>
+        </>
+      )}
     </div>
   );
 }

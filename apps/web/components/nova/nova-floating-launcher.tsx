@@ -6,14 +6,18 @@ import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useAppStore } from '@/lib/store';
 import { hoverLift } from '@/lib/motion';
+import { Skeleton } from '@/components/ui/skeleton';
 
 // Escondido em /nova: a conversa já é o conteúdo principal dessa tela — não
 // faz sentido empilhar duas superfícies de conversa uma sobre a outra.
 const HIDDEN_ON_PREFIXES = ['/nova'];
 
 // Canvas é inerentemente client-only — mesmo tratamento do BackgroundNetwork.
+// `loading` (CONTROL OS — Etapa 10B) evita o botão aparecer vazio por um
+// instante enquanto o chunk do canvas carrega.
 const NovaOrb = dynamic(() => import('@/components/nova/nova-orb').then((mod) => mod.NovaOrb), {
   ssr: false,
+  loading: () => <Skeleton className="h-full w-full rounded-full" />,
 });
 
 /**
