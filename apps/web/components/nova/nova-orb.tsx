@@ -387,6 +387,19 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
       const currentStatus = statusRef.current;
       const glowRgb = GLOW_COLOR_BY_STATUS[currentStatus];
 
+      // CONTROL OS — Etapa 11D: segunda camada de proteção contra o
+      // "quadrado perceptível", além de conter cada gradiente ao seu
+      // próprio raio (ver `outerGlow`/`coreGlow` abaixo). Um clip circular
+      // no maior círculo que cabe dentro do canvas (sempre um elemento
+      // quadrado) torna IMPOSSÍVEL qualquer pixel — glow, onda, partícula
+      // de burst, reflexo — ser desenhado nos cantos, mesmo que um ajuste
+      // futuro de raio erre a conta de novo. `ctx.restore()` no fim de
+      // `drawFrame` remove o clip antes do próximo frame.
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.min(width, height) / 2, 0, Math.PI * 2);
+      ctx.clip();
+
       // Respiração: o próprio raio da esfera oscila, não só o container CSS
       // por fora — é isso que faz a orb parecer respirando de dentro pra
       // fora, não só "crescendo".
@@ -408,11 +421,27 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
       // sutil (o halo "de verdade" — enorme, sem borda — é o CSS por trás do
       // canvas; isto aqui só ilumina discretamente a área imediatamente ao
       // redor da esfera dentro do próprio canvas).
-      const outerGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 2.2);
+      //
+      // CONTROL OS — Etapa 11D: esta é a causa raiz do "quadrado
+      // perceptível" relatado. O raio externo do gradiente (antes `radius *
+      // 2.2`) chegava a ultrapassar a distância até os CANTOS do canvas
+      // (que é sempre um elemento quadrado) — e como `fillRect` pintava o
+      // retângulo inteiro, os 4 cantos recebiam uma tinta residual (~3-4%
+      // de opacidade) que o resto do fundo, fora do canvas, não tinha. Um
+      // gradiente radial, mesmo suave, sempre acaba formando essa "vinheta
+      // quadrada" se o raio onde ele chega a opacidade zero for maior que a
+      // diagonal do próprio elemento. Corrigido reduzindo o raio externo
+      // pra bem menos que a distância até os cantos em qualquer estado (o
+      // pior caso — 'ouvindo' respirando no pico — ainda fica width abaixo
+      // do limite) — a opacidade agora chega a zero bem antes dos cantos,
+      // em vez de só no limite teórico do gradiente.
+      const outerGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 1.3);
       outerGlow.addColorStop(0, `rgba(${glowRgb}, ${(0.1 + pulseGlowBoost * 0.4).toFixed(3)})`);
       outerGlow.addColorStop(1, `rgba(${glowRgb}, 0)`);
       ctx.fillStyle = outerGlow;
-      ctx.fillRect(0, 0, width, height);
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 1.3, 0, Math.PI * 2);
+      ctx.fill();
 
       // Camada 2 — "material translúcido" (vidro líquido): preenchimento
       // com silhueta levemente deformada por ruído (nunca um círculo
@@ -452,7 +481,11 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
       coreGlow.addColorStop(0, `rgba(${glowRgb}, ${coreOpacity.toFixed(3)})`);
       coreGlow.addColorStop(1, `rgba(${glowRgb}, 0)`);
       ctx.fillStyle = coreGlow;
-      ctx.fillRect(0, 0, width, height);
+      // Mesmo raciocínio do halo externo acima — preenche só o círculo onde
+      // o gradiente de fato tem cor, nunca o retângulo inteiro do canvas.
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 1.1, 0, Math.PI * 2);
+      ctx.fill();
 
       // Ondas de energia — anéis nascendo e se dissolvendo (por temporizador
       // e por palavra falada, ver `wavesRef`).
@@ -550,6 +583,8 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
       ctx.beginPath();
       ctx.ellipse(cx, cy, radius * 1.05, radius * 1.05 * DEPTH_SQUASH, 0, 0, Math.PI * 2);
       ctx.fill();
+
+      ctx.restore(); // fecha o clip circular aberto no início da função
     };
 
     const step = (time: number) => {
