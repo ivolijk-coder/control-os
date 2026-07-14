@@ -321,12 +321,17 @@ export function NovaWorkspace({
           <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-6">
             {messages.length === 0 && topContent}
 
-            {/* Tamanho do container é fixo — só o `scale` muda — pra não
-                forçar o canvas a recalcular resolução a cada resposta. */}
+            {/* Tamanho do container é fixo por breakpoint — só o `scale`
+                muda — pra não forçar o canvas a recalcular resolução a cada
+                resposta. CONTROL OS — Etapa 12: "mobile-first — a esfera
+                ocupa praticamente metade da primeira tela ao abrir." `44vh`
+                (limitado a 20rem pra não estourar em telas bem altas)
+                garante isso sem media query nova — a partir de `sm:` volta
+                ao tamanho fixo de desktop. */}
             <motion.div
               animate={{ scale: orbScale }}
               transition={transitionSpring}
-              className="flex h-64 w-64 shrink-0 items-center justify-center sm:h-80 sm:w-80"
+              className="flex h-[44vh] w-[44vh] max-h-[20rem] max-w-[20rem] shrink-0 items-center justify-center sm:h-80 sm:w-80"
             >
               {/* CONTROL OS — Etapa 9: "NOVA ORB. Grande. Viva. Respirando."
                   A respiração em si vem de dentro da própria `NovaOrb` desde
