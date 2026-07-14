@@ -24,13 +24,22 @@ const NovaOrb = dynamic(() => import('@/components/nova/nova-orb').then((mod) =>
 // desde a Etapa 7 — este é só mais um consumidor passando o dele.
 const VOICE_SESSION_ID = 'nova_voice_overlay';
 
-// Mesmo ritmo artificial de "pensando → executando" já usado na conversa por
-// texto (`nova-workspace.tsx`) — não são eventos de progresso reais vindos
-// do serviço (o `ConversationService` não expõe isso), só dão tempo pra
-// animação da esfera comunicar que algo está acontecendo antes da resposta
-// chegar.
+// CONTROL OS — Etapa 11: "nunca deixar a tela parada". Antes, a UI esperava
+// dois delays fixos e SEQUENCIAIS (900ms de espera artificial) antes mesmo
+// de começar a chamada real — piorava a lentidão em vez de disfarçar. Agora
+// a chamada real (`conversationService.processTurn`) começa em 0ms, em
+// paralelo com esta progressão de legendas, que só existe pra nunca deixar
+// a tela em silêncio enquanto a OpenAI processa (não são eventos de
+// progresso reais — o serviço não expõe isso). Assim que a resposta real
+// chega, os timers restantes são cancelados — a progressão nunca atrasa a
+// resposta, só preenche a espera quando ela existe.
 const THINKING_DELAY_MS = 500;
-const EXECUTING_DELAY_MS = 400;
+const STATUS_PROGRESSION: { delayMs: number; status: VoiceModeStatus; label: string }[] = [
+  { delayMs: 100, status: 'pensando', label: 'Ouvi você.' },
+  { delayMs: 300, status: 'pensando', label: 'Entendi.' },
+  { delayMs: 600, status: 'executando', label: 'Consultando seus dados...' },
+  { delayMs: 1000, status: 'pensando', label: 'Pensando...' },
+];
 
 type VoiceModeStatus = 'ouvindo' | 'pensando' | 'executando' | 'respondendo' | 'pronto';
 
@@ -85,6 +94,13 @@ function wait(ms: number): Promise<void> {
  * sessão — o Modo Conversa só precisa continuar chamando `processTurn` a
  * cada fala do usuário, do mesmo jeito.
  *
+ * CONTROL OS — Etapa 11: a percepção de velocidade ("nunca deixar a tela
+ * parada") vem de `STATUS_PROGRESSION` — uma legenda evolui sozinha
+ * ("Ouvi você." → "Entendi." → "Consultando seus dados..." → "Pensando...")
+ * enquanto a chamada real corre em paralelo, e para assim que a resposta
+ * de verdade chega. Nunca atrasa a resposta real; só preenche o silêncio
+ * quando ele existiria.
+ *
  * Interrupção (CONTROL OS — Etapa 8: "usuário pode interromper a NOVA"):
  * implementada como toque-pra-interromper — tocar a esfera enquanto a NOVA
  * fala cancela a fala e volta a ouvir imediatamente. Deliberadamente mais
@@ -102,6 +118,10 @@ export function NovaVoiceOverlay() {
   const [liveTranscript, setLiveTranscript] = React.useState('');
   const [novaReply, setNovaReply] = React.useState('');
   const [errorMessage, setErrorMessage] = React.useState<string | undefined>(undefined);
+  /** Legenda da progressão "nunca em silêncio" (ver `STATUS_PROGRESSION`) — só existe entre o fim da fala e a resposta real chegar. */
+  const [waitingLabel, setWaitingLabel] = React.useState<string | undefined>(undefined);
+  /** Incrementa a cada fronteira de palavra reportada por `VoiceProvider.speak` — ver `NovaOrbProps.pulseSignal` (Etapa 11: "fala → pulsa conforme as palavras"). */
+  const [speechPulse, setSpeechPulse] = React.useState(0);
 
   const speechSupported = React.useMemo(() => getSpeechProvider().isSupported, []);
   const voiceSupported = React.useMemo(() => getVoiceProvider().isSupported, []);
@@ -122,12 +142,20 @@ export function NovaVoiceOverlay() {
       setErrorMessage(undefined);
 
       void (async () => {
+        // Orb reage em 0ms; a chamada real começa junto, em paralelo com a
+        // progressão de legendas — nenhuma delas espera a outra.
         setStatus('pensando');
-        await wait(THINKING_DELAY_MS);
-        setStatus('executando');
-        await wait(EXECUTING_DELAY_MS);
+        setWaitingLabel(undefined);
+        const timers = STATUS_PROGRESSION.map(({ delayMs, status: stepStatus, label }) =>
+          window.setTimeout(() => {
+            setStatus(stepStatus);
+            setWaitingLabel(label);
+          }, delayMs)
+        );
 
         const result = await conversationService.processTurn(transcript, novaContext, VOICE_SESSION_ID);
+        timers.forEach((id) => window.clearTimeout(id));
+        setWaitingLabel(undefined);
         setNovaReply(result.reply);
         setStatus('respondendo');
 
@@ -141,6 +169,7 @@ export function NovaVoiceOverlay() {
         }
 
         getVoiceProvider().speak(result.reply, {
+          onBoundary: () => setSpeechPulse((tick) => tick + 1),
           onEnd: () => {
             setStatus('ouvindo');
             startListeningRef.current();
@@ -222,9 +251,11 @@ export function NovaVoiceOverlay() {
   const caption =
     status === 'ouvindo'
       ? liveTranscript || 'Pode falar.'
-      : status === 'respondendo' || status === 'pensando' || status === 'executando'
+      : status === 'respondendo'
         ? novaReply || '...'
-        : liveTranscript;
+        : status === 'pensando' || status === 'executando'
+          ? waitingLabel || 'Ouvi você.'
+          : liveTranscript;
 
   return (
     <AnimatePresence>
@@ -259,7 +290,7 @@ export function NovaVoiceOverlay() {
               animate={{ scale: ORB_SCALE_BY_VOICE_STATUS[status] }}
               transition={{ duration: 0.4, ease: EASE_OUT }}
             >
-              <NovaOrb status={ORB_STATUS_BY_VOICE_STATUS[status]} />
+              <NovaOrb status={ORB_STATUS_BY_VOICE_STATUS[status]} pulseSignal={speechPulse} />
             </motion.button>
 
             <div className="flex max-w-md flex-col items-center gap-2 text-center">

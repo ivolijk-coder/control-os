@@ -69,8 +69,13 @@ const SUGGESTION_LABEL_BY_CATEGORY: Record<NovaRecommendationCategory, string> =
 // consumidor que precisa enxergar a mesma confirmação de ação sensível
 // pendente (`pendingBySession`) que a conversa por texto.
 
-const THINKING_DELAY_MS = 700;
-const EXECUTING_DELAY_MS = 500;
+// CONTROL OS — Etapa 11: "nunca deixar a tela parada" — antes, a UI esperava
+// esses dois delays em SEQUÊNCIA, SEM iniciar a chamada real (1200ms de
+// espera artificial pura antes até de perguntar pra OpenAI). Agora
+// `conversationService.processTurn` começa em 0ms; `EXECUTING_SWITCH_MS` só
+// decide quando a legenda da bolha troca de "Pensando" pra "Executando" —
+// puramente cosmético, cancelado assim que a resposta real chega.
+const EXECUTING_SWITCH_MS = 700;
 
 let messageIdCounter = 0;
 
@@ -78,10 +83,6 @@ let messageIdCounter = 0;
 function nextMessageId(prefix: string): string {
   messageIdCounter += 1;
   return `${prefix}_${messageIdCounter}`;
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 /**
@@ -109,6 +110,15 @@ export interface NovaWorkspaceProps {
   variant?: 'inline' | 'docked';
   /** Só usado no modo `docked`, e só antes da primeira mensagem — some assim que a conversa começa, para deixar a esfera como protagonista. */
   topContent?: React.ReactNode;
+  /**
+   * Só usado no modo `docked`, e só antes da primeira mensagem (mesma regra
+   * de `topContent`). Renderizado logo abaixo da esfera — o espaço onde o
+   * spec da Etapa 11 pede "resumo financeiro, resumo da agenda, resumo dos
+   * hábitos" depois das ações rápidas: como o campo de entrada é fixo no
+   * rodapé (nada pode vir depois dele na ordem real do DOM), este é o lugar
+   * que preserva a prioridade conceitual do spec sem quebrar o layout.
+   */
+  belowOrbContent?: React.ReactNode;
 }
 
 /**
@@ -136,6 +146,7 @@ export function NovaWorkspace({
   showIntelligentPanel = false,
   variant = 'inline',
   topContent,
+  belowOrbContent,
 }: NovaWorkspaceProps) {
   // Vive no `useAppStore` (não mais `useState` local) — sobrevive a
   // fechar/reabrir o painel flutuante. Ver comentário em `lib/store.ts`.
@@ -209,11 +220,13 @@ export function NovaWorkspace({
       setThinkingStatus('pensando');
 
       void (async () => {
-        await wait(THINKING_DELAY_MS);
-        setThinkingStatus('executando');
-        await wait(EXECUTING_DELAY_MS);
+        // A chamada real começa já — o timer só troca a legenda da bolha
+        // pra "Executando" se a resposta demorar, e é cancelado assim que
+        // ela chega (nunca atrasa nada, só preenche a espera quando existe).
+        const executingTimer = window.setTimeout(() => setThinkingStatus('executando'), EXECUTING_SWITCH_MS);
 
         const result = await conversationService.processTurn(text, novaContext);
+        window.clearTimeout(executingTimer);
         addNovaMessage({
           id: nextMessageId('nova'),
           role: 'nova',
@@ -233,7 +246,6 @@ export function NovaWorkspace({
     setThinkingStatus('executando');
 
     void (async () => {
-      await wait(EXECUTING_DELAY_MS);
       const result = await conversationService.confirmPending(novaContext);
       addNovaMessage({
         id: nextMessageId('nova'),
@@ -322,6 +334,8 @@ export function NovaWorkspace({
                   classe CSS externa aqui. */}
               <NovaOrb status={orbStatus} />
             </motion.div>
+
+            {messages.length === 0 && belowOrbContent}
 
             <div className="flex w-full flex-col gap-6">{conversationArea}</div>
           </div>

@@ -41,6 +41,15 @@ export interface SpeechProvider {
 export interface VoiceProviderHandlers {
   onEnd?: () => void;
   onError?: (message: string) => void;
+  /**
+   * Chamado a cada fronteira de palavra/frase durante a fala (CONTROL OS —
+   * Etapa 11: "fala → pulsa conforme as palavras"). Opcional — nem todo
+   * `VoiceProvider` consegue emitir isso com granularidade real (depende do
+   * evento `onboundary` do `SpeechSynthesisUtterance`, ou do equivalente de
+   * um provedor futuro); quem consome trata a ausência como "sem pulso
+   * sincronizado", nunca como erro.
+   */
+  onBoundary?: () => void;
 }
 
 export interface VoiceProvider {

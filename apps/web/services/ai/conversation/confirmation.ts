@@ -1,28 +1,32 @@
 import type { NovaIntent } from '@/services/nova';
 
 /**
- * Regra de "ação sensível" (CONTROL OS — Evolução da experiência NOVA):
- * dívidas sempre pedem confirmação (criam uma obrigação de longo prazo,
- * independente do valor); despesas/receitas só pedem confirmação acima de
- * um valor — abaixo disso a NOVA continua executando na hora, do jeito que
- * já funcionava. Lembretes, compromissos, metas, projetos e consultas nunca
- * são sensíveis: continuam 100% instantâneos.
+ * Regra de "ação sensível" (CONTROL OS — Etapa 11: NOVA copiloto — "executar
+ * primeiro, perguntar depois"). Antes (Etapa 4.5), dívida sempre pedia
+ * confirmação e despesa/receita pediam acima de um valor — a NOVA
+ * interrompia o usuário com "Confirma?" pra qualquer ação de valor mais
+ * alto, mesmo sendo 100% reversível (dado errado se corrige registrando um
+ * ajuste, nada é apagado). Política nova: só interrompe pra confirmação
+ * quando a ação for destrutiva/irreversível (excluir, apagar, remover,
+ * desconectar) — nenhum dos `NovaIntent` que existem hoje é desse tipo (só
+ * há intents de CRIAR: despesa, receita, dívida, lembrete, meta, projeto,
+ * hábito, viagem, documento, bem, nota — ver `packages/types`/
+ * `services/nova/interfaces`), então `isSensitiveIntent` não pausa nenhuma
+ * delas mais. Esta função continua existindo (não é lógica morta): é o
+ * ponto único onde uma futura intent destrutiva (`excluir_documento`,
+ * `remover_meta`, `desconectar_integracao`, etc., quando esses tipos forem
+ * criados) deve retornar `true` — sem duplicar o mecanismo de pendência/
+ * confirmação já pronto em `ConversationService`.
  */
-const SENSITIVE_AMOUNT_THRESHOLD = 300;
+export function isSensitiveIntent(_intent: NovaIntent): boolean {
+  return false;
+}
 
 /** "sim", "s", "confirma", "pode", "ok", "beleza", "isso" — variações comuns de confirmação em pt-BR. */
 export const CONFIRM_PATTERN = /^(sim|s|confirma(r)?|pode|ok|okay|beleza|isso|manda)[\s,!.]*$/i;
 
 /** "não", "n", "cancela", "deixa pra lá", "esquece" — variações comuns de recusa em pt-BR. */
 export const CANCEL_PATTERN = /^(n[ãa]o|n|cancela(r)?|deixa (pra )?l[áa]|esquece|para)[\s,!.]*$/i;
-
-export function isSensitiveIntent(intent: NovaIntent): boolean {
-  if (intent.kind === 'registrar_divida') return true;
-  if (intent.kind === 'registrar_despesa' || intent.kind === 'registrar_receita') {
-    return intent.amount >= SENSITIVE_AMOUNT_THRESHOLD;
-  }
-  return false;
-}
 
 /** Resumo em texto mostrado antes de executar uma ação sensível, junto com os botões Confirmar/Cancelar. */
 export function buildConfirmationPreview(intent: NovaIntent): string {

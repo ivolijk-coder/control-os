@@ -51,6 +51,24 @@ const BREATHE_AMPLITUDE_BY_STATUS: Record<NovaOrbStatus, number> = {
   respondendo: 0.045,
 };
 
+// CONTROL OS — Etapa 11: "ouve → cresce" — além da respiração (oscila pra
+// dentro e pra fora), 'ouvindo' ganha um raio-base maior, sustentado
+// enquanto o status durar — presença que avança em direção ao usuário, não
+// só um pulso passageiro.
+const RADIUS_SCALE_BY_STATUS: Record<NovaOrbStatus, number> = {
+  idle: 1,
+  ouvindo: 1.07,
+  pensando: 1,
+  executando: 1.02,
+  respondendo: 1.02,
+};
+
+// "Fala → pulsa conforme as palavras": cada fronteira de palavra reportada
+// pelo VoiceProvider (`pulseSignal` incrementando) dá um empurrão curto e
+// decrescente no raio — nunca uma reação fixa/mecânica por frame.
+const PULSE_DURATION_MS = 220;
+const PULSE_BOOST = 0.05;
+
 // Velocidade de rotação muda suavemente (lerp) em vez de saltar na hora que
 // `status` muda — "transições suaves" — sem isso, ir de 'idle' pra
 // 'executando' fazia a esfera acelerar num corte seco de um frame pro outro.
@@ -94,6 +112,13 @@ export interface NovaOrbProps {
   /** Velocidade de rotação — espelha o estado da conversa (ver `NovaThinkingStatus`). */
   status?: NovaOrbStatus;
   className?: string;
+  /**
+   * Incrementa a cada fronteira de palavra falada (CONTROL OS — Etapa 11:
+   * "fala → pulsa conforme as palavras") — ver `VoiceProviderHandlers.onBoundary`.
+   * Opcional: sem isso, a orb continua respirando/girando normalmente, só
+   * sem o pulso extra sincronizado à fala.
+   */
+  pulseSignal?: number;
 }
 
 /**
@@ -111,7 +136,7 @@ export interface NovaOrbProps {
  * cada frame. Respeita `prefers-reduced-motion` (renderiza um frame único
  * estático) e pausa via `visibilitychange`, igual ao `BackgroundNetwork`.
  */
-export function NovaOrb({ status = 'idle', className }: NovaOrbProps) {
+export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProps) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
 
@@ -119,6 +144,18 @@ export function NovaOrb({ status = 'idle', className }: NovaOrbProps) {
   // toda vez que `status` muda durante a conversa.
   const statusRef = React.useRef(status);
   statusRef.current = status;
+
+  // Mesma técnica pro pulso de fala: `lastPulseAtRef` é lido dentro do loop
+  // de animação (closure sobre o ref, não sobre o valor), e escrito por este
+  // efeito separado sempre que `pulseSignal` muda — nunca recria o loop.
+  const lastPulseSignalRef = React.useRef(pulseSignal);
+  const lastPulseAtRef = React.useRef(0);
+  React.useEffect(() => {
+    if (pulseSignal !== undefined && pulseSignal !== lastPulseSignalRef.current) {
+      lastPulseSignalRef.current = pulseSignal;
+      lastPulseAtRef.current = performance.now();
+    }
+  }, [pulseSignal]);
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
@@ -160,7 +197,13 @@ export function NovaOrb({ status = 'idle', className }: NovaOrbProps) {
       // por fora — é isso que faz a orb parecer respirando de dentro pra
       // fora, não só "crescendo".
       const breatheFactor = 1 + Math.sin(breathePhase) * BREATHE_AMPLITUDE_BY_STATUS[statusRef.current];
-      const radius = baseRadius * breatheFactor;
+
+      // Pulso de fala: decai linearmente nos primeiros `PULSE_DURATION_MS`
+      // depois da última fronteira de palavra reportada, depois some.
+      const sincePulse = time - lastPulseAtRef.current;
+      const pulseBoost = sincePulse >= 0 && sincePulse < PULSE_DURATION_MS ? (1 - sincePulse / PULSE_DURATION_MS) * PULSE_BOOST : 0;
+
+      const radius = baseRadius * RADIUS_SCALE_BY_STATUS[statusRef.current] * breatheFactor * (1 + pulseBoost);
 
       // Camada 1 — halo externo amplo e difuso (profundidade).
       const outerGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 1.9);

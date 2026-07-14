@@ -8,6 +8,7 @@ import { GlassCard } from '@/components/ui/glass-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { SectionHeader } from '@/components/dashboard/section-header';
 import { InsightCard } from '@/components/dashboard/insight-card';
+import { RecommendationCard } from '@/components/dashboard/recommendation-card';
 import { useDataStore } from '@/lib/data-store';
 import { cn } from '@/lib/utils';
 
@@ -43,6 +44,17 @@ export default function DocumentosPage() {
   const expiring = filtered.filter((doc) => (doc.expiresAt ? daysUntil(doc.expiresAt) <= EXPIRY_WARNING_DAYS : false));
   const pinned = filtered.filter((doc) => pinnedIds.includes(doc.id));
   const categories = Array.from(new Set(filtered.map((doc) => doc.category)));
+
+  // "NOVA comentando" (CONTROL OS — Etapa 11): mesmo padrão do resumo em
+  // Financeiro/Agenda/Hábitos — texto local a partir de TODOS os documentos
+  // (não só `filtered`, pra não mudar conforme o usuário digita na busca).
+  const expiringAll = documents.filter((doc) => (doc.expiresAt ? daysUntil(doc.expiresAt) <= EXPIRY_WARNING_DAYS : false));
+  const resumoNova =
+    documents.length === 0
+      ? 'Ainda não há documentos guardados para eu montar um resumo.'
+      : expiringAll.length > 0
+        ? `${expiringAll.length} documento${expiringAll.length > 1 ? 's' : ''} vence${expiringAll.length > 1 ? 'm' : ''} nos próximos ${EXPIRY_WARNING_DAYS} dias.`
+        : `Você tem ${documents.length} documento${documents.length > 1 ? 's' : ''} guardado${documents.length > 1 ? 's' : ''}, nenhum vencendo em breve.`;
 
   function renderDocCard(doc: (typeof documents)[number]) {
     const expiringSoon = doc.expiresAt ? daysUntil(doc.expiresAt) <= EXPIRY_WARNING_DAYS : false;
@@ -82,6 +94,12 @@ export default function DocumentosPage() {
       <FadeIn>
         <SectionHeader level="page" title="Documentos" meta={`${documents.length} no total`} />
       </FadeIn>
+
+      {documents.length > 0 && (
+        <FadeIn delay={0.04}>
+          <RecommendationCard text={resumoNova} />
+        </FadeIn>
+      )}
 
       <FadeIn delay={0.05}>
         <Input placeholder="Pesquisar documentos..." value={query} onChange={(event) => setQuery(event.target.value)} />

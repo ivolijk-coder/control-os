@@ -9,6 +9,7 @@ import { DashboardCard } from '@/components/dashboard/dashboard-card';
 import { ChartCard } from '@/components/dashboard/chart-card';
 import { TimelineCard, type TimelineCardItem } from '@/components/dashboard/timeline-card';
 import { MissionStatusBadge } from '@/components/dashboard/status-badge';
+import { RecommendationCard } from '@/components/dashboard/recommendation-card';
 import { useDataStore } from '@/lib/data-store';
 
 function daysRemaining(dueDate?: string): number | null {
@@ -51,6 +52,23 @@ export default function MetasPage() {
   const emRisco = metas.filter((meta) => meta.status === 'em_risco').length;
   const progressoMedio = metas.length > 0 ? metas.reduce((sum, meta) => sum + meta.progress, 0) / metas.length : 0;
 
+  const metasComPrazo = [...metas]
+    .filter((meta) => meta.dueDate && meta.status !== 'concluida')
+    .sort((a, b) => new Date(a.dueDate ?? 0).getTime() - new Date(b.dueDate ?? 0).getTime());
+  const proximaMeta = metasComPrazo[0];
+
+  // "NOVA comentando" (CONTROL OS — Etapa 11): mesmo padrão do resumo em
+  // Financeiro/Agenda/Hábitos — texto local, sem chamar IA.
+  const restanteProximaMeta = proximaMeta ? daysRemaining(proximaMeta.dueDate) : null;
+  const resumoNova =
+    metas.length === 0
+      ? 'Ainda não há metas suficientes para eu montar um resumo.'
+      : emRisco > 0
+        ? `${emRisco} meta${emRisco > 1 ? 's' : ''} em risco de prazo. Progresso médio geral: ${Math.round(progressoMedio)}%.`
+        : proximaMeta && restanteProximaMeta !== null
+          ? `Sua próxima meta é "${proximaMeta.title}", em ${restanteProximaMeta} dia${restanteProximaMeta === 1 ? '' : 's'}. Progresso médio geral: ${Math.round(progressoMedio)}%.`
+          : `Progresso médio das suas metas: ${Math.round(progressoMedio)}%.`;
+
   const roadmapItems: TimelineCardItem[] = [...metas]
     .filter((meta) => meta.dueDate)
     .sort((a, b) => new Date(a.dueDate ?? 0).getTime() - new Date(b.dueDate ?? 0).getTime())
@@ -85,6 +103,10 @@ export default function MetasPage() {
               <DashboardCard icon={Flag} label="Em risco" value={`${emRisco}`} accent={emRisco > 0 ? 'red' : 'green'} />
               <DashboardCard icon={ListChecks} label="Progresso médio" value={`${Math.round(progressoMedio)}%`} accent="purple" />
             </div>
+          </FadeIn>
+
+          <FadeIn delay={0.07}>
+            <RecommendationCard text={resumoNova} />
           </FadeIn>
 
           <FadeIn delay={0.08}>

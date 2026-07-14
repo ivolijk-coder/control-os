@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { SectionHeader } from '@/components/dashboard/section-header';
 import { ProgressRing } from '@/components/dashboard/progress-ring';
 import { InsightCard } from '@/components/dashboard/insight-card';
+import { RecommendationCard } from '@/components/dashboard/recommendation-card';
 import { useDataStore } from '@/lib/data-store';
 import { cn, formatCurrency } from '@/lib/utils';
 
@@ -36,6 +37,22 @@ export default function ViagensPage() {
   const trips = useDataStore((state) => state.trips);
   const toggleTripChecklistItem = useDataStore((state) => state.toggleTripChecklistItem);
 
+  // "NOVA comentando" (CONTROL OS — Etapa 11): mesmo padrão do resumo em
+  // Financeiro/Agenda/Hábitos — texto local a partir da própria viagem mais
+  // próxima, sem chamar IA.
+  const proximaViagem = [...trips]
+    .filter((trip) => daysUntil(trip.startDate) >= 0)
+    .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())[0];
+  const resumoNova = (() => {
+    if (trips.length === 0) return 'Ainda não há viagens planejadas para eu montar um resumo.';
+    if (!proximaViagem) return `Você tem ${trips.length} viagem${trips.length > 1 ? 'ns' : ''} registrada${trips.length > 1 ? 's' : ''}.`;
+    const restante = daysUntil(proximaViagem.startDate);
+    const pendentesProxima = proximaViagem.checklist.filter((item) => !item.done).length;
+    return pendentesProxima > 0
+      ? `Sua próxima viagem é para ${proximaViagem.destination}, em ${restante} dia${restante === 1 ? '' : 's'} — ${pendentesProxima} item${pendentesProxima === 1 ? '' : 'ns'} do checklist ainda pendente${pendentesProxima === 1 ? '' : 's'}.`
+      : `Sua próxima viagem é para ${proximaViagem.destination}, em ${restante} dia${restante === 1 ? '' : 's'} — checklist completo.`;
+  })();
+
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
       <FadeIn>
@@ -45,6 +62,12 @@ export default function ViagensPage() {
       {trips.length === 0 && (
         <FadeIn delay={0.05}>
           <EmptyState icon={Plane} title="Nenhuma viagem planejada ainda." />
+        </FadeIn>
+      )}
+
+      {trips.length > 0 && (
+        <FadeIn delay={0.05}>
+          <RecommendationCard text={resumoNova} />
         </FadeIn>
       )}
 

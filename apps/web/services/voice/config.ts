@@ -16,6 +16,13 @@ import { WebSpeechProvider } from './WebSpeechProvider';
  * um provedor melhor no futuro (OpenAI Speech-to-Text/Whisper/Deepgram/
  * AssemblyAI; OpenAI Text-to-Speech/ElevenLabs/Azure/Google) seja só
  * adicionar a nova classe aqui, sem tocar em nenhum componente de UI.
+ *
+ * CONTROL OS — Etapa 11: `./OpenAITTSVoiceProvider.ts` já existe como stub
+ * (implementa `VoiceProvider`, mas `isSupported` é sempre `false` — nenhuma
+ * chamada real ainda). Quando a voz premium via OpenAI for priorizada:
+ * estender `VoiceProviderName` com `'openai'`, ler
+ * `NEXT_PUBLIC_VOICE_PROVIDER` aqui, e instanciar `OpenAITTSVoiceProvider`
+ * nesse caso — sem mudar `nova-voice-overlay.tsx`.
  */
 type SpeechProviderName = 'browser';
 type VoiceProviderName = 'browser';

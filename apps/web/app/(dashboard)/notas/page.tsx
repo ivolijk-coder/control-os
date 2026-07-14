@@ -7,6 +7,7 @@ import { FadeIn } from '@/components/dashboard/fade-in';
 import { GlassCard } from '@/components/ui/glass-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { SectionHeader } from '@/components/dashboard/section-header';
+import { RecommendationCard } from '@/components/dashboard/recommendation-card';
 import { useDataStore } from '@/lib/data-store';
 import { cn } from '@/lib/utils';
 import type { Note } from '@control-os/types';
@@ -45,6 +46,20 @@ export default function NotasPage() {
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, RECENT_COUNT);
   const categories = Array.from(new Set(filtered.map((note) => note.category)));
+
+  // "NOVA comentando" (CONTROL OS — Etapa 11): mesmo padrão do resumo em
+  // Financeiro/Agenda/Hábitos — texto local a partir de TODAS as notas (não
+  // só `filtered`), contando itens de checklist ainda pendentes.
+  const pendingChecklistCount = notes.reduce(
+    (sum, note) => sum + (note.checklistItems?.filter((item) => !item.done).length ?? 0),
+    0
+  );
+  const resumoNova =
+    notes.length === 0
+      ? 'Ainda não há notas para eu montar um resumo.'
+      : pendingChecklistCount > 0
+        ? `Você tem ${notes.length} nota${notes.length > 1 ? 's' : ''}, com ${pendingChecklistCount} item${pendingChecklistCount > 1 ? 'ns' : ''} de checklist ainda pendente${pendingChecklistCount > 1 ? 's' : ''}.`
+        : `Você tem ${notes.length} nota${notes.length > 1 ? 's' : ''} guardada${notes.length > 1 ? 's' : ''}.`;
 
   function renderNoteCard(note: Note) {
     const isPinned = pinnedIds.includes(note.id);
@@ -105,6 +120,12 @@ export default function NotasPage() {
       <FadeIn>
         <SectionHeader level="page" title="Notas" meta={`${notes.length} no total`} />
       </FadeIn>
+
+      {notes.length > 0 && (
+        <FadeIn delay={0.04}>
+          <RecommendationCard text={resumoNova} />
+        </FadeIn>
+      )}
 
       <FadeIn delay={0.05}>
         <Input placeholder="Buscar notas..." value={query} onChange={(event) => setQuery(event.target.value)} />

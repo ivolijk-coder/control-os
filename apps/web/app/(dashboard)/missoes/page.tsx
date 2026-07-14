@@ -7,6 +7,7 @@ import { SectionHeader } from '@/components/dashboard/section-header';
 import { DashboardCard } from '@/components/dashboard/dashboard-card';
 import { MissionCard } from '@/components/dashboard/mission-card';
 import { ChartCard } from '@/components/dashboard/chart-card';
+import { RecommendationCard } from '@/components/dashboard/recommendation-card';
 import { useDataStore } from '@/lib/data-store';
 import type { Mission } from '@control-os/types';
 
@@ -55,6 +56,17 @@ export default function MissoesPage() {
     .sort((a, b) => b.objectivesTotal - a.objectivesTotal)
     .slice(0, 3);
 
+  // "NOVA comentando" (CONTROL OS — Etapa 11): mesmo padrão do resumo em
+  // Financeiro/Agenda/Hábitos — texto local, sem chamar IA.
+  const resumoNova =
+    missions.length === 0
+      ? 'Ainda não há missões suficientes para eu montar um resumo.'
+      : emRisco.length > 0
+        ? `${emRisco.length} missão${emRisco.length > 1 ? 'ões' : ''} em risco de prazo. ${hoje.length > 0 ? `${hoje.length} com prazo para hoje.` : ''}`.trim()
+        : hoje.length > 0
+          ? `${hoje.length} missão${hoje.length > 1 ? 'ões' : ''} com prazo para hoje. ${emAndamento.length} em andamento no total.`
+          : `${emAndamento.length} missão${emAndamento.length === 1 ? '' : 'ões'} em andamento, nenhuma em risco.`;
+
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
       <FadeIn>
@@ -78,6 +90,10 @@ export default function MissoesPage() {
               <DashboardCard icon={TrendingUp} label="Em andamento" value={`${emAndamento.length}`} accent="purple" />
               <DashboardCard icon={CheckCircle2} label="Concluídas" value={`${concluidas.length}`} accent="green" />
             </div>
+          </FadeIn>
+
+          <FadeIn delay={0.07}>
+            <RecommendationCard text={resumoNova} />
           </FadeIn>
 
           {maiorImpacto.length > 0 && (

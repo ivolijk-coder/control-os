@@ -7,6 +7,7 @@ import { SectionHeader } from '@/components/dashboard/section-header';
 import { DashboardCard } from '@/components/dashboard/dashboard-card';
 import { ChartCard } from '@/components/dashboard/chart-card';
 import { MiniDonutChart, MiniSparkline, type ChartAccent } from '@/components/dashboard/mini-charts';
+import { RecommendationCard } from '@/components/dashboard/recommendation-card';
 import { useDataStore } from '@/lib/data-store';
 import { formatCurrency } from '@/lib/utils';
 
@@ -72,6 +73,22 @@ export default function PatrimonioPage() {
     return acc;
   }, []);
 
+  // "NOVA comentando" (CONTROL OS — Etapa 11): mesmo padrão do resumo em
+  // Financeiro/Agenda/Hábitos — texto calculado localmente a partir do
+  // próprio dado do módulo, sem chamar IA/Recommendation Engine.
+  const primeiroValorAcumulado = evolutionValues[0] ?? 0;
+  const ultimoValorAcumulado = evolutionValues[evolutionValues.length - 1] ?? 0;
+  const cresceu = evolutionValues.length >= 2 && ultimoValorAcumulado > primeiroValorAcumulado;
+  const maiorGrupo = distribution[0];
+  const resumoNova =
+    assets.length === 0
+      ? 'Ainda não há bens registrados para eu montar um resumo.'
+      : cresceu
+        ? `Seu patrimônio cresceu desde o primeiro bem registrado — total estimado hoje: ${formatCurrency(totalValue)}.`
+        : maiorGrupo
+          ? `${Math.round((maiorGrupo.value / totalValue) * 100)}% do seu patrimônio está em ${maiorGrupo.label}. Total estimado: ${formatCurrency(totalValue)}.`
+          : `Total estimado do seu patrimônio: ${formatCurrency(totalValue)}.`;
+
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 px-6 py-8">
       <FadeIn>
@@ -86,6 +103,10 @@ export default function PatrimonioPage() {
         <>
           <FadeIn delay={0.05}>
             <DashboardCard label="Valor total estimado" value={formatCurrency(totalValue)} accent="purple" />
+          </FadeIn>
+
+          <FadeIn delay={0.07}>
+            <RecommendationCard text={resumoNova} />
           </FadeIn>
 
           <FadeIn delay={0.08}>
