@@ -4,7 +4,7 @@ import * as React from 'react';
 import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
 import { Activity, CalendarClock, Flag, Target, Wallet, type LucideIcon } from 'lucide-react';
-import { NovaInput } from '@/components/nova/nova-input';
+import { NovaInput, type NovaInputSource } from '@/components/nova/nova-input';
 import { NovaConversation } from '@/components/nova/nova-conversation';
 import type { ConversationMessage, ConversationMessageStatus } from '@/components/nova/nova-message-bubble';
 import type { NovaThinkingStatus } from '@/components/nova/nova-thinking';
@@ -15,6 +15,7 @@ import { IntelligentPanel } from '@/components/home/intelligent-panel';
 import { conversationService, KEEP_RECENT_TURNS, shouldCondense } from '@/services/ai';
 import { generateRecommendations, toReadOnlyContext } from '@/services/nova';
 import type { NovaRecommendationCategory, NovaStatus } from '@/services/nova';
+import { getVoiceProvider } from '@/services/voice';
 import { useAppStore } from '@/lib/store';
 import { useNovaContext } from '@/lib/use-nova-context';
 import { transitionOut, transitionSpring } from '@/lib/motion';
@@ -155,6 +156,23 @@ export function NovaWorkspace({
   const replaceNovaMessages = useAppStore((state) => state.replaceNovaMessages);
   const [isThinking, setIsThinking] = React.useState(false);
   const [thinkingStatus, setThinkingStatus] = React.useState<NovaThinkingStatus>('pensando');
+  // CONTROL OS — Etapa 11C: campo de conversa unificado — o microfone
+  // inline do `NovaInput` avisa aqui quando está capturando, e a resposta a
+  // um turno iniciado por voz é falada em voz alta (ver `handleSend`). Nem
+  // um nem outro existiam antes desta etapa; `isThinking`/`thinkingStatus`
+  // continuam intactos, controlando só a parte "pensando/executando".
+  const [isListening, setIsListening] = React.useState(false);
+  const [isSpeakingReply, setIsSpeakingReply] = React.useState(false);
+  const [speechPulse, setSpeechPulse] = React.useState(0);
+
+  // Nunca deixa uma fala em andamento presa em segundo plano se este
+  // workspace desmontar (ex.: usuário navega pra outra tela) no meio de uma
+  // resposta falada.
+  React.useEffect(() => {
+    return () => {
+      getVoiceProvider().cancel();
+    };
+  }, []);
 
   // CONTROL OS — Etapa 8: extraído para `useNovaContext` (`lib/`) — o novo
   // Modo Conversa por voz (`NovaVoiceOverlay`) precisa do mesmo `NovaContext`
@@ -209,7 +227,7 @@ export function NovaWorkspace({
   }, [replaceNovaMessages]);
 
   const handleSend = React.useCallback(
-    (text: string) => {
+    (text: string, source: NovaInputSource = 'text') => {
       const userMessage: ConversationMessage = {
         id: nextMessageId('user'),
         role: 'user',
@@ -236,6 +254,21 @@ export function NovaWorkspace({
         });
         setIsThinking(false);
         maybeCondenseConversation();
+
+        // CONTROL OS — Etapa 11C: "clique → ouvindo → captura → envia
+        // automaticamente → pensando → falando → idle, sem etapas extras."
+        // Um turno iniciado pelo microfone inline também recebe a resposta
+        // falada em voz alta — turnos por texto continuam silenciosos, como
+        // sempre. Mesmo `VoiceProvider` já usado por `NovaVoiceOverlay`, só
+        // um segundo consumidor.
+        if (source === 'voice' && getVoiceProvider().isSupported) {
+          setIsSpeakingReply(true);
+          getVoiceProvider().speak(result.reply, {
+            onBoundary: () => setSpeechPulse((tick) => tick + 1),
+            onEnd: () => setIsSpeakingReply(false),
+            onError: () => setIsSpeakingReply(false),
+          });
+        }
       })();
     },
     [novaContext, addNovaMessage, maybeCondenseConversation]
@@ -269,14 +302,33 @@ export function NovaWorkspace({
     });
   }, [addNovaMessage]);
 
-  const orbStatus: NovaOrbStatus = isThinking ? thinkingStatus : 'idle';
-  // A esfera "cresce" enquanto a NOVA pensa/executa — a reação visual que
-  // substitui, por enquanto, uma resposta em voz real.
-  const orbScale = orbStatus === 'executando' ? 1.18 : orbStatus === 'pensando' ? 1.08 : 1;
+  // CONTROL OS — Etapa 11C: `isListening`/`isSpeakingReply` (microfone
+  // inline) têm prioridade sobre `isThinking` na leitura do estado — os
+  // dois nunca ficam `true` ao mesmo tempo na prática (o microfone fica
+  // desabilitado enquanto `isThinking`), mas a ordem deixa a intenção clara.
+  const orbStatus: NovaOrbStatus = isListening
+    ? 'ouvindo'
+    : isThinking
+      ? thinkingStatus
+      : isSpeakingReply
+        ? 'respondendo'
+        : 'idle';
+  // A esfera "cresce" enquanto a NOVA pensa/executa/ouve/fala — a reação
+  // visual que acompanha cada estado.
+  const orbScale =
+    orbStatus === 'executando'
+      ? 1.18
+      : orbStatus === 'pensando'
+        ? 1.08
+        : orbStatus === 'respondendo'
+          ? 1.12
+          : orbStatus === 'ouvindo'
+            ? 1.06
+            : 1;
 
   const inputRow = (
     <div className="mx-auto w-full max-w-2xl">
-      <NovaInput onSubmit={handleSend} disabled={isThinking} />
+      <NovaInput onSubmit={handleSend} disabled={isThinking} onListeningChange={setIsListening} />
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
         {quickActions.map((action) => (
           <QuickAction
@@ -337,7 +389,7 @@ export function NovaWorkspace({
                   A respiração em si vem de dentro da própria `NovaOrb` desde
                   a Etapa 10A (overhaul visual) — não precisa mais de uma
                   classe CSS externa aqui. */}
-              <NovaOrb status={orbStatus} />
+              <NovaOrb status={orbStatus} pulseSignal={speechPulse} />
             </motion.div>
 
             {messages.length === 0 && belowOrbContent}

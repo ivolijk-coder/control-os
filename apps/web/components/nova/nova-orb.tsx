@@ -12,6 +12,10 @@ interface OrbPoint {
   theta: number; // longitude
   phi: number; // latitude (0..PI)
   seed: number; // fase individual — cada ponto "respira" fora de sincronia com os outros
+  /** Multiplicador individual sobre a velocidade angular da camada — "velocidade diferente" por partícula, não só por camada (CONTROL OS — Etapa 11C). */
+  spinFactor: number;
+  /** Multiplicador individual sobre o tamanho base — "tamanho diferente" por partícula (Etapa 11C), além da variação por profundidade já existente. */
+  sizeFactor: number;
 }
 
 interface OrbShell {
@@ -252,6 +256,8 @@ function createShellPoints(count: number): OrbPoint[] {
     phi: Math.acos(1 - 2 * Math.random()),
     theta: Math.random() * Math.PI * 2,
     seed: Math.random() * 1000,
+    spinFactor: 0.82 + Math.random() * 0.36,
+    sizeFactor: 0.7 + Math.random() * 0.6,
   }));
 }
 
@@ -481,8 +487,12 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
           const jitteredRadius = shellRadius * (1 + jitter * JITTER_RADIUS_AMPLITUDE_BY_STATUS[currentStatus] * shell.jitterScale);
           const phi = point.phi + jitter * JITTER_PHI_AMPLITUDE_BY_STATUS[currentStatus] * shell.jitterScale * 0.4;
 
-          const x0 = Math.sin(phi) * Math.cos(point.theta + angle);
-          const z0 = Math.sin(phi) * Math.sin(point.theta + angle);
+          // "Velocidade diferente" por partícula (Etapa 11C) — cada ponto
+          // aplica `spinFactor` sobre o próprio ângulo da camada, então dois
+          // pontos na mesma camada nunca giram exatamente juntos.
+          const pointAngle = angle * point.spinFactor;
+          const x0 = Math.sin(phi) * Math.cos(point.theta + pointAngle);
+          const z0 = Math.sin(phi) * Math.sin(point.theta + pointAngle);
           const y0 = Math.cos(phi);
 
           // Rotação em X (inclinação) — combina y0/z0.
@@ -497,7 +507,7 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
             x: cx + x0 * jitteredRadius,
             y: cy + y1 * jitteredRadius * DEPTH_SQUASH,
             z: z1,
-            size: (0.6 + depth * 1.8) * shell.sizeScale,
+            size: (0.6 + depth * 1.8) * shell.sizeScale * point.sizeFactor,
             opacity: (0.1 + depth * 0.6) * shell.opacityScale * flicker,
           });
         }
@@ -628,9 +638,18 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
   return (
     <div ref={wrapperRef} className={`relative ${className ?? 'h-full w-full'}`} aria-hidden>
       {/* Sombra de contato — extremamente suave, "como se estivesse
-          flutuando". Puro CSS, estática (a flutuação já é comunicada pelo
+          flutuando". CONTROL OS — Etapa 11C: era um `div` sólido com
+          `rounded-full` sobre um retângulo muito achatado — isso produz uma
+          "pílula" de bordas retas, não uma elipse suave (provável origem do
+          "quadrado perceptível" relatado). Agora é um gradiente radial puro
+          (`ellipse`, se molda à caixa automaticamente) que já chega a 0 de
+          opacidade bem antes da borda do elemento — nunca uma aresta
+          geométrica visível. Estática (a flutuação já é comunicada pelo
           próprio wrapper subindo/descendo por cima dela). */}
-      <div className="absolute inset-x-[18%] bottom-[-6%] h-[16%] rounded-full bg-black/30 blur-xl" />
+      <div
+        className="absolute inset-x-[10%] bottom-[-10%] h-[22%] blur-2xl"
+        style={{ background: 'radial-gradient(ellipse, rgba(0, 0, 0, 0.32), transparent 70%)' }}
+      />
       {/* Halo externo em CSS puro (blur real, não redesenhado no canvas a
           cada frame) — "enorme, sem bordas, sem círculos visíveis, apenas
           luz". Gradiente em múltiplos estágios suaves (nunca dois stops só,
