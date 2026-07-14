@@ -25,6 +25,8 @@ interface OrbShell {
   sizeScale: number;
   /** Amplitude de "respiração" individual de cada ponto — camadas mais internas oscilam menos. */
   jitterScale: number;
+  /** Fase própria de respiração — cada camada "respira" no seu próprio ritmo, não em sincronia. */
+  breathePhaseOffset: number;
 }
 
 interface OrbWave {
@@ -41,24 +43,24 @@ const TARGET_FRAME_MS = 33; // ~30fps — mesmo orçamento de frame do Backgroun
 
 // CONTROL OS — Etapa 12 (NOVA Living Entity): em vez de uma nuvem de pontos
 // única e rígida, 3 camadas concêntricas — "camada externa, camada média,
-// núcleo" — cada uma girando numa velocidade própria. É isso que dá
-// sensação real de volume/3D sem WebGL: as camadas nunca giram em sincronia
-// perfeita, então a esfera nunca "trava" numa pose.
+// núcleo" — cada uma com rotação e respiração próprias. É isso que dá
+// sensação real de volume/3D sem WebGL: as camadas nunca se movem em
+// sincronia perfeita, então a esfera nunca "trava" numa pose.
 const SHELLS: OrbShell[] = [
-  { radiusFraction: 1.0, rotationMultiplier: 1.0, pointShare: 0.5, opacityScale: 0.85, sizeScale: 1.0, jitterScale: 1.15 },
-  { radiusFraction: 0.74, rotationMultiplier: -0.62, pointShare: 0.32, opacityScale: 0.7, sizeScale: 0.85, jitterScale: 0.9 },
-  { radiusFraction: 0.44, rotationMultiplier: 1.6, pointShare: 0.18, opacityScale: 1.0, sizeScale: 0.7, jitterScale: 0.55 },
+  { radiusFraction: 1.0, rotationMultiplier: 1.0, pointShare: 0.5, opacityScale: 0.85, sizeScale: 1.0, jitterScale: 1.15, breathePhaseOffset: 0 },
+  { radiusFraction: 0.74, rotationMultiplier: -0.62, pointShare: 0.32, opacityScale: 0.7, sizeScale: 0.85, jitterScale: 0.9, breathePhaseOffset: 1.9 },
+  { radiusFraction: 0.44, rotationMultiplier: 1.6, pointShare: 0.18, opacityScale: 1.0, sizeScale: 0.7, jitterScale: 0.55, breathePhaseOffset: 3.7 },
 ];
 
 const ROTATION_SPEED: Record<NovaOrbStatus, number> = {
   idle: 0.0018,
   pensando: 0.004,
   executando: 0.009,
-  // 'ouvindo' gira um pouco mais que idle — presença ativa, mas calma (a
-  // NOVA está atenta, não processando). 'respondendo' usa a mesma
-  // velocidade de 'executando' — ambos comunicam "a NOVA está fazendo algo
-  // agora", só muda o rótulo/legenda mostrado ao lado.
-  ouvindo: 0.003,
+  // CONTROL OS — Etapa 11B: "ouvindo... movimento desacelera" — mais devagar
+  // que o próprio idle, não mais rápido: a NOVA fica quieta pra prestar
+  // atenção, o glow/inclinação é que comunicam presença ativa, não a
+  // rotação.
+  ouvindo: 0.001,
   respondendo: 0.009,
 };
 
@@ -68,7 +70,7 @@ const ROTATION_SPEED: Record<NovaOrbStatus, number> = {
 // ampla nos estados ativos, quase parada no ócio, nunca mecânica.
 const BREATHE_SPEED_BY_STATUS: Record<NovaOrbStatus, number> = {
   idle: 0.018,
-  ouvindo: 0.022,
+  ouvindo: 0.02,
   pensando: 0.032,
   executando: 0.045,
   respondendo: 0.045,
@@ -87,7 +89,7 @@ const BREATHE_AMPLITUDE_BY_STATUS: Record<NovaOrbStatus, number> = {
 // só um pulso passageiro.
 const RADIUS_SCALE_BY_STATUS: Record<NovaOrbStatus, number> = {
   idle: 1,
-  ouvindo: 1.07,
+  ouvindo: 1.08,
   pensando: 1,
   executando: 1.02,
   respondendo: 1.05,
@@ -98,6 +100,9 @@ const RADIUS_SCALE_BY_STATUS: Record<NovaOrbStatus, number> = {
 // decrescente no raio — nunca uma reação fixa/mecânica por frame.
 const PULSE_DURATION_MS = 220;
 const PULSE_BOOST = 0.05;
+// CONTROL OS — Etapa 11B: "o glow deve acompanhar a voz" — o mesmo pulso
+// que empurra o raio também acende o glow por um instante, decaindo junto.
+const PULSE_GLOW_BOOST = 0.12;
 
 // Velocidade de rotação muda suavemente (lerp) em vez de saltar na hora que
 // `status` muda — "transições suaves" — sem isso, ir de 'idle' pra
@@ -108,13 +113,13 @@ const ROTATION_EASE = 0.06;
 // energia" pedidos explicitamente. Mais raras e quase imperceptíveis em
 // repouso; um pouco mais presentes (nunca chamativas) enquanto a NOVA
 // pensa/executa/responde/ouve. CONTROL OS — Etapa 12: quando a NOVA fala,
-// cada palavra (`pulseSignal`) também nasce uma onda própria — "ondas
-// circulares, não barras" — além destas por temporizador.
+// cada palavra (`pulseSignal`) também nasce uma onda própria — "cada frase
+// gera pequenas ondas" — além destas por temporizador.
 const WAVE_LIFETIME_MS = 1800;
 const WAVE_MAX_EXPANSION = 0.6; // fração do raio que a onda cresce até desaparecer
 const WAVE_INTERVAL_MS: Record<NovaOrbStatus, number> = {
   idle: 6000,
-  ouvindo: 4200,
+  ouvindo: 4600,
   pensando: 2200,
   executando: 2200,
   respondendo: 2600,
@@ -132,24 +137,23 @@ const GLOW_COLOR_BY_STATUS: Record<NovaOrbStatus, string> = {
   ouvindo: '99, 141, 246',
 };
 
-// CONTROL OS — Etapa 12: "glow do centro forte → desaparece → volta, como
-// um coração batendo" — em vez de um brilho contínuo (só ligado à
-// respiração), o núcleo agora pulsa em duas batidas curtas por ciclo (como
-// um batimento real: tum-TUM, silêncio, tum-TUM...), mais rápido e mais
-// forte nos estados ativos.
+// CONTROL OS — Etapa 11B: "o núcleo deve ser muito suave, quase
+// imperceptível, e pulsar lentamente" — duas batidas curtas por ciclo (como
+// um batimento real: tum-TUM, silêncio...), mas com intensidade baixa o
+// bastante pra nunca parecer um LED piscando.
 const HEARTBEAT_PERIOD_MS_BY_STATUS: Record<NovaOrbStatus, number> = {
-  idle: 3400,
-  ouvindo: 2600,
-  pensando: 1700,
+  idle: 3800,
+  ouvindo: 2900,
+  pensando: 1800,
   executando: 1300,
   respondendo: 1300,
 };
 const HEARTBEAT_INTENSITY_BY_STATUS: Record<NovaOrbStatus, number> = {
-  idle: 0.1,
-  ouvindo: 0.14,
-  pensando: 0.18,
-  executando: 0.22,
-  respondendo: 0.24,
+  idle: 0.05,
+  ouvindo: 0.08,
+  pensando: 0.11,
+  executando: 0.14,
+  respondendo: 0.15,
 };
 
 function heartbeatPulse(phase: number): number {
@@ -173,12 +177,14 @@ const TILT_TARGET_BY_STATUS: Record<NovaOrbStatus, number> = {
 const TILT_EASE = 0.05;
 
 // CONTROL OS — Etapa 12: "algumas sobem, outras descem, velocidade
-// aleatória" — cada ponto oscila individualmente (raio + latitude) em vez
-// de girar rigidamente preso à esfera. `pseudoNoise` não é Simplex/Perlin de
-// verdade (evita adicionar dependência nova ao projeto — o sandbox nem tem
-// acesso ao registry do npm pra instalar uma), mas soma senos com
-// frequências e fases diferentes por ponto — suave, contínuo, nunca se
-// repete de forma óbvia num loop curto.
+// aleatória" — cada ponto oscila individualmente (raio, latitude, brilho e
+// opacidade) em vez de girar rigidamente preso à esfera. `pseudoNoise` não é
+// Simplex/Perlin de verdade (evita adicionar dependência nova ao projeto —
+// o sandbox nem tem acesso ao registry do npm pra instalar uma), mas soma
+// senos com frequências e fases diferentes por ponto — suave, contínuo,
+// nunca se repete de forma óbvia num loop curto. "Nunca todos iguais. Nunca
+// sincronizados" (Etapa 11B) — cada chamada usa uma combinação diferente de
+// `seed` como semente de fase, então dois pontos nunca oscilam em uníssono.
 function pseudoNoise(seed: number, t: number): number {
   return (
     Math.sin(t * 0.9 + seed * 12.9898) * 0.5 +
@@ -188,14 +194,16 @@ function pseudoNoise(seed: number, t: number): number {
 }
 const JITTER_RADIUS_AMPLITUDE_BY_STATUS: Record<NovaOrbStatus, number> = {
   idle: 0.02,
-  ouvindo: 0.03,
+  // CONTROL OS — Etapa 11B: "partículas prestam atenção" enquanto ouve —
+  // oscilam menos, não mais, do que em repouso: presença focada, não agitada.
+  ouvindo: 0.012,
   pensando: 0.05,
   executando: 0.06,
   respondendo: 0.08,
 };
 const JITTER_PHI_AMPLITUDE_BY_STATUS: Record<NovaOrbStatus, number> = {
   idle: 0.04,
-  ouvindo: 0.05,
+  ouvindo: 0.02,
   pensando: 0.07,
   executando: 0.08,
   respondendo: 0.1,
@@ -217,9 +225,26 @@ const POINT_BRIGHTNESS_BY_STATUS: Record<NovaOrbStatus, number> = {
 };
 
 // Achatamento vertical usado em toda projeção pseudo-3D (pontos, ondas,
-// partículas, reflexo) — mesma elipse, nunca um círculo perfeito visto de
-// lado, reforçando a sensação de esfera e não de disco.
+// partículas, reflexo, silhueta) — mesma elipse, nunca um círculo perfeito
+// visto de lado, reforçando a sensação de esfera e não de disco.
 const DEPTH_SQUASH = 1;
+
+// CONTROL OS — Etapa 11B: "a silhueta ainda está perfeita demais... pequenas
+// deformações orgânicas, muito discretas — como um organismo respirando."
+// Em vez de um círculo/elipse geométrico perfeito pra casca de vidro, o raio
+// em cada ângulo é levemente modulado por ruído — a borda nunca fica
+// exatamente igual de um frame pro outro.
+const SILHOUETTE_SEGMENTS = 48;
+const SILHOUETTE_AMPLITUDE_BY_STATUS: Record<NovaOrbStatus, number> = {
+  idle: 0.012,
+  ouvindo: 0.014,
+  pensando: 0.018,
+  executando: 0.024,
+  respondendo: 0.024,
+};
+function silhouetteWobble(angle: number, t: number): number {
+  return Math.sin(angle * 3 + t * 0.00035) * 0.6 + Math.sin(angle * 5 - t * 0.0006) * 0.4;
+}
 
 /** Distribuição uniforme de pontos numa esfera (evita acúmulo nos polos). */
 function createShellPoints(count: number): OrbPoint[] {
@@ -238,9 +263,9 @@ export interface NovaOrbProps {
    * Incrementa a cada fronteira de palavra falada (CONTROL OS — Etapa 11:
    * "fala → pulsa conforme as palavras") — ver `VoiceProviderHandlers.onBoundary`.
    * Opcional: sem isso, a orb continua respirando/girando normalmente, só
-   * sem o pulso extra sincronizado à fala. CONTROL OS — Etapa 12: quando
-   * `status === 'respondendo'`, cada incremento também nasce uma onda
-   * circular própria (ver `wavesRef`).
+   * sem o pulso extra sincronizado à fala. Quando `status === 'respondendo'`,
+   * cada incremento também nasce uma onda circular própria e acende o glow
+   * por um instante (ver `wavesRef`/`PULSE_GLOW_BOOST`).
    */
   pulseSignal?: number;
 }
@@ -248,34 +273,42 @@ export interface NovaOrbProps {
 /**
  * NovaOrb — esfera de partículas que representa a presença da Nova
  * (CONTROL OS — Etapa 3; overhaul visual completo na Etapa 10A — Premium
- * Visual Identity; Etapa 12 — NOVA Living Entity). Gira mais rápido
- * conforme o estado (idle → pensando → executando na conversa) e respira,
- * pulsa em ondas e ganha profundidade em camadas — "transmitir sensação de
- * inteligência viva, nunca parecer um loader/GIF".
+ * Visual Identity; Etapa 12 — NOVA Living Entity; refinamento na Etapa 11B
+ * — Premium Visual Polish). Gira mais rápido conforme o estado (idle →
+ * pensando → executando na conversa) e respira, pulsa em ondas e ganha
+ * profundidade em camadas — "transmitir sensação de inteligência viva,
+ * nunca parecer um loader/GIF/componente".
  *
- * CONTROL OS — Etapa 12 adiciona, tudo em cima da mesma base: 3 camadas de
- * pontos girando em velocidades diferentes (em vez de uma nuvem rígida
- * única), jitter individual por ponto (organic motion — "algumas sobem,
- * outras descem"), um núcleo com pulso de "batimento" (duas batidas por
- * ciclo, não um brilho contínuo), uma casca de vidro translúcido com brilho
- * de borda (Fresnel simplificado — dá volume sem WebGL), inclinação sutil
- * quando `status === 'ouvindo'` (referência: Vision Pro), partículas
- * emitidas pra fora quando `status === 'executando'`, reflexo que desliza
- * lentamente pela superfície (em vez de fixo), sombra suave de contato e
- * flutuação constante mesmo em repouso (nunca perfeitamente parada).
+ * Camadas do efeito, todas em cima da mesma base: 3 camadas de pontos
+ * girando e respirando em ritmos próprios (em vez de uma nuvem rígida
+ * única), jitter individual por ponto — raio, latitude, brilho e opacidade
+ * ("nunca todos iguais, nunca sincronizados") —, um núcleo com pulso de
+ * "batimento" muito suave (duas batidas por ciclo, quase imperceptível, não
+ * um LED piscando), uma casca de vidro translúcido com brilho de borda
+ * (Fresnel simplificado) cuja silhueta é levemente deformada por ruído (a
+ * borda nunca fica um círculo geométrico perfeito), inclinação sutil quando
+ * `status === 'ouvindo'` (o movimento desacelera e as partículas "prestam
+ * atenção" — jitter menor, não maior), partículas emitidas pra fora quando
+ * `status === 'executando'`, glow que acompanha o pulso de fala em
+ * `'respondendo'`, reflexo que desliza lentamente pela superfície, halo
+ * externo enorme e sem borda perceptível (o próprio halo "respira" — escala
+ * e opacidade variam por frame, não é um blur CSS estático) e flutuação
+ * constante mesmo em repouso (nunca perfeitamente parada).
  *
- * Continua Canvas 2D com projeção esférica manual (sem Three.js/WebGL —
- * mesma abordagem leve do `BackgroundNetwork`; o sandbox de desenvolvimento
- * também não tem acesso ao registry do npm pra instalar uma dependência
- * nova, então a única forma de evoluir o efeito sem quebrar o ambiente é
- * matemática pura em cima do que já existe). O halo externo (blur real) é
- * puro CSS por trás do canvas — mais barato que redesenhar blur no canvas a
+ * Continua Canvas 2D com projeção esférica manual (sem Three.js/WebGL/
+ * Babylon — decisão explícita: o sandbox de desenvolvimento também não tem
+ * acesso ao registry do npm pra instalar uma dependência nova, então toda
+ * evolução do efeito é matemática pura em cima do que já existe, "extrair o
+ * máximo possível do Canvas 2D"). O canvas em si nunca desenha nenhum fundo
+ * — só `clearRect` + a esfera; o halo (blur real, "luz, não um círculo") é
+ * puro CSS por trás do canvas, mais barato que redesenhar blur no canvas a
  * cada frame. Respeita `prefers-reduced-motion` (renderiza um frame único
- * estático, sem flutuação/inclinação/partículas) e pausa via
+ * estático, sem flutuação/inclinação/partículas/halo animado) e pausa via
  * `visibilitychange`, igual ao `BackgroundNetwork`.
  */
 export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProps) {
   const wrapperRef = React.useRef<HTMLDivElement | null>(null);
+  const haloRef = React.useRef<HTMLDivElement | null>(null);
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
 
@@ -299,8 +332,8 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
       lastPulseSignalRef.current = pulseSignal;
       const now = performance.now();
       lastPulseAtRef.current = now;
-      // "Quando falar, a esfera gera pequenas ondas... circulares" — uma
-      // onda nova por palavra, só enquanto a NOVA está de fato falando.
+      // "Cada frase gera pequenas ondas" — uma onda nova por fronteira de
+      // fala, só enquanto a NOVA está de fato falando.
       if (statusRef.current === 'respondendo') {
         wavesRef.current = [...wavesRef.current, { bornAt: now }];
       }
@@ -354,42 +387,61 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
       const breatheFactor = 1 + Math.sin(breathePhase) * BREATHE_AMPLITUDE_BY_STATUS[currentStatus];
 
       // Pulso de fala: decai linearmente nos primeiros `PULSE_DURATION_MS`
-      // depois da última fronteira de palavra reportada, depois some.
+      // depois da última fronteira de palavra reportada, depois some. Move
+      // tanto o raio quanto o glow (Etapa 11B: "o glow deve acompanhar a
+      // voz").
       const sincePulse = time - lastPulseAtRef.current;
-      const pulseBoost = sincePulse >= 0 && sincePulse < PULSE_DURATION_MS ? (1 - sincePulse / PULSE_DURATION_MS) * PULSE_BOOST : 0;
+      const pulseFraction = sincePulse >= 0 && sincePulse < PULSE_DURATION_MS ? 1 - sincePulse / PULSE_DURATION_MS : 0;
+      const pulseBoost = pulseFraction * PULSE_BOOST;
+      const pulseGlowBoost = pulseFraction * PULSE_GLOW_BOOST;
 
       const radius = baseRadius * RADIUS_SCALE_BY_STATUS[currentStatus] * breatheFactor * (1 + pulseBoost);
+      const silhouetteAmplitude = SILHOUETTE_AMPLITUDE_BY_STATUS[currentStatus];
 
-      // Camada 1 — halo externo amplo e difuso (profundidade). "Halo enorme,
-      // quase imperceptível" — bem maior que o próprio raio.
-      const outerGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 2.4);
-      outerGlow.addColorStop(0, `rgba(${glowRgb}, 0.13)`);
+      // Camada 1 — halo externo amplo e difuso, desenhado só como reforço
+      // sutil (o halo "de verdade" — enorme, sem borda — é o CSS por trás do
+      // canvas; isto aqui só ilumina discretamente a área imediatamente ao
+      // redor da esfera dentro do próprio canvas).
+      const outerGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 2.2);
+      outerGlow.addColorStop(0, `rgba(${glowRgb}, ${(0.1 + pulseGlowBoost * 0.4).toFixed(3)})`);
       outerGlow.addColorStop(1, `rgba(${glowRgb}, 0)`);
       ctx.fillStyle = outerGlow;
       ctx.fillRect(0, 0, width, height);
 
-      // Camada 2 — "material translúcido" (vidro líquido): um preenchimento
-      // circular (não retangular — precisa ter borda definida pra parecer
-      // uma esfera de vidro, não um brilho difuso qualquer) com um leve
-      // brilho de borda (rim light) simulando refração — mais claro perto da
-      // borda do que no centro, "borda quase invisível, mas com volume".
-      const glass = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 1.02);
-      glass.addColorStop(0, `rgba(${glowRgb}, 0.05)`);
-      glass.addColorStop(0.55, `rgba(${glowRgb}, 0.03)`);
-      glass.addColorStop(0.86, 'rgba(255, 255, 255, 0.04)');
-      glass.addColorStop(0.95, 'rgba(255, 255, 255, 0.15)');
+      // Camada 2 — "material translúcido" (vidro líquido): preenchimento
+      // com silhueta levemente deformada por ruído (nunca um círculo
+      // geométrico perfeito — "como um organismo respirando") e um brilho
+      // de borda suave simulando refração — mais claro perto da borda do
+      // que no centro, sem nunca virar um anel nítido.
+      ctx.beginPath();
+      for (let i = 0; i <= SILHOUETTE_SEGMENTS; i += 1) {
+        const angle = (i / SILHOUETTE_SEGMENTS) * Math.PI * 2;
+        const wobble = 1 + silhouetteWobble(angle, time) * silhouetteAmplitude;
+        const x = cx + Math.cos(angle) * radius * wobble;
+        const y = cy + Math.sin(angle) * radius * wobble * DEPTH_SQUASH;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      const glass = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 1.04);
+      glass.addColorStop(0, `rgba(${glowRgb}, 0.045)`);
+      glass.addColorStop(0.6, `rgba(${glowRgb}, 0.025)`);
+      glass.addColorStop(0.82, 'rgba(255, 255, 255, 0.03)');
+      glass.addColorStop(0.93, 'rgba(255, 255, 255, 0.08)');
       glass.addColorStop(1, 'rgba(255, 255, 255, 0)');
       ctx.fillStyle = glass;
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, radius, radius * DEPTH_SQUASH, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Camada 3 — núcleo com pulso de batimento (duas batidas por ciclo,
-      // não um brilho contínuo — "como um coração batendo").
+      // Camada 3 — núcleo com pulso de batimento, muito suave ("quase
+      // imperceptível" — duas batidas por ciclo, nunca um brilho contínuo
+      // nem um LED piscando).
       const heartbeatPeriod = HEARTBEAT_PERIOD_MS_BY_STATUS[currentStatus];
       const heartbeatPhase = (time % heartbeatPeriod) / heartbeatPeriod;
       const heartbeatValue = heartbeatPulse(heartbeatPhase);
-      const coreOpacity = Math.min(0.55, 0.26 + breatheFactor * 0.06 + heartbeatValue * HEARTBEAT_INTENSITY_BY_STATUS[currentStatus]);
+      const coreOpacity = Math.min(
+        0.42,
+        0.16 + breatheFactor * 0.04 + heartbeatValue * HEARTBEAT_INTENSITY_BY_STATUS[currentStatus] + pulseGlowBoost
+      );
       const coreGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 1.1);
       coreGlow.addColorStop(0, `rgba(${glowRgb}, ${coreOpacity.toFixed(3)})`);
       coreGlow.addColorStop(1, `rgba(${glowRgb}, 0)`);
@@ -413,13 +465,16 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
 
       // Inclinação (rotação em torno do eixo X) — só diferente de zero
       // enquanto 'ouvindo', eased em `step()`. Aplicada a todas as camadas
-      // antes de projetar, junto do jitter individual de cada ponto.
+      // antes de projetar, junto do jitter individual de cada ponto (raio,
+      // latitude, brilho e opacidade — "nunca todos iguais, nunca
+      // sincronizados").
       const tSeconds = time / 1000;
       const brightness = POINT_BRIGHTNESS_BY_STATUS[currentStatus];
       const projected: { x: number; y: number; z: number; size: number; opacity: number }[] = [];
 
       SHELLS.forEach((shell, shellIndex) => {
-        const shellRadius = radius * shell.radiusFraction;
+        const shellBreathe = 1 + Math.sin(breathePhase * 0.8 + shell.breathePhaseOffset) * BREATHE_AMPLITUDE_BY_STATUS[currentStatus] * 0.3;
+        const shellRadius = radius * shell.radiusFraction * shellBreathe;
         const angle = shellAngles[shellIndex] ?? 0;
         for (const point of shellPoints[shellIndex] ?? []) {
           const jitter = pseudoNoise(point.seed, tSeconds);
@@ -435,12 +490,15 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
           const z1 = y0 * Math.sin(tiltAngle) + z0 * Math.cos(tiltAngle);
 
           const depth = (z1 + 1) / 2; // 0 (fundo) .. 1 (frente)
+          // Brilho/opacidade individuais — cada ponto pisca ligeiramente
+          // fora de fase dos outros, nunca em uníssono.
+          const flicker = 0.85 + pseudoNoise(point.seed * 2.3 + 500, tSeconds * 0.6) * 0.15;
           projected.push({
             x: cx + x0 * jitteredRadius,
             y: cy + y1 * jitteredRadius * DEPTH_SQUASH,
             z: z1,
             size: (0.6 + depth * 1.8) * shell.sizeScale,
-            opacity: (0.12 + depth * 0.62) * shell.opacityScale,
+            opacity: (0.1 + depth * 0.6) * shell.opacityScale * flicker,
           });
         }
       });
@@ -470,13 +528,13 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
       }
 
       // Reflexo — desliza lentamente pela superfície em vez de ficar fixo
-      // ("reflexos que passam lentamente", referência Vision Pro/visionOS).
+      // ("reflexos dinâmicos, discretos, como vidro premium").
       const highlightAnchorX = cx - radius * 0.32;
       const highlightAnchorY = cy - radius * 0.38;
       const highlightX = highlightAnchorX + Math.cos(highlightAngle) * radius * 0.14;
       const highlightY = highlightAnchorY + Math.sin(highlightAngle * 0.8) * radius * 0.1;
       const highlight = ctx.createRadialGradient(highlightX, highlightY, 0, highlightX, highlightY, radius * 0.5);
-      highlight.addColorStop(0, 'rgba(255, 255, 255, 0.10)');
+      highlight.addColorStop(0, 'rgba(255, 255, 255, 0.09)');
       highlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
       ctx.fillStyle = highlight;
       ctx.beginPath();
@@ -516,12 +574,23 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
       bursts = bursts.filter((burst) => time - burst.bornAt < BURST_LIFETIME_MS);
 
       // Flutuação constante — "nunca deveria ficar parada, mesmo parada.
-      // Respira. Sobe 3px. Desce." Aplicada no wrapper (fora do canvas), não
-      // no raio — é um deslocamento vertical do organismo inteiro, distinto
-      // da respiração do próprio corpo da esfera.
+      // Respira. Sobe lentamente. Desce lentamente." Aplicada no wrapper
+      // (fora do canvas), não no raio — é um deslocamento vertical do
+      // organismo inteiro, distinto da respiração do próprio corpo da
+      // esfera.
       if (wrapperRef.current) {
         const floatOffset = Math.sin(time * 0.0006) * 3;
         wrapperRef.current.style.transform = `translateY(${floatOffset.toFixed(2)}px)`;
+      }
+
+      // O halo CSS também "respira" — Etapa 11B: "o glow deve respirar,
+      // aumentar, diminuir... sem parecer um efeito CSS estático." Escala e
+      // opacidade variam junto da própria respiração da esfera.
+      if (haloRef.current) {
+        const haloBreathe = 1 + Math.sin(breathePhase * 0.5) * 0.05;
+        const haloOpacity = 0.85 + Math.sin(breathePhase * 0.5) * 0.15;
+        haloRef.current.style.transform = `scale(${haloBreathe.toFixed(3)})`;
+        haloRef.current.style.opacity = haloOpacity.toFixed(3);
       }
 
       drawFrame(time);
@@ -561,18 +630,24 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
       {/* Sombra de contato — extremamente suave, "como se estivesse
           flutuando". Puro CSS, estática (a flutuação já é comunicada pelo
           próprio wrapper subindo/descendo por cima dela). */}
-      <div className="absolute inset-x-[18%] bottom-[-6%] h-[16%] rounded-full bg-black/35 blur-xl" />
+      <div className="absolute inset-x-[18%] bottom-[-6%] h-[16%] rounded-full bg-black/30 blur-xl" />
       {/* Halo externo em CSS puro (blur real, não redesenhado no canvas a
-          cada frame) — roxo → azul → transparente, "halo enorme, quase
-          imperceptível" — mais barato que simular blur dentro do Canvas 2D.
-          A cor acompanha o mesmo tom usado no canvas por estado. */}
+          cada frame) — "enorme, sem bordas, sem círculos visíveis, apenas
+          luz". Gradiente em múltiplos estágios suaves (nunca dois stops só,
+          que criam uma faixa/banda visível) pra nunca ler como um círculo
+          colorido — roxo → azul → transparente, escala/opacidade animadas
+          por `haloRef` (respira junto da esfera, não é um blur CSS parado). */}
       <div
-        className="absolute inset-[-30%] rounded-full blur-3xl"
+        ref={haloRef}
+        className="absolute inset-[-60%] rounded-full blur-[64px]"
         style={{
-          background: `radial-gradient(circle, rgba(${haloColorRgb}, 0.18), rgba(99, 141, 246, 0.08) 45%, transparent 72%)`,
+          background: `radial-gradient(circle, rgba(${haloColorRgb}, 0.16), rgba(${haloColorRgb}, 0.08) 28%, rgba(99, 141, 246, 0.05) 52%, transparent 78%)`,
         }}
       />
-      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+      {/* O canvas em si nunca desenha nenhum fundo — só `clearRect` + a
+          esfera — "não pode existir nenhum limite visual entre ela e o
+          background". */}
+      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full bg-transparent" />
     </div>
   );
 }
