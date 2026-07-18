@@ -8,6 +8,8 @@ export interface CreateReminderInput {
 
 export interface CreateGoalInput {
   title: string;
+  /** Prazo em ISO (`YYYY-MM-DD`), quando mencionado. Ver `GoalIntent.dueDate`. */
+  dueDate?: string;
 }
 
 /**
@@ -33,6 +35,11 @@ export class CreateGoalAction implements Action {
   constructor(private readonly input: CreateGoalInput) {}
 
   execute(ctx: NovaContext): NovaActionResult[] {
-    return createGoal(ctx, { kind: 'criar_objetivo', raw: this.input.title, title: this.input.title });
+    return createGoal(ctx, {
+      kind: 'criar_objetivo',
+      raw: this.input.title,
+      title: this.input.title,
+      dueDate: this.input.dueDate,
+    });
   }
 }

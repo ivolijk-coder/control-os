@@ -230,7 +230,7 @@ function mapToolCallToIntent(toolCall: NovaAIToolCall, raw: string): NovaIntent 
     case 'criar_objetivo': {
       const title = requireString(args, 'title');
       if (title === undefined) break;
-      return { kind: 'criar_objetivo', raw, title };
+      return { kind: 'criar_objetivo', raw, title, dueDate: requireString(args, 'dueDate') };
     }
     case 'criar_projeto': {
       const title = requireString(args, 'title');

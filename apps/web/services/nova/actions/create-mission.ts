@@ -5,6 +5,8 @@ interface MissionBlueprint {
   title: string;
   status: MissionStatus;
   kind: MissionKind;
+  /** Ver `GoalIntent.dueDate` — só metas criadas com prazo mencionado passam isso adiante. */
+  dueDate?: string;
 }
 
 /**
@@ -24,6 +26,7 @@ function createMissionFromBlueprint(
     objectivesTotal: 1,
     objectivesDone: 0,
     kind: blueprint.kind,
+    dueDate: blueprint.dueDate,
   });
 
   const timelineEvent = ctx.actions.addTimelineEvent({
@@ -51,7 +54,12 @@ export function createReminder(ctx: NovaContext, intent: ReminderIntent): NovaAc
 
 /** "Quero faturar R$ 500 mil" / "Quero economizar R$ 500" → Criar objetivo → Criar indicadores → Criar plano. */
 export function createGoal(ctx: NovaContext, intent: GoalIntent): NovaActionResult[] {
-  const { results } = createMissionFromBlueprint(ctx, { title: intent.title, status: 'planejamento', kind: 'meta' });
+  const { results } = createMissionFromBlueprint(ctx, {
+    title: intent.title,
+    status: 'planejamento',
+    kind: 'meta',
+    dueDate: intent.dueDate,
+  });
   return results;
 }
 

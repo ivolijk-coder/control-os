@@ -40,7 +40,7 @@ export class IntentResolver {
       case 'criar_agenda':
         return new CreateAppointmentAction({ title: intent.title, time: intent.time });
       case 'criar_objetivo':
-        return new CreateGoalAction({ title: intent.title });
+        return new CreateGoalAction({ title: intent.title, dueDate: intent.dueDate });
       case 'criar_habito':
         return new CreateHabitAction({ title: intent.title, category: intent.category });
       case 'criar_viagem':

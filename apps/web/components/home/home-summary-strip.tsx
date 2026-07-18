@@ -28,8 +28,17 @@ function todayIso(): string {
  *
  * Três números, nenhum dado novo: saldo do mês (mesma subtração
  * receita-despesa de `financeiro/page.tsx`), compromissos de hoje (mesmo
- * filtro `event.date === todayIso` de `agenda/page.tsx`) e hábitos pendentes
- * hoje (mesmo campo `completedToday` de `habitos/page.tsx`).
+ * filtro `event.date === todayIso` de `agenda/page.tsx`) e total de hábitos
+ * ativos (`habits.length`, `habitos/page.tsx`).
+ *
+ * Teste de uso real (30 min como usuária pagante): o terceiro card mostrava
+ * "Hábitos pendentes" — a mesmíssima métrica, com o mesmíssimo número, que
+ * `HomeTopInsights` já mostra logo acima quando há hábito pendente. As duas
+ * seções ficavam repetindo a mesma informação na mesma tela ao mesmo tempo
+ * — exatamente o "sem cards repetidos" que a Etapa 12A queria evitar. Como
+ * este card é o atalho pro módulo (não um insight em si), passou a mostrar
+ * o total de hábitos ativos — um dado real e diferente, não pendência do
+ * dia.
  */
 export function HomeSummaryStrip() {
   const novaContext = useNovaContext();
@@ -45,11 +54,6 @@ export function HomeSummaryStrip() {
     const today = todayIso();
     return agendaEvents.filter((event) => event.date === today).length;
   }, [agendaEvents]);
-
-  const habitosPendentes = React.useMemo(
-    () => habits.filter((habit) => !habit.completedToday).length,
-    [habits]
-  );
 
   return (
     <motion.div
@@ -82,8 +86,8 @@ export function HomeSummaryStrip() {
         <Link href="/habitos" className="block">
           <DashboardCard
             icon={Repeat}
-            label="Hábitos pendentes"
-            value={String(habitosPendentes)}
+            label="Hábitos ativos"
+            value={String(habits.length)}
             accent="purple"
           />
         </Link>

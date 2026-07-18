@@ -23,6 +23,14 @@ const BackgroundNetwork = dynamic(
  * as telas autenticadas — inclui o `NovaFloatingLauncher` (CONTROL OS —
  * Etapa 3): a Nova acompanha o usuário em qualquer módulo sem trocar de
  * página.
+ *
+ * `pb-24` em `<main>` (teste de uso real, 30 min como usuária pagante): o
+ * launcher é `fixed bottom-6 right-6`, sempre por cima do conteúdo — sem
+ * essa folga reservada, a última linha/card de qualquer página (ex.:
+ * "Pagar parcela" em Financeiro) renderizava exatamente atrás dele e ficava
+ * parcialmente coberta. `pb-24` (96px — maior que os 56px do botão + a
+ * margem de 24px) garante que o fim rolável de qualquer tela sempre deixa
+ * esse canto livre, sem precisar tocar cada página uma por uma.
  */
 export function LayoutPrincipal({ children }: { children: React.ReactNode }) {
   return (
@@ -31,7 +39,7 @@ export function LayoutPrincipal({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div className="relative flex min-w-0 flex-1 flex-col">
         <Topbar />
-        <main className="flex-1 overflow-y-auto">{children}</main>
+        <main className="flex-1 overflow-y-auto pb-24">{children}</main>
       </div>
       <CommandCenter />
       <NovaFloatingLauncher />

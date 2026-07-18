@@ -92,6 +92,11 @@ export const INTENT_TOOL_SCHEMAS: ToolSchema[] = [
       type: 'object',
       properties: {
         title: { type: 'string', description: 'Descrição da meta.' },
+        dueDate: {
+          type: 'string',
+          description:
+            'Prazo da meta, formato AAAA-MM-DD, só se o usuário mencionar um (ex.: "até dezembro", "em 3 meses"). Se mencionar só mês/ano, use o último dia do mês; se não mencionar nenhum prazo, omita este campo.',
+        },
       },
       required: ['title'],
     },

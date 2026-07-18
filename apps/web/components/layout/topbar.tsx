@@ -23,6 +23,15 @@ function pageTitleFromPath(pathname: string | null): string {
  * resto do sistema), o avatar ganhou um anel sutil e o indicador de
  * notificação ganhou um brilho discreto — nada de novo funcionalmente, só a
  * barra parecendo mais "viva" ao toque.
+ *
+ * Teste de uso real (30 min como usuária pagante): em telas estreitas
+ * (~390px) a barra "Buscar em tudo..." não tinha nenhuma versão mobile —
+ * era a mesma barra larga do desktop espremida no espaço que sobrava entre
+ * o menu e os botões da direita, e o texto quebrava em 3 linhas, vazando
+ * pra fora da altura do cabeçalho. Abaixo de `md` ela agora vira um botão
+ * só com o ícone de busca (mesmo alvo de toque do botão de menu); a barra
+ * completa com o atalho "⌘K" volta a partir de `md`. "Nova Missão" segue o
+ * mesmo princípio — o texto some antes de `sm`, sobra só o ícone.
  */
 export function Topbar() {
   const pathname = usePathname();
@@ -43,10 +52,20 @@ export function Topbar() {
         <h1 className="text-sm font-semibold text-text-primary">{title}</h1>
       </div>
 
-      <div className="flex flex-1 items-center justify-center px-8">
+      <div className="flex flex-1 items-center justify-end gap-2 md:justify-center md:px-8">
+        {/* Mobile (< md): só o ícone — a barra completa não cabe ao lado do
+            menu e dos botões da direita nesse tamanho de tela. */}
         <button
           onClick={() => setCommandCenterOpen(true)}
-          className="flex w-full max-w-md items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-text-tertiary backdrop-blur-sm transition-all duration-fast ease-out hover:scale-[1.01] hover:border-white/20 hover:bg-white/[0.05] active:scale-[0.99] focus-visible:scale-[1.01] focus-visible:border-accent-purple/40 focus-visible:shadow-glow-purple focus-visible:outline-none"
+          aria-label="Busca universal (⌘K)"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-text-tertiary transition-colors duration-fast ease-out hover:bg-white/[0.06] hover:text-text-primary md:hidden"
+        >
+          <ICON_MAP.Search className="h-4 w-4" />
+        </button>
+        {/* Desktop (>= md): barra completa com o atalho de teclado. */}
+        <button
+          onClick={() => setCommandCenterOpen(true)}
+          className="hidden w-full max-w-md items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-text-tertiary backdrop-blur-sm transition-all duration-fast ease-out hover:scale-[1.01] hover:border-white/20 hover:bg-white/[0.05] active:scale-[0.99] focus-visible:scale-[1.01] focus-visible:border-accent-purple/40 focus-visible:shadow-glow-purple focus-visible:outline-none md:flex"
           aria-label="Busca universal (⌘K)"
         >
           <ICON_MAP.Search className="h-4 w-4" />
@@ -60,7 +79,7 @@ export function Topbar() {
       <div className="flex items-center gap-2">
         <Button variant="secondary" size="sm" className="gap-1.5">
           <ICON_MAP.Plus className="h-3.5 w-3.5" />
-          Nova Missão
+          <span className="hidden sm:inline">Nova Missão</span>
         </Button>
         <button
           aria-label="Notificações"

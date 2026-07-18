@@ -122,9 +122,15 @@ export function HomeTopInsights() {
       {insights.map((insight) => (
         <motion.div key={insight.key} variants={fadeUp}>
           <GlassCard glow={insight.accent} className="flex h-full flex-col gap-3 p-5">
-            <div className="flex items-center gap-2">
-              <insight.icon className={`h-4 w-4 shrink-0 ${ACCENT_TEXT[insight.accent]}`} aria-hidden />
-              <p className="truncate text-xs font-medium text-text-secondary">{insight.title}</p>
+            {/* Teste de uso real (30 min como usuária pagante): título de
+                missão longo ("Fechar 3 novos clientes enterprise") cortava
+                em 1 linha com "..." e perdia o sentido — 2 linhas
+                (`line-clamp-2`) preservam o texto inteiro na imensa maioria
+                dos casos reais; `items-start` alinha o ícone à primeira
+                linha em vez de flutuar no meio do bloco de 2 linhas. */}
+            <div className="flex items-start gap-2">
+              <insight.icon className={`mt-0.5 h-4 w-4 shrink-0 ${ACCENT_TEXT[insight.accent]}`} aria-hidden />
+              <p className="line-clamp-2 text-xs font-medium text-text-secondary">{insight.title}</p>
             </div>
             <p className="font-mono text-2xl font-semibold tracking-tight text-text-primary">{insight.value}</p>
             <Link

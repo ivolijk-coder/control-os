@@ -157,9 +157,13 @@ export function NovaInput({ className, onSubmit, disabled = false, onListeningCh
   return (
     <div className="relative w-full">
       {/* Legenda ao vivo: bolha acima do campo espelhando o que está sendo
-          digitado ou falado. */}
+          falado. Teste de uso real (30 min como usuária pagante): antes
+          também aparecia ao digitar — duplicava, sem necessidade, o texto
+          que já está visível no próprio campo logo abaixo dela (só faz
+          sentido pra voz, onde a confirmação visual do que foi capturado
+          importa de verdade). */}
       <AnimatePresence>
-        {displayValue.length > 0 && (
+        {isListening && displayValue.length > 0 && (
           <motion.div
             key="live-caption"
             initial={{ opacity: 0, y: 6, scale: 0.98 }}

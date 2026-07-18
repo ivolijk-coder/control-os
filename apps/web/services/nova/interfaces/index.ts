@@ -70,6 +70,14 @@ export interface AgendaIntent extends NovaIntentBase {
 export interface GoalIntent extends NovaIntentBase {
   kind: 'criar_objetivo';
   title: string;
+  /**
+   * Prazo da meta em ISO (`YYYY-MM-DD`), quando o usuário menciona um (ex.:
+   * "até dezembro"). Teste de uso real (30 min como usuária pagante): antes
+   * este campo não existia — o prazo dito por voz/texto era descartado, e a
+   * meta criada nunca aparecia no Roadmap de `/metas` (que só lista metas
+   * com `dueDate`). Opcional: nem toda meta tem prazo definido.
+   */
+  dueDate?: string;
 }
 
 export interface ProjectIntent extends NovaIntentBase {

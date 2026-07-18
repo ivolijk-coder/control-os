@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { FloatingPanel } from '@/components/ui/floating-panel';
@@ -20,6 +21,19 @@ export function NovaFloatingPanel() {
   const open = useAppStore((s) => s.novaPanelOpen);
   const setOpen = useAppStore((s) => s.setNovaPanelOpen);
 
+  // Mesmo tratamento do `variant="docked"` em `NovaWorkspace` (teste de uso
+  // real: resposta nova nascia escondida, exigia rolagem manual) — aqui
+  // quem é dono do container de rolagem é este painel, não o `NovaWorkspace`
+  // (`variant="inline"`), então a assinatura de `novaMessages` roda aqui.
+  const messages = useAppStore((s) => s.novaMessages);
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, [open, messages]);
+
   return (
     <FloatingPanel
       open={open}
@@ -37,7 +51,7 @@ export function NovaFloatingPanel() {
           <X className="h-4 w-4" />
         </DialogPrimitive.Close>
       </div>
-      <div className="max-h-[70vh] overflow-y-auto p-4">
+      <div ref={scrollRef} className="max-h-[70vh] overflow-y-auto p-4">
         <NovaWorkspace showIntelligentPanel={false} />
       </div>
     </FloatingPanel>

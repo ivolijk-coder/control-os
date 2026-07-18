@@ -165,6 +165,20 @@ export function NovaWorkspace({
   const [isSpeakingReply, setIsSpeakingReply] = React.useState(false);
   const [speechPulse, setSpeechPulse] = React.useState(0);
 
+  // CONTROL OS — teste de uso real (30 min como usuária pagante): a cada
+  // resposta da NOVA a tela ficava parada na posição anterior — a mensagem
+  // nova nascia escondida atrás do campo fixo do rodapé, e era preciso
+  // rolar manualmente pra lê-la. Só existe no `variant="docked"` (a Home) —
+  // é o único caso em que este componente é dono do próprio container de
+  // rolagem; o `variant="inline"` (`NovaFloatingPanel`) rola por conta
+  // própria, ver o mesmo tratamento lá.
+  const dockedScrollRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const el = dockedScrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, [messages, isThinking]);
+
   // Nunca deixa uma fala em andamento presa em segundo plano se este
   // workspace desmontar (ex.: usuário navega pra outra tela) no meio de uma
   // resposta falada.
@@ -369,7 +383,7 @@ export function NovaWorkspace({
   if (variant === 'docked') {
     return (
       <div className="flex h-[calc(100vh-4rem)] flex-col">
-        <div className="flex-1 overflow-y-auto px-6 py-8">
+        <div ref={dockedScrollRef} className="flex-1 overflow-y-auto px-6 py-8">
           <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-6">
             {messages.length === 0 && topContent}
 

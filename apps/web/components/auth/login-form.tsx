@@ -26,14 +26,27 @@ export function LoginForm() {
     e.preventDefault();
     setError(null);
 
-    if (!email || !password) {
+    // O autofill do navegador (ou de um gerenciador de senhas) às vezes
+    // preenche o campo direto no DOM sem disparar o evento `onChange` que o
+    // React escuta — o input fica visivelmente cheio, mas o state
+    // controlado (`email`/`password`) continua vazio, e a validação abaixo
+    // acusava "preencha e-mail e senha" mesmo com os dois campos cheios na
+    // tela. Lendo o valor final direto do FormData no momento do envio (o
+    // valor real que o navegador tem, não o que o React acha que tem)
+    // elimina esse descompasso sem trocar os inputs de controlados pra
+    // não-controlados.
+    const formData = new FormData(e.currentTarget);
+    const submittedEmail = String(formData.get('email') ?? email).trim();
+    const submittedPassword = String(formData.get('password') ?? password);
+
+    if (!submittedEmail || !submittedPassword) {
       setError('Preencha e-mail e senha para continuar.');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await login(email, password);
+      await login(submittedEmail, submittedPassword);
       router.push('/nova');
     } finally {
       setIsSubmitting(false);
@@ -62,6 +75,7 @@ export function LoginForm() {
             <Label htmlFor="email">E-mail</Label>
             <Input
               id="email"
+              name="email"
               type="email"
               autoComplete="email"
               value={email}
@@ -79,6 +93,7 @@ export function LoginForm() {
             </div>
             <Input
               id="password"
+              name="password"
               type="password"
               autoComplete="current-password"
               value={password}
