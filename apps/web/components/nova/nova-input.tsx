@@ -195,7 +195,11 @@ export function NovaInput({ className, onSubmit, disabled = false, onListeningCh
           aria-pressed={isListening}
           title={speechSupported ? undefined : 'Este navegador não suporta reconhecimento de voz'}
           className={cn(
-            'flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-30',
+            // CONTROL OS — Etapa 12B: h-8/w-8 (32px) ficava abaixo do alvo de
+            // toque confortável ("botões grandes... nada apertado") pro
+            // botão mais importante do produto — a NOVA é o centro absoluto
+            // da experiência, e este é o gatilho de voz dela.
+            'flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-30',
             isListening ? 'bg-accent-purple text-white' : 'text-accent-purple hover:bg-accent-purple/10'
           )}
         >
@@ -249,7 +253,10 @@ export function NovaInput({ className, onSubmit, disabled = false, onListeningCh
           animate={justSent ? { scale: [1, 1.15, 1] } : { scale: 1 }}
           transition={transitionOut(0.4)}
           aria-label="Enviar para a NOVA"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-black transition-opacity duration-fast ease-out disabled:opacity-30"
+          // CONTROL OS — Etapa 12B: h-9/w-9 (36px) → h-11/w-11 (44px), o
+          // alvo de toque confortável de referência (Apple HIG) — ação de
+          // envio é a mais frequente do campo, merece o maior botão dos dois.
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-black transition-opacity duration-fast ease-out disabled:opacity-30"
         >
           {justSent ? <Check className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
         </motion.button>

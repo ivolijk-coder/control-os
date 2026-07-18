@@ -19,6 +19,13 @@ export interface SectionHeaderProps {
  * hierarquia tipográfica em todo o CONTROL OS — level="page" pro título da
  * tela, level="section" pros blocos dentro dela (ex.: "Dívidas",
  * "Lançamentos").
+ *
+ * CONTROL OS — Etapa 12B: `level="page"` foi de `text-lg` (18px) pra
+ * `text-2xl` (24px) — os dois níveis ficavam próximos demais em tamanho
+ * (18px vs. 14px), então o título da tela não se impunha sobre os títulos
+ * de bloco logo abaixo. Como este componente é reusado em praticamente
+ * toda página de módulo, o salto de hierarquia agora é sentido no produto
+ * inteiro de uma vez.
  */
 export function SectionHeader({ title, description, meta, action, level = 'section' }: SectionHeaderProps) {
   return (
@@ -27,7 +34,7 @@ export function SectionHeader({ title, description, meta, action, level = 'secti
         <h2
           className={
             level === 'page'
-              ? 'text-lg font-semibold tracking-tight text-text-primary'
+              ? 'text-2xl font-semibold tracking-tight text-text-primary'
               : 'text-sm font-medium text-text-primary'
           }
         >

@@ -63,7 +63,11 @@ function NavGroup({
             key={item.id}
             href={item.href}
             className={cn(
-              'group relative flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-all duration-fast ease-out hover:scale-[1.01] active:scale-[0.98]',
+              // CONTROL OS — Etapa 12B: py-2 (32px de altura) → py-2.5
+              // (~40px) — alvo de toque mais confortável em mobile, sem
+              // aumentar a densidade visual em telas largas (o drawer
+              // mobile já usa a Sidebar inteira, nunca a versão colapsada).
+              'group relative flex items-center gap-3 rounded-md px-2.5 py-2.5 text-sm font-medium transition-all duration-fast ease-out hover:scale-[1.01] active:scale-[0.98]',
               isActive
                 ? 'bg-gradient-to-r from-accent-purple/[0.14] via-white/[0.05] to-transparent text-text-primary'
                 : 'text-text-secondary hover:bg-white/[0.04] hover:text-text-primary'

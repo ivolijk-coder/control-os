@@ -34,7 +34,7 @@ export interface CardFooterProps extends React.ComponentPropsWithoutRef<'div'> {
 
 /**
  * Cartão base do CONTROL OS — superfície de vidro elevada sobre o fundo
- * #050505. `bg-card/80` + `backdrop-blur-sm` deixam o Background vivo (Fase
+ * #050505. `bg-card/60` + `backdrop-blur-md` deixam o Background vivo (Fase
  * 2: Nova Experience) sutilmente visível através da superfície, mantendo
  * legibilidade total do conteúdo.
  *
@@ -43,7 +43,16 @@ export interface CardFooterProps extends React.ComponentPropsWithoutRef<'div'> {
  * superfície de vidro) e uma resposta de hover consistente com o resto do
  * sistema (borda e sombra crescem levemente) — antes era uma superfície
  * puramente estática, sem nenhuma microinteração, diferente do `GlassCard`
- * (`apps/web/components/ui/glass-card.tsx`) que já tinha isso. Continua
+ * (`apps/web/components/ui/glass-card.tsx`) que já tinha isso.
+ *
+ * CONTROL OS — Etapa 12B: Premium Experience Polish. Raio, elevação, opacidade
+ * de fundo e blur alinhados byte-a-byte com `GlassCard` (`rounded-xl` /
+ * `shadow-e3` / `bg-card/60` / `backdrop-blur-md`) — antes divergiam
+ * (`rounded-lg` / `shadow-e2` / `bg-card/80` / `backdrop-blur-sm`), o que
+ * fazia dois cards lado a lado na mesma tela (ex.: `DashboardCard`, sobre
+ * `GlassCard`, ao lado de `ChartCard`, sobre este `Card`) terem cantos e
+ * profundidade visivelmente diferentes. Agora existe uma única "linguagem de
+ * vidro" no produto inteiro, incluindo as telas de autenticação. Continua
  * `border-box`/props idênticas — nenhum consumidor precisa mudar nada.
  */
 export const Card = React.forwardRef<HTMLDivElement, CardProps>(
@@ -51,9 +60,9 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
     <div
       ref={ref}
       className={cn(
-        'relative overflow-hidden rounded-lg border border-white/[0.08] bg-card/80 shadow-e2 backdrop-blur-sm transition-all duration-base ease-out',
+        'relative overflow-hidden rounded-xl border border-white/[0.08] bg-card/60 shadow-e3 backdrop-blur-md transition-all duration-base ease-out',
         'before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/20 before:to-transparent',
-        'hover:border-white/[0.14] hover:shadow-e3',
+        'hover:border-white/[0.14] hover:shadow-e4',
         className
       )}
       {...props}

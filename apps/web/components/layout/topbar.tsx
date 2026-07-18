@@ -36,7 +36,7 @@ export function Topbar() {
         <button
           onClick={() => setMobileNavOpen(true)}
           aria-label="Abrir menu"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-text-secondary transition-colors duration-fast ease-out hover:bg-white/[0.06] hover:text-text-primary md:hidden"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-text-secondary transition-colors duration-fast ease-out hover:bg-white/[0.06] hover:text-text-primary md:hidden"
         >
           <ICON_MAP.Menu className="h-4 w-4" />
         </button>
