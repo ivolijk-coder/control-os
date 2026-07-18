@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { CalendarClock, Repeat, Wallet } from 'lucide-react';
 import { DashboardCard } from '@/components/dashboard/dashboard-card';
@@ -14,23 +15,21 @@ function todayIso(): string {
 }
 
 /**
- * HomeSummaryStrip — CONTROL OS Etapa 11.
+ * HomeSummaryStrip — CONTROL OS Etapa 11; reposicionada como a seção
+ * "Módulos" na Etapa 12A ("5. MÓDULOS — somente depois de rolar").
  *
- * O spec pede, depois de "ações rápidas": "resumo financeiro, resumo da
- * agenda, resumo dos hábitos". `NovaWorkspace` (`variant="docked"`) tem o
- * campo de entrada fixo no rodapé — nada pode vir "depois" dele na ordem do
- * documento. Esta faixa resolve a prioridade conceitual do spec (contexto
- * рápido sobre a vida do usuário, sempre visível antes da conversa começar)
- * colocando-a no espaço logo abaixo da esfera, via a nova prop
- * `belowOrbContent` de `NovaWorkspace` — mesmo tratamento de `topContent`
- * (some assim que a conversa começa).
+ * Continua vivendo no espaço abaixo da esfera (`belowOrbContent` de
+ * `NovaWorkspace`, depois de `HomeTopInsights`) — mas agora, com
+ * `HomeTopInsights` cobrindo os insights de destaque, esta faixa passa a
+ * ser deliberadamente secundária: um atalho rápido pros 3 módulos com dado
+ * mais imediato (Financeiro/Agenda/Hábitos), cada card agora um link
+ * direto pro módulo (`next/link`) — nenhuma rota nova, só uma segunda porta
+ * de entrada pras mesmas páginas já alcançáveis pela Sidebar.
  *
  * Três números, nenhum dado novo: saldo do mês (mesma subtração
  * receita-despesa de `financeiro/page.tsx`), compromissos de hoje (mesmo
  * filtro `event.date === todayIso` de `agenda/page.tsx`) e hábitos pendentes
- * hoje (mesmo campo `completedToday` de `habitos/page.tsx`) — só uma leitura
- * compacta do `NovaContext` real, reaproveitando os mesmos três
- * `DashboardCard`s já usados nos módulos.
+ * hoje (mesmo campo `completedToday` de `habitos/page.tsx`).
  */
 export function HomeSummaryStrip() {
   const novaContext = useNovaContext();
@@ -60,28 +59,34 @@ export function HomeSummaryStrip() {
       className="grid w-full max-w-lg grid-cols-1 gap-3 sm:grid-cols-3"
     >
       <motion.div variants={fadeUp}>
-        <DashboardCard
-          icon={Wallet}
-          label="Saldo do mês"
-          value={formatCurrency(saldo)}
-          accent={saldo >= 0 ? 'green' : 'red'}
-        />
+        <Link href="/financeiro" className="block">
+          <DashboardCard
+            icon={Wallet}
+            label="Saldo do mês"
+            value={formatCurrency(saldo)}
+            accent={saldo >= 0 ? 'green' : 'red'}
+          />
+        </Link>
       </motion.div>
       <motion.div variants={fadeUp}>
-        <DashboardCard
-          icon={CalendarClock}
-          label="Compromissos hoje"
-          value={String(compromissosHoje)}
-          accent="blue"
-        />
+        <Link href="/agenda" className="block">
+          <DashboardCard
+            icon={CalendarClock}
+            label="Compromissos hoje"
+            value={String(compromissosHoje)}
+            accent="blue"
+          />
+        </Link>
       </motion.div>
       <motion.div variants={fadeUp}>
-        <DashboardCard
-          icon={Repeat}
-          label="Hábitos pendentes"
-          value={String(habitosPendentes)}
-          accent="purple"
-        />
+        <Link href="/habitos" className="block">
+          <DashboardCard
+            icon={Repeat}
+            label="Hábitos pendentes"
+            value={String(habitosPendentes)}
+            accent="purple"
+          />
+        </Link>
       </motion.div>
     </motion.div>
   );
