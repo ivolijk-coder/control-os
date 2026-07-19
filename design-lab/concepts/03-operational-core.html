@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR" data-persona="nova">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Concept 03 — Operational Core — CONTROL OS Design Lab</title>
+<style>
+  :root { --bg: #030304; }
+  html[data-persona="nova"] { --accent: #38bdf8; --accent-bright: #e0f2fe; --accent-dim: #0c2a3d; }
+  html[data-persona="legendary"] { --accent: #d9a455; --accent-bright: #f6e4c2; --accent-dim: #2e2210; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; font-family: -apple-system, system-ui, "Segoe UI", sans-serif; }
+  .topbar { position: fixed; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 18px 22px; z-index: 10; }
+  .back { color: #555; text-decoration: none; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+  .back:hover { color: #999; }
+  .toggle { display: flex; gap: 4px; background: #0a0a0c; border: 1px solid #1c1c20; border-radius: 999px; padding: 3px; }
+  .toggle button { border: none; background: transparent; color: #666; font-size: 10px; letter-spacing: .06em; padding: 6px 12px; border-radius: 999px; cursor: pointer; font-weight: 700; }
+  .toggle button.active { background: var(--accent); color: #04050a; }
+  .label { position: fixed; bottom: 22px; left: 22px; color: #444; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+  .stage { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+  .arc { transform-origin: 110px 110px; animation: spin 4s linear infinite; filter: drop-shadow(0 0 6px var(--accent)); }
+  .core-dot { filter: drop-shadow(0 0 8px var(--accent-bright)); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <a class="back" href="../index.html">&larr; Galeria</a>
+    <div class="toggle">
+      <button data-persona="nova">NOVA</button>
+      <button data-persona="legendary">LEGENDARY</button>
+    </div>
+  </div>
+  <div class="stage">
+    <svg width="220" height="220" viewBox="0 0 220 220">
+      <circle cx="110" cy="110" r="90" fill="none" stroke="#1c1c22" stroke-width="1" />
+      <g stroke="#26262c" stroke-width="1">
+        <line x1="110" y1="14" x2="110" y2="26" />
+        <line x1="110" y1="14" x2="110" y2="26" transform="rotate(45 110 110)" />
+        <line x1="110" y1="14" x2="110" y2="26" transform="rotate(90 110 110)" />
+        <line x1="110" y1="14" x2="110" y2="26" transform="rotate(135 110 110)" />
+        <line x1="110" y1="14" x2="110" y2="26" transform="rotate(180 110 110)" />
+        <line x1="110" y1="14" x2="110" y2="26" transform="rotate(225 110 110)" />
+        <line x1="110" y1="14" x2="110" y2="26" transform="rotate(270 110 110)" />
+        <line x1="110" y1="14" x2="110" y2="26" transform="rotate(315 110 110)" />
+      </g>
+      <circle class="arc" cx="110" cy="110" r="90" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-dasharray="46 520" />
+      <circle class="core-dot" cx="110" cy="110" r="4" fill="var(--accent-bright)" />
+    </svg>
+  </div>
+  <div class="label">Concept 03 — Operational Core</div>
+  <script>
+    const root = document.documentElement;
+    const KEY = 'control-os-design-lab-persona';
+    function applyPersona(p) {
+      root.setAttribute('data-persona', p);
+      document.querySelectorAll('.toggle button').forEach((b) => b.classList.toggle('active', b.dataset.persona === p));
+    }
+    applyPersona(localStorage.getItem(KEY) || 'nova');
+    document.querySelectorAll('.toggle button').forEach((b) => {
+      b.addEventListener('click', () => {
+        localStorage.setItem(KEY, b.dataset.persona);
+        applyPersona(b.dataset.persona);
+      });
+    });
+  </script>
+</body>
+</html>
