@@ -325,7 +325,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<NovaAIRes
   const model = process.env.OPENAI_MODEL ?? 'gpt-5.5';
   const instructions = buildInstructions(body.contextSummary, body.persona);
   const input = buildResponsesInput(body);
-  const tools = body.mode === 'reason' || body.mode === 'classify' ? toOpenAITools(INTENT_TOOL_SCHEMAS) : undefined;
+  // CONTROL OS — papéis definitivos das duas inteligências: a NOVA executa,
+  // a LEGENDARY desenvolve — ela NUNCA executa ações operacionais (ver
+  // `SystemPrompt.ts`, "Tools por especialidade"). Isso não pode depender só
+  // do texto do prompt pedindo pra ela não usar Tools — o modelo literalmente
+  // não pode receber a lista de Tools de execução quando a persona é
+  // `legendary`, mesma defesa em profundidade já aplicada acima pro provedor.
+  const canUseTools = (body.mode === 'reason' || body.mode === 'classify') && body.persona !== 'legendary';
+  const tools = canUseTools ? toOpenAITools(INTENT_TOOL_SCHEMAS) : undefined;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
