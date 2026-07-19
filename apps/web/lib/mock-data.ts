@@ -1,7 +1,6 @@
 import type {
   AgendaEvent,
   Asset,
-  ControlSpace,
   DashboardStat,
   Debt,
   FinanceEntry,
@@ -35,34 +34,30 @@ export const MOCK_USER: User = {
   createdAt: '2025-11-02T10:00:00Z',
 };
 
-export const MOCK_SPACES: ControlSpace[] = [
-  { id: 'sp_vida', name: 'Minha Vida', icon: 'User', color: 'blue', missionsCount: 4, isActive: true },
-  { id: 'sp_empresa', name: 'Minha Empresa', icon: 'Building2', color: 'purple', missionsCount: 9, isActive: false },
-  { id: 'sp_clientes', name: 'Clientes', icon: 'Users', color: 'green', missionsCount: 6, isActive: false },
-];
-
 /**
- * Navegação da Sidebar (CONTROL OS — Etapa 3, Sistema Operacional Pessoal).
+ * Navegação da Sidebar (CONTROL OS — "Pessoa Física": eliminação completa do
+ * conceito de Control Spaces™).
  *
- * Dividida em 2 grupos — reflete a mudança de foco pedida pelo usuário: "o
- * foco deixa de ser empresa, passa a ser organização da vida". "Minha Vida"
- * aparece primeiro e concentra os módulos pessoais; "Empresa" continua
- * existindo, só que em segundo plano, sem sumir. `nav_projetos` e
- * `nav_knowledge` (que nunca tiveram página construída — só existiam como
- * item de menu quebrado desde a Fase 1) foram removidos daqui; cada módulo
- * novo só entra nesta lista no mesmo momento em que sua página é criada,
- * pra nunca existir um link morto no meio do caminho.
+ * Até aqui a Sidebar tinha um seletor de Spaces ("Minha Vida" / "Minha
+ * Empresa" / "Clientes", cada um com contador de missões) acima de dois
+ * grupos de navegação separados ("Minha Vida" em destaque, "Empresa" em
+ * segundo plano). Pedido explícito do usuário: "o CONTROL OS será focado em
+ * Pessoa Física... o usuário não deve precisar escolher um Space. Ao abrir o
+ * CONTROL OS ele já está dentro da sua vida." Não existe mais escolha de
+ * contexto nem divisão em grupos — uma lista única e plana, a navegação
+ * principal já começa direto no topo da Sidebar.
  *
- * CONTROL OS — Home/Dashboard (Design Lab → implementação oficial):
- * `nav_nova` virou `nav_visao_geral`, apontando pra `/dashboard` em vez de
- * `/nova` — a Home passou de "chat-first" pra "dashboard operacional
- * primeiro" (ver HANDOFF-control-os-design.md: "o protagonista da Home é
- * o SaaS, não a IA"). `/nova` continua existindo como rota do chat
- * completo, só deixou de ser o destino padrão. "Missões" foi mantido aqui
- * mesmo não aparecendo na grade nova do protótipo — nada foi pedido pra
- * removê-lo, e ele já é uma página real e funcional.
+ * `nav_missoes` e `nav_timeline` saíram desta lista (não fazem parte da
+ * estrutura final pedida pelo usuário) — as páginas `/missoes` e `/timeline`
+ * continuam existindo e acessíveis por URL direta, só perderam o item fixo
+ * no menu. `nav_nova`/`nav_legendary` entraram como itens de navegação
+ * regulares para as rotas fixas das duas inteligências (`/nova`, `/legendary`
+ * — ver `nova-floating-launcher.tsx`, mesmo destino, só que agora também
+ * alcançável pela Sidebar). `nav_configuracoes` é novo (`/configuracoes`,
+ * página mínima criada junto com esta mudança) — sem ele o item ficaria
+ * apontando para um link morto, o que este arquivo historicamente evita.
  */
-export const MOCK_NAV_ITEMS_VIDA: NavItem[] = [
+export const MOCK_NAV_ITEMS: NavItem[] = [
   { id: 'nav_visao_geral', label: 'Visão geral', href: '/dashboard', icon: 'LayoutGrid' },
   { id: 'nav_financeiro', label: 'Financeiro', href: '/financeiro', icon: 'Wallet' },
   { id: 'nav_agenda', label: 'Agenda', href: '/agenda', icon: 'CalendarClock' },
@@ -72,15 +67,9 @@ export const MOCK_NAV_ITEMS_VIDA: NavItem[] = [
   { id: 'nav_patrimonio', label: 'Patrimônio', href: '/patrimonio', icon: 'Landmark' },
   { id: 'nav_viagens', label: 'Viagens', href: '/viagens', icon: 'Plane' },
   { id: 'nav_notas', label: 'Notas', href: '/notas', icon: 'NotebookText' },
-  { id: 'nav_missoes', label: 'Missões', href: '/missoes', icon: 'Target', badge: 5 },
-];
-
-// `nav_dashboard` (Empresa → Dashboard) foi removido: apontava pra
-// `/dashboard`, a mesma rota que virou "Visão geral" em Minha Vida — dois
-// itens de menu pro mesmo destino ficaria confuso agora que o conteúdo da
-// página mudou de propósito.
-export const MOCK_NAV_ITEMS_EMPRESA: NavItem[] = [
-  { id: 'nav_timeline', label: 'Timeline', href: '/timeline', icon: 'Activity', badge: 3 },
+  { id: 'nav_nova', label: 'NOVA', href: '/nova', icon: 'Sparkles' },
+  { id: 'nav_legendary', label: 'LEGENDARY', href: '/legendary', icon: 'BookOpen' },
+  { id: 'nav_configuracoes', label: 'Configurações', href: '/configuracoes', icon: 'Settings' },
 ];
 
 export const MOCK_STATS: DashboardStat[] = [

@@ -4,10 +4,8 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { FloatingPanel } from '@/components/ui/floating-panel';
 import { useAppStore } from '@/lib/store';
-import { MOCK_NAV_ITEMS_EMPRESA, MOCK_NAV_ITEMS_VIDA } from '@/lib/mock-data';
+import { MOCK_NAV_ITEMS } from '@/lib/mock-data';
 import { ICON_MAP } from '@/components/layout/icon-map';
-
-const ALL_NAV_ITEMS = [...MOCK_NAV_ITEMS_VIDA, ...MOCK_NAV_ITEMS_EMPRESA];
 
 /**
  * CommandCenter — Command Center (⌘K), Nova Experience — Fase 3.
@@ -38,7 +36,7 @@ export function CommandCenter() {
     if (!open) setQuery('');
   }, [open]);
 
-  const filtered = ALL_NAV_ITEMS.filter((item) =>
+  const filtered = MOCK_NAV_ITEMS.filter((item) =>
     item.label.toLowerCase().includes(query.trim().toLowerCase())
   );
 

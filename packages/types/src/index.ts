@@ -54,16 +54,6 @@ export type IconName =
   | 'Plane'
   | 'NotebookText';
 
-/** Control Spaces™ — unidades de contexto (ex.: "Minha Vida", "Minha Empresa"). */
-export interface ControlSpace {
-  id: string;
-  name: string;
-  icon: IconName;
-  color: 'green' | 'blue' | 'purple' | 'red';
-  missionsCount: number;
-  isActive: boolean;
-}
-
 export type MissionStatus = 'planejamento' | 'em_andamento' | 'em_risco' | 'concluida';
 
 /**

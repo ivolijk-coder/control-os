@@ -4,14 +4,12 @@ import * as React from 'react';
 import { usePathname } from 'next/navigation';
 import { Avatar, AvatarFallback, Button } from '@control-os/ui';
 import { getInitials } from '@/lib/utils';
-import { MOCK_NAV_ITEMS_EMPRESA, MOCK_NAV_ITEMS_VIDA, MOCK_USER } from '@/lib/mock-data';
+import { MOCK_NAV_ITEMS, MOCK_USER } from '@/lib/mock-data';
 import { useAppStore } from '@/lib/store';
 import { ICON_MAP } from './icon-map';
 
-const ALL_NAV_ITEMS = [...MOCK_NAV_ITEMS_VIDA, ...MOCK_NAV_ITEMS_EMPRESA];
-
 function pageTitleFromPath(pathname: string | null): string {
-  const match = ALL_NAV_ITEMS.find((item) => pathname?.startsWith(item.href));
+  const match = MOCK_NAV_ITEMS.find((item) => pathname?.startsWith(item.href));
   return match?.label ?? 'CONTROL OS';
 }
 
