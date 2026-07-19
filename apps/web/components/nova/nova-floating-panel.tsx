@@ -21,11 +21,21 @@ export function NovaFloatingPanel() {
   const open = useAppStore((s) => s.novaPanelOpen);
   const setOpen = useAppStore((s) => s.setNovaPanelOpen);
 
+  // CONTROL OS — "separação completa entre NOVA e LEGENDARY": este painel
+  // usa `NovaWorkspace variant="inline"` (seletor de persona in-place, sem
+  // `lockedPersona`) — a persona "de verdade" aqui é sempre o que está no
+  // store. `activePersona` decide tanto QUAL balde de mensagens observar
+  // pra rolar a tela (abaixo) quanto o título/identidade do cabeçalho —
+  // antes ambos ficavam fixos em "Nova" mesmo com a LEGENDARY selecionada.
+  const activePersona = useAppStore((s) => s.activePersona);
+  const isLegendary = activePersona === 'legendary';
+
   // Mesmo tratamento do `variant="docked"` em `NovaWorkspace` (teste de uso
   // real: resposta nova nascia escondida, exigia rolagem manual) — aqui
   // quem é dono do container de rolagem é este painel, não o `NovaWorkspace`
-  // (`variant="inline"`), então a assinatura de `novaMessages` roda aqui.
-  const messages = useAppStore((s) => s.novaMessages);
+  // (`variant="inline"`), então a assinatura do balde de mensagens da
+  // persona ativa roda aqui.
+  const messages = useAppStore((s) => s.novaMessagesByPersona[activePersona]);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
     if (!open) return;
@@ -38,12 +48,12 @@ export function NovaFloatingPanel() {
     <FloatingPanel
       open={open}
       onOpenChange={setOpen}
-      title="Nova"
-      description="Converse com a Nova sem sair da tela."
+      title={isLegendary ? 'LEGENDARY' : 'Nova'}
+      description={isLegendary ? 'Converse com a LEGENDARY sem sair da tela.' : 'Converse com a Nova sem sair da tela.'}
       className="max-w-xl"
     >
       <div className="flex items-center justify-between border-b border-white/[0.08] px-4 py-3">
-        <span className="text-sm font-medium text-text-primary">Nova</span>
+        <span className="text-sm font-medium text-text-primary">{isLegendary ? 'LEGENDARY' : 'Nova'}</span>
         <DialogPrimitive.Close
           aria-label="Fechar"
           className="flex h-7 w-7 items-center justify-center rounded-md text-text-tertiary transition-colors duration-fast ease-out hover:bg-white/[0.06] hover:text-text-primary"

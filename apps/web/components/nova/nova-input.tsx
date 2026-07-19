@@ -8,21 +8,33 @@ import { cn } from '@/lib/utils';
 import { transitionOut } from '@/lib/motion';
 import { getSpeechProvider } from '@/services/voice';
 
-const EXAMPLE_PROMPTS = [
-  'crie uma missão',
-  'como está minha empresa?',
-  'quanto gastei esse mês?',
-  'organize meu dia',
-  'lembrar de pagar o DAS dia 20',
-] as const;
+/**
+ * Placeholder cíclico por persona (CONTROL OS — "cada IA deve possuir sua
+ * própria identidade": pedido explícito do usuário depois de notar que a
+ * LEGENDARY mostrava os mesmos exemplos operacionais da NOVA). NOVA sugere
+ * comandos de execução (Chief Operating Officer pessoal — ver
+ * `SystemPrompt.ts`); LEGENDARY sugere provocações de reflexão/estratégia
+ * (mentora pessoal), nunca uma tarefa a executar.
+ */
+const EXAMPLE_PROMPTS_BY_PERSONA: Record<NovaPersona, readonly string[]> = {
+  nova: ['organize meu dia', 'crie uma missão', 'quanto gastei esse mês?', 'como está minha empresa?', 'lembrar de pagar o DAS dia 20'],
+  legendary: [
+    'vamos pensar estrategicamente...',
+    'sobre o que você gostaria de evoluir hoje?',
+    'qual é o maior gargalo do meu negócio?',
+    'como tomar essa decisão com mais clareza?',
+    'me ajude a definir minha próxima grande meta',
+  ],
+};
 
 const CYCLE_INTERVAL_MS = 2800;
 const SENT_PULSE_MS = 900;
 
-/** Acessa `EXAMPLE_PROMPTS` por índice cíclico sem indexação insegura. */
-function getExamplePrompt(index: number): string {
-  const normalized = ((index % EXAMPLE_PROMPTS.length) + EXAMPLE_PROMPTS.length) % EXAMPLE_PROMPTS.length;
-  return EXAMPLE_PROMPTS[normalized] ?? EXAMPLE_PROMPTS[0];
+/** Acessa a lista de exemplos da persona ativa por índice cíclico, sem indexação insegura. */
+function getExamplePrompt(persona: NovaPersona, index: number): string {
+  const prompts = EXAMPLE_PROMPTS_BY_PERSONA[persona];
+  const normalized = ((index % prompts.length) + prompts.length) % prompts.length;
+  return prompts[normalized] ?? prompts[0] ?? '';
 }
 
 /** Origem do envio — texto digitado ou frase capturada pelo microfone inline. */
@@ -61,7 +73,8 @@ export interface NovaInputProps {
  * painel) é responsabilidade do `NovaWorkspace`, que fornece `onSubmit` —
  * chamado da mesma forma tanto pro texto digitado quanto pra frase falada
  * (só o `source` muda), então os dois caem exatamente no mesmo fluxo de
- * conversa (`novaMessages`), nunca um canal separado.
+ * conversa da persona ativa (`novaMessagesByPersona[persona]`, ver
+ * `lib/store.ts`), nunca um canal separado.
  *
  * O microfone usa o mesmo `SpeechProvider` (`services/voice`) já usado pelo
  * Modo Conversa em tela cheia (`NovaVoiceOverlay`) — nenhuma captura de voz
@@ -77,6 +90,7 @@ export function NovaInput({
   persona = 'nova',
 }: NovaInputProps) {
   const isLegendary = persona === 'legendary';
+  const personaLabel = isLegendary ? 'LEGENDARY' : 'NOVA';
   const [value, setValue] = React.useState('');
   const [focused, setFocused] = React.useState(false);
   const [exampleIndex, setExampleIndex] = React.useState(0);
@@ -217,7 +231,7 @@ export function NovaInput({
           whileTap={{ scale: 0.92 }}
           animate={isListening ? { scale: [1, 1.12, 1] } : { scale: 1 }}
           transition={isListening ? { duration: 1.1, repeat: Infinity, ease: 'easeInOut' } : transitionOut(0.2)}
-          aria-label={isListening ? 'Parar de ouvir' : 'Falar com a Nova'}
+          aria-label={isListening ? 'Parar de ouvir' : `Falar com a ${personaLabel}`}
           aria-pressed={isListening}
           title={speechSupported ? undefined : 'Este navegador não suporta reconhecimento de voz'}
           className={cn(
@@ -257,7 +271,7 @@ export function NovaInput({
             readOnly={isListening}
             disabled={disabled}
             placeholder="Digite uma mensagem..."
-            aria-label="Digite ou fale com a NOVA"
+            aria-label={`Digite ou fale com a ${personaLabel}`}
             className="w-full bg-transparent text-base text-text-primary placeholder:text-transparent focus:outline-none disabled:opacity-50"
           />
 
@@ -271,7 +285,7 @@ export function NovaInput({
                 transition={transitionOut()}
                 className="pointer-events-none absolute inset-y-0 left-0 flex items-center text-base text-text-tertiary"
               >
-                &ldquo;{getExamplePrompt(exampleIndex)}&rdquo;
+                &ldquo;{getExamplePrompt(persona, exampleIndex)}&rdquo;
               </motion.span>
             )}
           </AnimatePresence>
@@ -284,7 +298,7 @@ export function NovaInput({
           whileTap={{ scale: 0.92 }}
           animate={justSent ? { scale: [1, 1.15, 1] } : { scale: 1 }}
           transition={transitionOut(0.4)}
-          aria-label="Enviar para a NOVA"
+          aria-label={`Enviar para a ${personaLabel}`}
           // CONTROL OS — Etapa 12B: h-9/w-9 (36px) → h-11/w-11 (44px), o
           // alvo de toque confortável de referência (Apple HIG) — ação de
           // envio é a mais frequente do campo, merece o maior botão dos dois.

@@ -184,7 +184,7 @@ export class ConversationService {
     if (this.pendingBySession.has(sessionId)) {
       const trimmed = text.trim();
       if (CONFIRM_PATTERN.test(trimmed)) {
-        rememberTurn(text);
+        rememberTurn(text, persona);
         return this.executePending(ctx, sessionId, persona);
       }
       // Não foi uma confirmação clara — descarta a pendência (cancelamento
@@ -192,7 +192,7 @@ export class ConversationService {
       // mensagem como um turno novo, nunca executando a ação antiga.
       this.pendingBySession.delete(sessionId);
       if (CANCEL_PATTERN.test(trimmed)) {
-        rememberTurn(text);
+        rememberTurn(text, persona);
         return { status: 'concluido', reply: CANCELLED_REPLY, checklist: [], results: [] };
       }
     }
@@ -215,7 +215,7 @@ export class ConversationService {
       // deixa uma Promise rejeitar sem tratamento até a UI.
       const fallbackIntent = await this.tryMockFallback(text);
       if (!fallbackIntent) {
-        rememberTurn(text);
+        rememberTurn(text, persona);
         const message = error instanceof AIProviderError ? error.friendlyMessage : AI_ERROR_FRIENDLY_MESSAGES.unavailable;
         return { status: 'erro', reply: message, checklist: [], results: [] };
       }
@@ -273,7 +273,7 @@ export class ConversationService {
     const provider = getAIProvider();
     if (!isReasoningProvider(provider)) {
       // Nunca alcançado em runtime — só chega aqui quando `AI_PROVIDER === 'openai'`, e só `OpenAIProvider` é instanciado nesse caso.
-      rememberTurn(text);
+      rememberTurn(text, persona);
       return { status: 'erro', reply: AI_ERROR_FRIENDLY_MESSAGES.unavailable, checklist: [], results: [] };
     }
 
@@ -285,7 +285,7 @@ export class ConversationService {
     } catch (error) {
       const fallbackIntent = await this.tryMockFallback(text);
       if (!fallbackIntent) {
-        rememberTurn(text);
+        rememberTurn(text, persona);
         const message = error instanceof AIProviderError ? error.friendlyMessage : AI_ERROR_FRIENDLY_MESSAGES.unavailable;
         return { status: 'erro', reply: message, checklist: [], results: [] };
       }
@@ -293,7 +293,7 @@ export class ConversationService {
     }
 
     if (turn.toolCalls.length === 0) {
-      rememberTurn(text);
+      rememberTurn(text, persona);
       return { status: 'concluido', reply: turn.replyText ?? FALLBACK_REPLY, checklist: [], results: [] };
     }
 
@@ -306,7 +306,7 @@ export class ConversationService {
     const anySensitive = items.some((item) => isSensitiveIntent(item.intent));
     if (anySensitive) {
       this.pendingBySession.set(sessionId, { items, continuationToken: turn.continuationToken, persona });
-      rememberTurn(text);
+      rememberTurn(text, persona);
       return {
         status: 'aguardando_confirmacao',
         reply: buildBatchConfirmationPreview(items.map((item) => item.intent)),
@@ -315,7 +315,7 @@ export class ConversationService {
       };
     }
 
-    rememberTurn(text);
+    rememberTurn(text, persona);
     return this.executeAndNarrate(ctx, items, turn.continuationToken, sessionId, persona);
   }
 
@@ -335,28 +335,28 @@ export class ConversationService {
     persona: NovaPersona
   ): Promise<NovaTurnResult> {
     if (intent.kind === 'desconhecido') {
-      rememberTurn(text);
+      rememberTurn(text, persona);
       return { status: 'concluido', reply: FALLBACK_REPLY, checklist: [], results: [] };
     }
 
     if (intent.kind === 'consultar_dividas') {
-      rememberTurn(text);
+      rememberTurn(text, persona);
       return { status: 'concluido', reply: buildDebtsSummary(ctx.debts), checklist: [], results: [] };
     }
 
     if (intent.kind === 'consultar_dia') {
-      rememberTurn(text);
+      rememberTurn(text, persona);
       const reply = buildDailyCheckIn(ctx.missions, ctx.agendaEvents, ctx.financeEntries, ctx.habits, ctx.userName);
       return { status: 'concluido', reply, checklist: [], results: [] };
     }
 
     if (isSensitiveIntent(intent)) {
       this.pendingBySession.set(sessionId, { items: [{ intent, action: intentResolver.resolve(intent) }], persona });
-      rememberTurn(text);
+      rememberTurn(text, persona);
       return { status: 'aguardando_confirmacao', reply: buildConfirmationPreview(intent), checklist: [], results: [] };
     }
 
-    rememberTurn(text);
+    rememberTurn(text, persona);
     return this.executeAndNarrate(ctx, [{ intent, action: intentResolver.resolve(intent) }], undefined, sessionId, persona);
   }
 

@@ -195,13 +195,13 @@ export function NovaWorkspace({
 }: NovaWorkspaceProps) {
   // Vive no `useAppStore` (não mais `useState` local) — sobrevive a
   // fechar/reabrir o painel flutuante. Ver comentário em `lib/store.ts`.
-  const messages = useAppStore((state) => state.novaMessages);
   const addNovaMessage = useAppStore((state) => state.addNovaMessage);
   const replaceNovaMessages = useAppStore((state) => state.replaceNovaMessages);
   // CONTROL OS — Etapa 15 (LEGENDARY): qual identidade conduz o PRÓXIMO
   // turno — vive no `useAppStore` (não `useState` local) pelo mesmo motivo
-  // de `novaMessages`: sobrevive a fechar/reabrir o painel flutuante e a
-  // navegar entre páginas, sem duplicar estado entre a Home e o painel.
+  // de `novaMessagesByPersona`: sobrevive a fechar/reabrir o painel
+  // flutuante e a navegar entre páginas, sem duplicar estado entre a Home e
+  // o painel.
   const activePersona = useAppStore((state) => state.activePersona);
   const setActivePersona = useAppStore((state) => state.setActivePersona);
 
@@ -215,6 +215,26 @@ export function NovaWorkspace({
       setActivePersona(lockedPersona);
     }
   }, [lockedPersona, activePersona, setActivePersona]);
+
+  // CONTROL OS — "separação completa entre NOVA e LEGENDARY": em rotas com
+  // `lockedPersona` (`/nova`, `/legendary`), o efeito acima só sincroniza
+  // `activePersona` DEPOIS do primeiro render — sem isto, o primeiro quadro
+  // de `/legendary` ainda leria o balde/placeholder/identidade da NOVA por
+  // um instante (ou pior, da persona que estava ativa antes da navegação).
+  // `effectivePersona` é a persona "de verdade" desta tela AGORA, conhecida
+  // de forma síncrona (é uma prop, não estado assíncrono) — usada em todo
+  // lugar que decide QUAL sessão mostrar (mensagens, placeholder, contexto
+  // enviado à IA), nunca `activePersona` sozinha.
+  const effectivePersona = lockedPersona ?? activePersona;
+  const messages = useAppStore((state) => state.novaMessagesByPersona[effectivePersona]);
+
+  // CONTROL OS — "separação completa entre NOVA e LEGENDARY": antes, todo
+  // turno de texto usava a sessão padrão fixa de `ConversationService`
+  // (`sessionId` nunca passado por aqui) — uma ação sensível pendente de
+  // confirmação na NOVA ficava visível/confirmável até de dentro da
+  // LEGENDARY (mesmo `pendingBySession`). Uma sessão por persona isola isso
+  // também no nível de confirmação, não só de histórico visual.
+  const textSessionId = `text_${effectivePersona}`;
 
   const [isThinking, setIsThinking] = React.useState(false);
   const [thinkingStatus, setThinkingStatus] = React.useState<NovaThinkingStatus>('pensando');
@@ -283,19 +303,19 @@ export function NovaWorkspace({
   const hasCheckedOpeningRef = React.useRef(false);
   React.useEffect(() => {
     if (hasCheckedOpeningRef.current) return;
-    if (useAppStore.getState().novaMessages.length > 0) return;
+    if (useAppStore.getState().novaMessagesByPersona[effectivePersona].length > 0) return;
     hasCheckedOpeningRef.current = true;
 
     const opening = buildProactiveOpening(toReadOnlyContext(novaContext));
     if (!opening) return;
 
-    addNovaMessage({
+    addNovaMessage(effectivePersona, {
       id: nextMessageId('nova'),
       role: 'nova',
       content: opening,
       status: 'success',
     });
-  }, [novaContext, addNovaMessage]);
+  }, [novaContext, addNovaMessage, effectivePersona]);
 
   /**
    * Sugestões da Home (CONTROL OS — Etapa 9): "nunca sugestões aleatórias,
@@ -330,14 +350,14 @@ export function NovaWorkspace({
    * quando o array já pode ter mudado.
    */
   const maybeCondenseConversation = React.useCallback(() => {
-    const latest = useAppStore.getState().novaMessages;
+    const latest = useAppStore.getState().novaMessagesByPersona[effectivePersona];
     if (!shouldCondense(latest.length)) return;
 
     const older = latest.slice(0, latest.length - KEEP_RECENT_TURNS);
     const recent = latest.slice(latest.length - KEEP_RECENT_TURNS);
 
     void conversationService.summarizeOlderTurns(older).then((summaryText) => {
-      replaceNovaMessages([
+      replaceNovaMessages(effectivePersona, [
         {
           id: nextMessageId('summary'),
           role: 'nova',
@@ -347,7 +367,7 @@ export function NovaWorkspace({
         ...recent,
       ]);
     });
-  }, [replaceNovaMessages]);
+  }, [replaceNovaMessages, effectivePersona]);
 
   const handleSend = React.useCallback(
     (text: string, source: NovaInputSource = 'text') => {
@@ -356,7 +376,7 @@ export function NovaWorkspace({
         role: 'user',
         content: text,
       };
-      addNovaMessage(userMessage);
+      addNovaMessage(effectivePersona, userMessage);
       setIsThinking(true);
       setThinkingStatus('pensando');
 
@@ -366,9 +386,9 @@ export function NovaWorkspace({
         // ela chega (nunca atrasa nada, só preenche a espera quando existe).
         const executingTimer = window.setTimeout(() => setThinkingStatus('executando'), EXECUTING_SWITCH_MS);
 
-        const result = await conversationService.processTurn(text, novaContext, undefined, activePersona);
+        const result = await conversationService.processTurn(text, novaContext, textSessionId, effectivePersona);
         window.clearTimeout(executingTimer);
-        addNovaMessage({
+        addNovaMessage(effectivePersona, {
           id: nextMessageId('nova'),
           role: 'nova',
           content: result.reply,
@@ -394,7 +414,7 @@ export function NovaWorkspace({
         }
       })();
     },
-    [novaContext, addNovaMessage, maybeCondenseConversation, activePersona]
+    [novaContext, addNovaMessage, maybeCondenseConversation, effectivePersona, textSessionId]
   );
 
   const handleConfirmPending = React.useCallback(() => {
@@ -405,8 +425,8 @@ export function NovaWorkspace({
       // A persona ATUAL confirma — se o usuário trocou de identidade entre
       // a pergunta e a confirmação, é a identidade de agora que narra o
       // resultado (ver comentário em `ConversationService.executePending`).
-      const result = await conversationService.confirmPending(novaContext, undefined, activePersona);
-      addNovaMessage({
+      const result = await conversationService.confirmPending(novaContext, textSessionId, effectivePersona);
+      addNovaMessage(effectivePersona, {
         id: nextMessageId('nova'),
         role: 'nova',
         content: result.reply,
@@ -416,17 +436,17 @@ export function NovaWorkspace({
       setIsThinking(false);
       maybeCondenseConversation();
     })();
-  }, [novaContext, addNovaMessage, maybeCondenseConversation, activePersona]);
+  }, [novaContext, addNovaMessage, maybeCondenseConversation, effectivePersona, textSessionId]);
 
   const handleCancelPending = React.useCallback(() => {
-    const result = conversationService.cancelPending();
-    addNovaMessage({
+    const result = conversationService.cancelPending(textSessionId);
+    addNovaMessage(effectivePersona, {
       id: nextMessageId('nova'),
       role: 'nova',
       content: result.reply,
       status: resultStatusToMessageStatus(result.status),
     });
-  }, [addNovaMessage]);
+  }, [addNovaMessage, effectivePersona, textSessionId]);
 
   // CONTROL OS — Etapa 11C: `isListening`/`isSpeakingReply` (microfone
   // inline) têm prioridade sobre `isThinking` na leitura do estado — os
@@ -458,7 +478,7 @@ export function NovaWorkspace({
         onSubmit={handleSend}
         disabled={isThinking}
         onListeningChange={setIsListening}
-        persona={activePersona}
+        persona={effectivePersona}
       />
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
         {quickActions.map((action) => (
@@ -482,7 +502,7 @@ export function NovaWorkspace({
           thinkingStatus={thinkingStatus}
           onConfirmPending={handleConfirmPending}
           onCancelPending={handleCancelPending}
-          persona={activePersona}
+          persona={effectivePersona}
         />
       </div>
 
@@ -531,7 +551,7 @@ export function NovaWorkspace({
                   `nova-hero-stage.tsx`). `NovaFloatingLauncher` e o
                   `NovaFloatingPanel` inline continuam usando a `NovaOrb`
                   original, intocados. */}
-              <NovaHeroStage status={orbStatus} pulseSignal={speechPulse} persona={activePersona} />
+              <NovaHeroStage status={orbStatus} pulseSignal={speechPulse} persona={effectivePersona} />
             </motion.div>
 
             {messages.length === 0 && belowOrbContent}

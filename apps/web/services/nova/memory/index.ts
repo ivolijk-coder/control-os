@@ -8,7 +8,15 @@
  * ainda. Guardado por `sessionStorage` (não `localStorage`) porque memória
  * de curto prazo por sessão é suficiente nesta fase; migrar para
  * persistência de longo prazo é uma decisão de fase futura.
+ *
+ * CONTROL OS — "separação completa entre NOVA e LEGENDARY": esta memória de
+ * turnos é "contexto próprio" de conversa (diferente de `NovaFact` abaixo,
+ * que é dado durável do usuário, não da conversa) — por isso agora é
+ * guardada numa chave por persona (`STORAGE_KEY_nova` / `STORAGE_KEY_
+ * legendary`), nunca uma única lista compartilhada pelas duas.
  */
+
+import type { NovaPersona } from '../interfaces';
 
 export interface NovaMemoryEntry {
   id: string;
@@ -18,6 +26,11 @@ export interface NovaMemoryEntry {
 
 const STORAGE_KEY = 'control-os-nova-memory';
 const MAX_ENTRIES = 20;
+const DEFAULT_PERSONA: NovaPersona = 'nova';
+
+function storageKeyFor(persona: NovaPersona): string {
+  return `${STORAGE_KEY}_${persona}`;
+}
 
 function isNovaMemoryEntry(value: unknown): value is NovaMemoryEntry {
   if (typeof value !== 'object' || value === null) return false;
@@ -29,9 +42,9 @@ function isNovaMemoryEntry(value: unknown): value is NovaMemoryEntry {
   );
 }
 
-function readAll(): NovaMemoryEntry[] {
+function readAll(persona: NovaPersona): NovaMemoryEntry[] {
   if (typeof window === 'undefined') return [];
-  const raw = window.sessionStorage.getItem(STORAGE_KEY);
+  const raw = window.sessionStorage.getItem(storageKeyFor(persona));
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -42,23 +55,23 @@ function readAll(): NovaMemoryEntry[] {
   }
 }
 
-function writeAll(entries: NovaMemoryEntry[]): void {
+function writeAll(persona: NovaPersona, entries: NovaMemoryEntry[]): void {
   if (typeof window === 'undefined') return;
-  window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(entries.slice(-MAX_ENTRIES)));
+  window.sessionStorage.setItem(storageKeyFor(persona), JSON.stringify(entries.slice(-MAX_ENTRIES)));
 }
 
-export function rememberTurn(turnSummary: string): void {
-  const entries = readAll();
+export function rememberTurn(turnSummary: string, persona: NovaPersona = DEFAULT_PERSONA): void {
+  const entries = readAll(persona);
   const entry: NovaMemoryEntry = {
     id: `mem_${Date.now().toString(36)}`,
     turnSummary,
     timestamp: new Date().toISOString(),
   };
-  writeAll([...entries, entry]);
+  writeAll(persona, [...entries, entry]);
 }
 
-export function recallRecent(limit = 5): NovaMemoryEntry[] {
-  return readAll().slice(-limit);
+export function recallRecent(persona: NovaPersona = DEFAULT_PERSONA, limit = 5): NovaMemoryEntry[] {
+  return readAll(persona).slice(-limit);
 }
 
 /**

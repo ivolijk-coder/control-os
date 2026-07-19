@@ -55,36 +55,37 @@ interface AppState {
   setNovaVoiceOpen: (open: boolean) => void;
 
   /**
-   * Histórico da conversa com a NOVA (CONTROL OS — Evolução da experiência
-   * NOVA). Antes vivia num `useState` local dentro de `NovaWorkspace`, que
-   * reseta a cada montagem — como o painel flutuante desmonta o conteúdo ao
-   * fechar (`Dialog.Content` sem `forceMount`), a conversa "esquecia tudo"
-   * toda vez que o usuário fechava e reabria o botão flutuante. Mover para
-   * cá resolve isso: o estado sobrevive a fechar/reabrir o painel e a
-   * navegar entre páginas (é um store singleton), mas ainda é efêmero como
-   * `novaPanelOpen` — não teria sentido reabrir o app amanhã e ver a
-   * conversa de ontem no meio da tela.
+   * Histórico da conversa — CONTROL OS: "separação completa entre NOVA e
+   * LEGENDARY" (pedido explícito do usuário). Antes era um único array
+   * `novaMessages` compartilhado pelas duas personas ("trocar de persona
+   * NUNCA mexe em `novaMessages`" — texto antigo desta mesma nota); o
+   * usuário reportou exatamente essa decisão como bug: "ao navegar entre
+   * NOVA e LEGENDARY, a conversa anterior permanece... cada IA deve possuir
+   * uma sessão independente." Agora é um balde POR PERSONA — entrar em
+   * `/legendary` nunca mais mostra o histórico visual de `/nova`, e
+   * vice-versa. Mesma razão de viver no store (não em `useState` local de
+   * `NovaWorkspace`): sobrevive a fechar/reabrir o painel flutuante e a
+   * navegar entre páginas — só que agora com uma chave por persona em vez
+   * de uma só.
    */
-  novaMessages: ConversationMessage[];
-  addNovaMessage: (message: ConversationMessage) => void;
+  novaMessagesByPersona: Record<NovaPersona, ConversationMessage[]>;
+  addNovaMessage: (persona: NovaPersona, message: ConversationMessage) => void;
   /**
-   * Substitui o histórico inteiro (CONTROL OS — Etapa 4) — usado só pelo
-   * resumo automático de conversa (`ConversationService.summarizeOlderTurns`,
-   * disparado por `NovaWorkspace` quando `novaMessages.length` passa de
-   * `CONDENSE_THRESHOLD`): as mensagens antigas viram um único resumo, as
-   * recentes continuam intactas. Diferente de `addNovaMessage` (só anexa).
+   * Substitui o histórico inteiro de UMA persona (CONTROL OS — Etapa 4,
+   * agora persona-scoped) — usado só pelo resumo automático de conversa
+   * (`ConversationService.summarizeOlderTurns`, disparado por
+   * `NovaWorkspace` quando o histórico da persona ativa passa de
+   * `CONDENSE_THRESHOLD`): as mensagens antigas DAQUELA persona viram um
+   * único resumo, as recentes continuam intactas — nunca mexe no balde da
+   * outra persona. Diferente de `addNovaMessage` (só anexa).
    */
-  replaceNovaMessages: (messages: ConversationMessage[]) => void;
+  replaceNovaMessages: (persona: NovaPersona, messages: ConversationMessage[]) => void;
 
   /**
-   * Persona ativa da conversa (CONTROL OS — Etapa 15: LEGENDARY). Vive aqui
-   * — não em `useState` local de `NovaWorkspace` — pelo mesmo motivo de
-   * `novaMessages`: sobrevive a fechar/reabrir o painel flutuante e a
-   * navegar entre páginas, sem precisar de nenhum contexto novo. Efêmero
-   * como `novaMessages` (não persiste reload, ver `partialize` abaixo) —
-   * inconsistente reabrir o app amanhã com "LEGENDARY" selecionada e uma
-   * conversa vazia. Trocar de persona NUNCA mexe em `novaMessages` — é
-   * literalmente só isto: qual identidade conduz o próximo turno.
+   * Persona ativa — qual identidade conduz o próximo turno / qual balde de
+   * `novaMessagesByPersona` a tela lê agora. Vive aqui pelo mesmo motivo de
+   * sempre: sobrevive a fechar/reabrir o painel e a navegar entre páginas.
+   * Efêmero (não persiste reload, ver `partialize` abaixo).
    */
   activePersona: NovaPersona;
   setActivePersona: (persona: NovaPersona) => void;
@@ -117,10 +118,18 @@ export const useAppStore = create<AppState>()(
       novaVoiceOpen: false,
       setNovaVoiceOpen: (open) => set({ novaVoiceOpen: open }),
 
-      novaMessages: [],
-      addNovaMessage: (message) =>
-        set((state) => ({ novaMessages: [...state.novaMessages, message].slice(-MAX_NOVA_MESSAGES) })),
-      replaceNovaMessages: (messages) => set({ novaMessages: messages }),
+      novaMessagesByPersona: { nova: [], legendary: [] },
+      addNovaMessage: (persona, message) =>
+        set((state) => ({
+          novaMessagesByPersona: {
+            ...state.novaMessagesByPersona,
+            [persona]: [...state.novaMessagesByPersona[persona], message].slice(-MAX_NOVA_MESSAGES),
+          },
+        })),
+      replaceNovaMessages: (persona, messages) =>
+        set((state) => ({
+          novaMessagesByPersona: { ...state.novaMessagesByPersona, [persona]: messages },
+        })),
 
       activePersona: 'nova',
       setActivePersona: (persona) => set({ activePersona: persona }),

@@ -22,6 +22,12 @@ const NovaOrb = dynamic(() => import('@/components/nova/nova-orb').then((mod) =>
 // confirmação num canal nunca seja confundida com a do outro. O parâmetro
 // `sessionId` já existia em `processTurn`/`confirmPending`/`cancelPending`
 // desde a Etapa 7 — este é só mais um consumidor passando o dele.
+//
+// CONTROL OS — "separação completa entre NOVA e LEGENDARY": o prefixo
+// sozinho não bastava — uma confirmação pendente por voz na NOVA vazava
+// pra LEGENDARY (mesma `VOICE_SESSION_ID` pras duas). `voiceSessionId`
+// abaixo, calculado por render a partir da persona ativa, resolve isso sem
+// precisar de uma segunda constante.
 const VOICE_SESSION_ID = 'nova_voice_overlay';
 
 // CONTROL OS — Etapa 11: "nunca deixar a tela parada". Antes, a UI esperava
@@ -120,6 +126,12 @@ export function NovaVoiceOverlay() {
   // este overlay abrir ou falar.
   const activePersona = useAppStore((state) => state.activePersona);
   const novaContext = useNovaContext();
+  // CONTROL OS — "separação completa entre NOVA e LEGENDARY": identidade do
+  // overlay (rótulos, aria-labels) e isolamento da sessão de voz derivam da
+  // persona ativa, não mais de "Nova" fixo.
+  const isLegendary = activePersona === 'legendary';
+  const personaLabel = isLegendary ? 'LEGENDARY' : 'Nova';
+  const voiceSessionId = `${VOICE_SESSION_ID}_${activePersona}`;
 
   const [status, setStatus] = React.useState<VoiceModeStatus>('pronto');
   const [liveTranscript, setLiveTranscript] = React.useState('');
@@ -160,7 +172,7 @@ export function NovaVoiceOverlay() {
           }, delayMs)
         );
 
-        const result = await conversationService.processTurn(transcript, novaContext, VOICE_SESSION_ID, activePersona);
+        const result = await conversationService.processTurn(transcript, novaContext, voiceSessionId, activePersona);
         timers.forEach((id) => window.clearTimeout(id));
         setWaitingLabel(undefined);
         setNovaReply(result.reply);
@@ -189,12 +201,16 @@ export function NovaVoiceOverlay() {
         });
       })();
     },
-    [novaContext, voiceSupported, activePersona]
+    [novaContext, voiceSupported, activePersona, voiceSessionId]
   );
 
   const startListening = React.useCallback(() => {
     if (!speechSupported) {
-      setErrorMessage('Este navegador não suporta reconhecimento de voz. Você ainda pode conversar por texto em /nova.');
+      setErrorMessage(
+        `Este navegador não suporta reconhecimento de voz. Você ainda pode conversar por texto em ${
+          isLegendary ? '/legendary' : '/nova'
+        }.`
+      );
       setStatus('pronto');
       return;
     }
@@ -216,7 +232,7 @@ export function NovaVoiceOverlay() {
         setStatus((prev) => (prev === 'ouvindo' ? 'pronto' : prev));
       },
     });
-  }, [speechSupported, handleFinalTranscript]);
+  }, [speechSupported, handleFinalTranscript, isLegendary]);
 
   startListeningRef.current = startListening;
 
@@ -275,7 +291,7 @@ export function NovaVoiceOverlay() {
           transition={{ duration: 0.2, ease: EASE_OUT }}
           role="dialog"
           aria-modal="true"
-          aria-label="Modo Conversa com a Nova"
+          aria-label={`Modo Conversa com a ${personaLabel}`}
         >
           <div className="flex justify-end p-4 sm:p-6">
             <button
@@ -292,7 +308,9 @@ export function NovaVoiceOverlay() {
             <motion.button
               type="button"
               onClick={handleOrbTap}
-              aria-label={status === 'respondendo' ? 'Tocar para interromper a Nova' : 'Tocar para falar com a Nova'}
+              aria-label={
+                status === 'respondendo' ? `Tocar para interromper a ${personaLabel}` : `Tocar para falar com a ${personaLabel}`
+              }
               className="flex h-56 w-56 items-center justify-center rounded-full sm:h-64 sm:w-64"
               animate={{ scale: ORB_SCALE_BY_VOICE_STATUS[status] }}
               transition={{ duration: 0.4, ease: EASE_OUT }}
