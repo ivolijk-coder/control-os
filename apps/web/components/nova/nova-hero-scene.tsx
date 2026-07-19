@@ -123,7 +123,7 @@ function HeroSceneContent({ status, pulseSignal, persona }: HeroSceneContentProp
     <>
       <HeroLighting colorHex={colorHex} colorDimHex={colorDimHex} />
       <HeroBackground colorHex={colorHex} />
-      <HeroPedestal colorHex={colorHex} />
+      <HeroPedestal colorHex={colorHex} colorBrightHex={colorBrightHex} />
 
       <group ref={objectGroupRef} position={[0, -0.05, 0]}>
         <group ref={novaGroupRef}>

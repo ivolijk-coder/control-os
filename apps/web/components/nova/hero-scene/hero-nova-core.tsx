@@ -9,7 +9,7 @@ interface HeroNovaCoreProps {
   colorBrightHex: string;
 }
 
-const PARTICLE_COUNT = 90;
+const PARTICLE_COUNT = 150;
 
 function createParticlePositions(count: number, minRadius: number, maxRadius: number): Float32Array {
   const positions = new Float32Array(count * 3);
@@ -37,6 +37,15 @@ function createParticlePositions(count: number, minRadius: number, maxRadius: nu
  * como no Canvas 2D). O halo em si é responsabilidade inteira do Bloom
  * (`nova-hero-scene.tsx`) — nenhum sprite de glow pintado aqui: "não quero
  * glow, quero emissão de energia."
+ *
+ * CONTROL OS — v2 (após revisão visual): a v1 lia como "uma bola azul lisa"
+ * — o campo de partículas estava lá, mas pequeno/fraco demais pra aparecer
+ * (`size=0.02`, ~90 pontos) e a casca de vidro (`transmission=0.92`, quase
+ * transparência total) deixava a esfera parecer uniformemente iluminada por
+ * dentro, sem nenhuma camada visível própria. Corrigido: partículas maiores
+ * e mais numerosas (`size=0.055`, 150 pontos, opacidade mais alta) e a
+ * casca com transmissão reduzida (0.65) + um pouco mais de rugosidade
+ * (0.15) — ainda energia/vidro, mas com presença própria em vez de sumir.
  */
 export function HeroNovaCore({ colorHex, colorBrightHex }: HeroNovaCoreProps) {
   const ringGroupA = React.useRef<THREE.Group>(null);
@@ -67,16 +76,16 @@ export function HeroNovaCore({ colorHex, colorBrightHex }: HeroNovaCoreProps) {
         <sphereGeometry args={[0.92, 64, 64]} />
         <meshPhysicalMaterial
           color={colorHex}
-          transmission={0.92}
-          roughness={0.08}
+          transmission={0.65}
+          roughness={0.15}
           thickness={0.6}
           ior={1.35}
           metalness={0}
           clearcoat={1}
           clearcoatRoughness={0.1}
           emissive={colorHex}
-          emissiveIntensity={0.18}
-          envMapIntensity={1.6}
+          emissiveIntensity={0.22}
+          envMapIntensity={2}
         />
       </mesh>
 
@@ -107,10 +116,10 @@ export function HeroNovaCore({ colorHex, colorBrightHex }: HeroNovaCoreProps) {
         </bufferGeometry>
         <pointsMaterial
           color={colorBrightHex}
-          size={0.02}
+          size={0.055}
           sizeAttenuation
           transparent
-          opacity={0.75}
+          opacity={0.9}
           depthWrite={false}
           blending={THREE.AdditiveBlending}
         />

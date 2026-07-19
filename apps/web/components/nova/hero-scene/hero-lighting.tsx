@@ -22,6 +22,12 @@ interface HeroLightingProps {
  *
  * A luz inferior nasce exatamente na posição do pedestal (`hero-pedestal.tsx`)
  * — arquiteturalmente, não só visualmente, "toda energia nasce do pedestal".
+ *
+ * CONTROL OS — v2 (após revisão visual): a v1 estava fraca demais pra criar
+ * contraste real nas facetas metálicas do cristal (que dependem quase
+ * inteiramente da luz/ambiente refletido, não de cor própria — ver
+ * `hero-legendary-crystal.tsx`). Intensidades da luz lateral e dos
+ * Lightformers praticamente dobradas.
  */
 export function HeroLighting({ colorHex, colorDimHex }: HeroLightingProps) {
   return (
@@ -30,19 +36,19 @@ export function HeroLighting({ colorHex, colorDimHex }: HeroLightingProps) {
       <ambientLight intensity={0.12} color="#0a0a14" />
 
       {/* Luz inferior — nasce do pedestal, mesma cor da persona. */}
-      <pointLight position={[0, -1.55, 0]} intensity={6} color={colorHex} distance={7} decay={2} />
+      <pointLight position={[0, -1.55, 0]} intensity={8} color={colorHex} distance={7} decay={2} />
 
       {/* Luz lateral — direcional neutra, dá volume/Fresnel nas arestas. */}
-      <directionalLight position={[3.2, 2.2, 2.4]} intensity={0.9} color="#f5f5f0" />
+      <directionalLight position={[3.2, 2.2, 2.4]} intensity={1.7} color="#f5f5f0" />
 
       {/* Luz traseira — rim light discreto, cor escura da mesma família da persona (nunca cinza puro). */}
-      <directionalLight position={[-2.4, 1.4, -3.2]} intensity={0.5} color={colorDimHex} />
+      <directionalLight position={[-2.4, 1.4, -3.2]} intensity={0.7} color={colorDimHex} />
 
       {/* Ambiente HDRI sintético — só pra alimentar reflexos/Fresnel do material físico do Hero Object, nunca visível como fundo (`background={false}`, o padrão). */}
       <Environment resolution={128}>
-        <Lightformer form="rect" intensity={1.4} color="#ffffff" scale={[4, 2, 1]} position={[0, 3, 2]} target={[0, 0, 0]} />
-        <Lightformer form="rect" intensity={0.6} color={colorHex} scale={[3, 1.5, 1]} position={[-3, 0.5, -1]} target={[0, 0, 0]} />
-        <Lightformer form="ring" intensity={0.8} color={colorHex} scale={[2, 2, 1]} position={[0, -1.4, 1.5]} target={[0, 0, 0]} />
+        <Lightformer form="rect" intensity={2.4} color="#ffffff" scale={[4, 2, 1]} position={[0, 3, 2]} target={[0, 0, 0]} />
+        <Lightformer form="rect" intensity={1.1} color={colorHex} scale={[3, 1.5, 1]} position={[-3, 0.5, -1]} target={[0, 0, 0]} />
+        <Lightformer form="ring" intensity={1.4} color={colorHex} scale={[2, 2, 1]} position={[0, -1.4, 1.5]} target={[0, 0, 0]} />
       </Environment>
     </>
   );

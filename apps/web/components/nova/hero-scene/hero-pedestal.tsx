@@ -5,6 +5,7 @@ import { MeshReflectorMaterial } from '@react-three/drei';
 
 interface HeroPedestalProps {
   colorHex: string;
+  colorBrightHex: string;
 }
 
 const RING_COUNT = 4;
@@ -19,31 +20,40 @@ const BASE_Y = -1.6;
  * usa exatamente esta posição pra `pointLight`), reforçando "o pedestal
  * ilumina o ambiente" como fato arquitetural da cena, não só um desenho.
  *
+ * CONTROL OS — v2 (após revisão visual): a v1 tinha os cilindros quase
+ * preto-puro (`#0a0a0c`) — contra um fundo também preto, eles ficavam
+ * invisíveis, e só as tiras emissivas finas apareciam (lia como "arcos
+ * flutuando", não uma base sólida). Corrigido clareando o metal (ainda
+ * escuro, mas capaz de pegar luz), aumentando a altura de cada degrau (mais
+ * silhueta visível) e engordando/clareando as tiras emissivas
+ * (`colorBrightHex`, mais fácil de estourar o limiar do Bloom).
+ *
  * Piso com `MeshReflectorMaterial` (drei) — reflexo real e barato (não é
  * uma segunda câmera renderizando a cena de novo), propositalmente borrado
  * (`blur` alto, `mirror` baixo) pra ficar como sugestão de superfície
  * polida, nunca um espelho nítido competindo com o Hero Object.
  */
-export function HeroPedestal({ colorHex }: HeroPedestalProps) {
+export function HeroPedestal({ colorHex, colorBrightHex }: HeroPedestalProps) {
   return (
     <group position={[0, BASE_Y, 0]}>
       {Array.from({ length: RING_COUNT }, (_, i) => {
         const radius = 1.9 - i * 0.32;
-        const height = 0.12;
+        const height = 0.2;
         const y = i * height;
         return (
           <group key={i}>
             <mesh position={[0, y, 0]}>
               <cylinderGeometry args={[radius, radius * 1.08, height, 48]} />
-              <meshStandardMaterial color="#0a0a0c" metalness={0.85} roughness={0.32} />
+              <meshStandardMaterial color="#1c1c20" metalness={0.9} roughness={0.24} />
             </mesh>
-            <mesh position={[0, y + height / 2 + 0.004, 0]}>
-              <torusGeometry args={[radius * 0.98, 0.01, 8, 64]} />
-              <meshBasicMaterial color={colorHex} toneMapped={false} />
+            <mesh position={[0, y + height / 2 + 0.006, 0]}>
+              <torusGeometry args={[radius * 0.98, 0.022, 8, 64]} />
+              <meshBasicMaterial color={colorBrightHex} toneMapped={false} />
             </mesh>
           </group>
         );
       })}
+      <pointLight position={[0, RING_COUNT * 0.2 + 0.3, 0]} intensity={2} color={colorHex} distance={4} decay={2} />
 
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]}>
         <circleGeometry args={[9, 64]} />

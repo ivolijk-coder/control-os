@@ -12,22 +12,29 @@ interface HeroLegendaryCrystalProps {
 /**
  * CONTROL OS — Etapa 17 (Hero Scene R3F): cristal da LEGENDARY — "Não quero
  * desenhar um cristal. Quero renderizar um cristal." Geometria real (ver
- * `hero-crystal-geometry.ts`) com `MeshPhysicalMaterial`: `transmission`
- * (refração simulada de verdade pelo motor físico), `metalness` moderado (o
- * "metal escovado dourado" pedido ao lado do vidro), `clearcoat` (reflexo
- * especular concentrado), `thickness` (espessura aparente) e
- * `envMapIntensity` alto (reflexos reais da luz sintética em
- * `hero-lighting.tsx`). O Fresnel em si NUNCA é desenhado à mão aqui: nasce
- * sozinho do jeito que `transmission` + `ior` calculam a passagem de luz em
- * ângulos rasos — que é exatamente o que "Fresnel" significa fisicamente,
- * ao contrário do traço de borda aproximado da versão Canvas 2D.
+ * `hero-crystal-geometry.ts`) com `MeshPhysicalMaterial`: `metalness` ALTO
+ * (o "metal escovado dourado" pedido) domina a leitura da superfície,
+ * `transmission` BAIXO (só um resquício de translucidez nas bordas, não uma
+ * bola de vidro uniforme) e `clearcoat` (reflexo especular concentrado). O
+ * Fresnel em si NUNCA é desenhado à mão aqui: nasce sozinho do jeito que
+ * `transmission` + `ior` calculam a passagem de luz em ângulos rasos.
+ *
+ * CONTROL OS — v2 (após revisão visual do usuário): a v1 usava
+ * `metalness=0.45`/`transmission=0.55` — o resultado lia como "plástico
+ * dourado uniforme", sem o contraste de valor entre facetas claras/escuras
+ * que faz metal parecer metal de verdade (superfícies metálicas refletem o
+ * AMBIENTE, quase não têm cor própria — o contraste vem inteiramente de
+ * quais facetas "veem" uma luz/lightformer e quais não). Corrigido subindo
+ * `metalness` pra 0.82 (a superfície passa a responder quase só ao
+ * ambiente/luzes, não a uma cor plana), derrubando `transmission` pra 0.12
+ * (deixa de parecer uma bola de vidro por dentro) e subindo
+ * `envMapIntensity` — junto com o reforço de intensidade das luzes em
+ * `hero-lighting.tsx`, é isso que cria as facetas ora escuras ora acesas.
  *
  * Núcleo emissivo interno (pequena esfera dourada) + `pointLight` central —
- * "emissive interno... luz atravessando as extremidades": a luz do núcleo
- * atravessa o material translúcido de dentro pra fora. Arestas reforçadas
- * com `EdgesGeometry` (linhas finas douradas) — "reflexos nas arestas",
- * cada faceta lida com clareza mesmo à distância, nunca some num
- * amontoado de triângulos indistintos.
+ * "emissive interno... luz atravessando as extremidades". Arestas
+ * reforçadas com `EdgesGeometry` (linhas finas douradas) — "reflexos nas
+ * arestas", cada faceta lida com clareza mesmo à distância.
  */
 export function HeroLegendaryCrystal({ colorHex, colorBrightHex }: HeroLegendaryCrystalProps) {
   const geometry = React.useMemo(() => createCrystalGeometry(), []);
@@ -38,16 +45,16 @@ export function HeroLegendaryCrystal({ colorHex, colorBrightHex }: HeroLegendary
       <mesh geometry={geometry}>
         <meshPhysicalMaterial
           color={colorHex}
-          metalness={0.45}
-          roughness={0.12}
-          transmission={0.55}
-          thickness={0.7}
+          metalness={0.82}
+          roughness={0.16}
+          transmission={0.12}
+          thickness={0.5}
           ior={1.5}
           clearcoat={1}
-          clearcoatRoughness={0.08}
+          clearcoatRoughness={0.06}
           emissive={colorHex}
-          emissiveIntensity={0.12}
-          envMapIntensity={1.8}
+          emissiveIntensity={0.06}
+          envMapIntensity={2.6}
         />
       </mesh>
 
