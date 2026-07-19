@@ -977,7 +977,7 @@ export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'no
           geométrica visível. Estática (a flutuação já é comunicada pelo
           próprio wrapper subindo/descendo por cima dela). */}
       <div
-        className="absolute inset-x-[10%] bottom-[-10%] h-[22%] blur-2xl"
+        className="pointer-events-none absolute inset-x-[10%] bottom-[-10%] h-[22%] blur-2xl"
         style={{ background: 'radial-gradient(ellipse, rgba(0, 0, 0, 0.32), transparent 70%)' }}
       />
       {/* Halo externo em CSS puro (blur real, não redesenhado no canvas a
@@ -988,18 +988,29 @@ export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'no
           junto da esfera e cruza suavemente entre a cor da NOVA e da
           LEGENDARY, nunca um blur CSS parado — ver fim de `drawFrame`
           acima). O `background` abaixo é só o valor inicial antes do
-          primeiro frame do efeito de animação assumir. */}
+          primeiro frame do efeito de animação assumir.
+
+          CONTROL OS — bugfix (relatado pelo usuário: clique em LEGENDARY
+          "não muda nada"): `inset-[-60%]` faz este elemento se estender bem
+          além da caixa visual da esfera — em containers maiores (a Home usa
+          até `44vh`), essa área invisível alcança o seletor NOVA/LEGENDARY
+          logo acima e ROUBA o clique antes dele chegar no botão de
+          verdade (o navegador faz hit-test pela posição real do elemento,
+          não pela aparência). `pointer-events-none` — nenhuma camada
+          puramente decorativa da orb (sombra, halo) deveria jamais
+          interceptar clique; só o wrapper com `aria-hidden` já deixa clara
+          essa intenção, faltava aplicá-la de verdade em CSS. */}
       <div
         ref={haloRef}
-        className="absolute inset-[-60%] rounded-full blur-[64px]"
+        className="pointer-events-none absolute inset-[-60%] rounded-full blur-[64px]"
         style={{
           background: `radial-gradient(circle, rgba(${haloColorRgb}, 0.16), rgba(${haloColorRgb}, 0.08) 28%, rgba(${haloColorRgb}, 0.05) 52%, transparent 78%)`,
         }}
       />
       {/* O canvas em si nunca desenha nenhum fundo — só `clearRect` + a
           esfera — "não pode existir nenhum limite visual entre ela e o
-          background". */}
-      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full bg-transparent" />
+          background". Também decorativo — nunca deveria capturar clique. */}
+      <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full bg-transparent" />
     </div>
   );
 }
