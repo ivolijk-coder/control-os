@@ -1,3 +1,4 @@
+import { toLocalDateString } from '../date';
 import type { NovaReadOnlyContext } from '../interfaces';
 
 /**
@@ -62,7 +63,8 @@ function daysBetween(fromIso: string, toIso: string): number {
 
 export function generateRecommendations(ctx: NovaReadOnlyContext): NovaRecommendation[] {
   const recommendations: NovaRecommendation[] = [];
-  const today = new Date().toISOString().slice(0, 10);
+  // Bugfix: `toISOString().slice(0, 10)` extraía a data em UTC — ver `services/nova/date.ts`.
+  const today = toLocalDateString();
   const monthPrefix = monthPrefixOf(today);
 
   const despesasMes = ctx.financeEntries.filter((entry) => entry.type === 'despesa' && entry.date.startsWith(monthPrefix));
@@ -136,8 +138,8 @@ export function generateRecommendations(ctx: NovaReadOnlyContext): NovaRecommend
   // Semana atual vs semana anterior (mesmo padrão de "hoje vs ontem" já
   // usado em `services/nova/insights`) — só compara quando as duas semanas
   // têm despesa real lançada, nunca contra uma base vazia.
-  const seteDiasAtras = new Date(Date.now() - 7 * MS_PER_DAY).toISOString().slice(0, 10);
-  const catorzeDiasAtras = new Date(Date.now() - 14 * MS_PER_DAY).toISOString().slice(0, 10);
+  const seteDiasAtras = toLocalDateString(new Date(Date.now() - 7 * MS_PER_DAY));
+  const catorzeDiasAtras = toLocalDateString(new Date(Date.now() - 14 * MS_PER_DAY));
   const despesasSemanaAtual = ctx.financeEntries.filter(
     (entry) => entry.type === 'despesa' && entry.date >= seteDiasAtras && entry.date <= today
   );
@@ -266,7 +268,7 @@ export function generateRecommendations(ctx: NovaReadOnlyContext): NovaRecommend
  * contrário — ver `services/ai/index.ts`).
  */
 export function buildQuickAnalysis(ctx: NovaReadOnlyContext): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateString();
   const monthPrefix = monthPrefixOf(today);
   const despesasMes = ctx.financeEntries.filter((entry) => entry.type === 'despesa' && entry.date.startsWith(monthPrefix));
   const receitasMes = ctx.financeEntries.filter((entry) => entry.type === 'receita' && entry.date.startsWith(monthPrefix));

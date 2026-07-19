@@ -1,4 +1,4 @@
-import { getNovaState } from '@/services/nova';
+import { getNovaState, toLocalDateString } from '@/services/nova';
 import { buildUserMemoryProfile } from '../memory';
 import type { AIConversationContext } from '../types';
 
@@ -47,9 +47,14 @@ function topExpenseCategoriesThisMonth(ctx: AIConversationContext, monthPrefix: 
  * principal: nenhum" forçado, pra não sujar o prompt com ausência de dado.
  */
 export function buildModelContextSummary(ctx: AIConversationContext): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  // Bugfix: `today` usava `new Date().toISOString().slice(0, 10)` — sempre
+  // UTC, então à noite no fuso do usuário a NOVA já achava que era o dia
+  // seguinte. `toLocalDateString` lê a data no fuso local real (ver
+  // `services/nova/date.ts`).
+  const today = toLocalDateString(now);
   const monthPrefix = today.slice(0, 7);
-  const todayWeekday = new Intl.DateTimeFormat('pt-BR', { weekday: 'long' }).format(new Date());
+  const todayWeekday = new Intl.DateTimeFormat('pt-BR', { weekday: 'long' }).format(now);
 
   const eventosHoje = ctx.agendaEvents.filter((event) => event.date === today);
   const despesasHoje = ctx.financeEntries.filter((entry) => entry.type === 'despesa' && entry.date.slice(0, 10) === today);

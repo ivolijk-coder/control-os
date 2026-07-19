@@ -8,10 +8,16 @@ import { DashboardCard } from '@/components/dashboard/dashboard-card';
 import { fadeUp, staggerContainer } from '@/lib/motion';
 import { useNovaContext } from '@/lib/use-nova-context';
 import { formatCurrency } from '@/lib/utils';
+import { toLocalDateString } from '@/services/nova';
 
-/** Mesmo cálculo de "hoje" em ISO (`YYYY-MM-DD`) já usado em `app/(dashboard)/agenda/page.tsx` — nenhuma lógica de data nova. */
+/**
+ * Data de hoje em ISO (`YYYY-MM-DD`) no fuso LOCAL do usuário — bugfix:
+ * antes duplicava aqui o mesmo `toISOString().slice(0, 10)` (UTC, errado)
+ * usado em vários outros lugares do app; agora reaproveita o ponto único
+ * `toLocalDateString` (`services/nova/date.ts`) em vez de duplicar de novo.
+ */
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return toLocalDateString();
 }
 
 /**

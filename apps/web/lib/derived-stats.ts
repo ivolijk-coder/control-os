@@ -1,4 +1,5 @@
 import type { AgendaEvent, DashboardStat, FinanceEntry, Mission } from '@control-os/types';
+import { toLocalDateString } from '@/services/nova';
 import { formatCurrency } from './utils';
 
 /**
@@ -23,7 +24,8 @@ export function buildLiveDashboardStats(
 
   const missoesAtivas = missions.filter((mission) => mission.status !== 'concluida').length;
 
-  const today = new Date().toISOString().slice(0, 10);
+  // Bugfix: `toISOString().slice(0, 10)` extraía a data em UTC — ver `services/nova/date.ts`.
+  const today = toLocalDateString();
   const compromissosHoje = agendaEvents.filter((event) => event.date === today).length;
 
   return [

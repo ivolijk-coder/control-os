@@ -9,10 +9,12 @@ import { MissionCard } from '@/components/dashboard/mission-card';
 import { ChartCard } from '@/components/dashboard/chart-card';
 import { RecommendationCard } from '@/components/dashboard/recommendation-card';
 import { useDataStore } from '@/lib/data-store';
+import { toLocalDateString } from '@/services/nova';
 import type { Mission } from '@control-os/types';
 
+/** Bugfix: usava `toISOString().slice(0, 10)` (UTC) — ver `services/nova/date.ts`. */
 function isoToday(): string {
-  return new Date().toISOString().slice(0, 10);
+  return toLocalDateString();
 }
 
 function MissionColumn({ title, missions, emptyLabel }: { title: string; missions: Mission[]; emptyLabel: string }) {

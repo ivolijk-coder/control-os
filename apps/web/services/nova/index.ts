@@ -29,6 +29,7 @@
  */
 import './observer';
 
+export { toLocalDateString } from './date';
 export { processNovaTurn, buildReply } from './conversation';
 export { buildDailyCheckIn, buildTodayHighlights } from './conversation/daily-checkin';
 export { buildDebtsSummary } from './conversation/debts-summary';

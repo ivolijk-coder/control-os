@@ -1,3 +1,4 @@
+import { toLocalDateString } from '../date';
 import type { NovaReadOnlyContext } from '../interfaces';
 import { generateRecommendations, type NovaRecommendationCategory } from '../recommendations';
 
@@ -31,8 +32,11 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  */
 export function buildHomeInsights(ctx: NovaReadOnlyContext): string[] {
   const bullets: string[] = [];
-  const today = new Date().toISOString().slice(0, 10);
-  const yesterday = new Date(Date.now() - MS_PER_DAY).toISOString().slice(0, 10);
+  // Bugfix: extração de data em UTC (`toISOString().slice(0, 10)`) fazia a
+  // NOVA achar que já era o dia seguinte à noite no fuso do usuário — ver
+  // `services/nova/date.ts`.
+  const today = toLocalDateString();
+  const yesterday = toLocalDateString(new Date(Date.now() - MS_PER_DAY));
 
   // Despesas de hoje vs ontem — só compara quando os dois dias têm
   // lançamento real (nunca compara com uma base vazia/inventada).

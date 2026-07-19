@@ -1,4 +1,5 @@
 import type { AgendaEvent, FinanceEntry, Habit, Mission } from '@control-os/types';
+import { toLocalDateString } from '../date';
 
 /**
  * Resumo do dia (CONTROL OS — Sistema Operacional Pessoal): destaques reais
@@ -20,7 +21,8 @@ export function buildTodayHighlights(
   financeEntries: FinanceEntry[],
   habits: Habit[] = []
 ): string[] {
-  const today = new Date().toISOString().slice(0, 10);
+  // Bugfix: `toISOString().slice(0, 10)` extraía a data em UTC — ver `services/nova/date.ts`.
+  const today = toLocalDateString();
 
   const missionsEmRisco = missions.filter((mission) => mission.status === 'em_risco').length;
   const eventosHoje = agendaEvents

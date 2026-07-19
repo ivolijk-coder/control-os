@@ -10,12 +10,14 @@ import { RecommendationCard } from '@/components/dashboard/recommendation-card';
 import { InsightCard } from '@/components/dashboard/insight-card';
 import { useDataStore } from '@/lib/data-store';
 import { cn } from '@/lib/utils';
+import { toLocalDateString } from '@/services/nova';
 import type { AgendaEvent } from '@control-os/types';
 
 const WEEKDAY_LABELS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 
+/** Bugfix: usava `date.toISOString().slice(0, 10)` (UTC) — ver `services/nova/date.ts`. */
 function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return toLocalDateString(date);
 }
 
 function formatEventDate(date: string): string {

@@ -1,3 +1,4 @@
+import { toLocalDateString } from '../date';
 import type { AgendaIntent, NovaActionResult, NovaContext } from '../interfaces';
 
 const NO_TIME_LABEL = 'sem horário definido';
@@ -14,11 +15,13 @@ const NO_TIME_LABEL = 'sem horário definido';
  * exatamente como antes desta etapa.
  */
 export function createAgendaEvent(ctx: NovaContext, intent: AgendaIntent): NovaActionResult[] {
-  const nowIso = new Date().toISOString();
+  const now = new Date();
+  const nowIso = now.toISOString();
 
   const event = ctx.actions.addAgendaEvent({
     title: intent.title,
-    date: intent.date ?? nowIso.slice(0, 10),
+    // Bugfix: fallback usava `nowIso.slice(0, 10)` (UTC) — ver `services/nova/date.ts`.
+    date: intent.date ?? toLocalDateString(now),
     time: intent.time,
     spaceId: ctx.defaultSpaceId,
   });
