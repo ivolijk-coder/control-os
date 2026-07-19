@@ -12,6 +12,11 @@ const badgeVariants = cva(
         blue: 'border-accent-blue/20 bg-accent-blue/10 text-accent-blue',
         purple: 'border-accent-purple/20 bg-accent-purple/10 text-accent-purple',
         red: 'border-accent-red/20 bg-accent-red/10 text-accent-red',
+        // CONTROL OS — Etapa 16D (Design System premium): variante dourada
+        // — faltava na biblioteca de badges desde a Etapa 15 (LEGENDARY);
+        // mesmo padrão de opacidade das outras variantes, cor de
+        // `accent.gold` (Etapa 15/16A).
+        gold: 'border-accent-gold/20 bg-accent-gold/10 text-accent-gold',
       },
     },
     defaultVariants: { variant: 'neutral' },

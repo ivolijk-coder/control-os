@@ -20,6 +20,12 @@ export interface FloatingPanelProps {
  * para acessibilidade (focus trap, ESC, clique fora) e as animações
  * `data-[state]` do `tailwindcss-animate` (já presente no stack) em vez de
  * duplicar lógica de transição com Framer Motion.
+ *
+ * CONTROL OS — Etapa 16D (Design System premium): `shadow-e5` → `shadow-e5-
+ * glass` (`tailwind.config.ts`, Etapa 16D) — mesma elevação, com a mesma
+ * linha de luz de 1px por dentro do topo já aplicada em `Card`/`GlassCard`/
+ * Sidebar/Topbar — todo modal/dropdown que nascer deste componente-base
+ * herda automaticamente a "espessura de vidro" do resto do sistema.
  */
 export function FloatingPanel({
   open,
@@ -41,7 +47,7 @@ export function FloatingPanel({
         />
         <DialogPrimitive.Content
           className={cn(
-            'fixed left-1/2 top-24 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 overflow-hidden rounded-2xl border border-white/[0.08] bg-card/80 shadow-e5 backdrop-blur-xl focus:outline-none',
+            'fixed left-1/2 top-24 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 overflow-hidden rounded-2xl border border-white/[0.08] bg-card/80 shadow-e5-glass backdrop-blur-xl focus:outline-none',
             'data-[state=open]:animate-in data-[state=closed]:animate-out',
             'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
             'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',

@@ -73,6 +73,17 @@ const config: Config = {
         'glow-blue': '0 0 0 1px rgba(59,130,246,.16), 0 8px 32px rgba(59,130,246,.18)',
         // CONTROL OS — Etapa 15 (LEGENDARY) — mesmo padrão de glow-purple/-blue.
         'glow-gold': '0 0 0 1px rgba(217,164,85,.18), 0 8px 32px rgba(217,164,85,.2)',
+        // CONTROL OS — Etapa 16D (Design System premium — biblioteca de
+        // componentes): variantes "vidro" de e3/e5 — mesma elevação de
+        // sempre, com uma linha de luz de 1px no topo por dentro (`inset`),
+        // igual ao tratamento já aplicado na Sidebar/Topbar/busca na Etapa
+        // 16C. Usado por `Card`/`GlassCard` (praticamente toda tela do
+        // produto) e pelo `FloatingPanel` (Command Center e futuros modais)
+        // — dá a MESMA "espessura de vidro" pra toda superfície elevada do
+        // sistema, não só o chrome de navegação. Aditivo — `e3`/`e5`
+        // continuam intocados para quem ainda os usa diretamente.
+        'e3-glass': '0 8px 24px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05)',
+        'e5-glass': '0 24px 64px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.06)',
       },
       backdropBlur: {
         sm: '8px',
@@ -143,12 +154,23 @@ const config: Config = {
           '0%, 100%': { backgroundPosition: '0% 0%, 100% 100%' },
           '50%': { backgroundPosition: '2% 1%, 98% 99%' },
         },
+        // CONTROL OS — Etapa 16D: "loading states... nunca tela parada" —
+        // `Skeleton` tinha só um `animate-pulse` genérico do Tailwind
+        // (opacidade subindo/descendo uniformemente). Um brilho diagonal
+        // varrendo o bloco da esquerda pra direita é o padrão de loading
+        // "premium" reconhecível da referência — sensação de luz passando
+        // por vidro, não um retângulo cinza pulsando.
+        shimmer: {
+          '0%': { backgroundPosition: '-150% 0' },
+          '100%': { backgroundPosition: '150% 0' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 260ms cubic-bezier(.16,1,.3,1)',
         'slide-up': 'slide-up 260ms cubic-bezier(.16,1,.3,1)',
         breathe: 'breathe 3200ms ease-in-out infinite',
         'ambient-drift': 'ambient-drift 24000ms ease-in-out infinite',
+        shimmer: 'shimmer 1800ms ease-in-out infinite',
       },
     },
   },

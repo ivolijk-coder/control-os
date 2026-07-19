@@ -54,13 +54,20 @@ export interface CardFooterProps extends React.ComponentPropsWithoutRef<'div'> {
  * profundidade visivelmente diferentes. Agora existe uma única "linguagem de
  * vidro" no produto inteiro, incluindo as telas de autenticação. Continua
  * `border-box`/props idênticas — nenhum consumidor precisa mudar nada.
+ *
+ * CONTROL OS — Etapa 16D (Design System premium): `shadow-e3` → `shadow-e3-
+ * glass` — mesma elevação, com uma linha de luz de 1px por dentro do topo
+ * (`tailwind.config.ts`, Etapa 16D), o mesmo tratamento de "espessura de
+ * vidro" já aplicado na Sidebar/Topbar (Etapa 16C). Como `Card` é a
+ * superfície usada por praticamente toda tela do produto, este ajuste
+ * sozinho já estende o novo padrão de profundidade pro sistema inteiro.
  */
 export const Card = React.forwardRef<HTMLDivElement, CardProps>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
       className={cn(
-        'relative overflow-hidden rounded-xl border border-white/[0.08] bg-card/60 shadow-e3 backdrop-blur-md transition-all duration-base ease-out',
+        'relative overflow-hidden rounded-xl border border-white/[0.08] bg-card/60 shadow-e3-glass backdrop-blur-md transition-all duration-base ease-out',
         'before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/20 before:to-transparent',
         'hover:border-white/[0.14] hover:shadow-e4',
         className
