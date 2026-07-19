@@ -45,7 +45,7 @@ export { getNovaState, updateNovaState } from './state';
 export type { NovaStateSnapshot } from './state';
 export { generateRecommendations, buildQuickAnalysis } from './recommendations';
 export type { NovaRecommendation, NovaRecommendationCategory } from './recommendations';
-export { buildHomeInsights } from './insights';
+export { buildHomeInsights, buildProactiveOpening } from './insights';
 export type {
   NovaAction,
   NovaActionKind,

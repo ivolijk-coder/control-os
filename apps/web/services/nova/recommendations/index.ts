@@ -16,7 +16,17 @@ export type NovaRecommendationCategory =
   | 'reorganizar_agenda'
   | 'antecipar_metas'
   | 'revisar_gastos'
-  | 'priorizar_tarefas';
+  | 'priorizar_tarefas'
+  // CONTROL OS — Etapa 13 (NOVA Proativa): categorias novas, mesmo princípio
+  // das seis acima (dado real, nunca inventado; ver função por função abaixo
+  // pra origem exata de cada uma).
+  | 'gasto_semanal_alto'
+  | 'retomar_registro'
+  | 'reconhecer_consistencia'
+  | 'revisar_fluxo_caixa'
+  | 'acompanhar_meta'
+  | 'acompanhar_projeto'
+  | 'viagem_proxima';
 
 export interface NovaRecommendation {
   category: NovaRecommendationCategory;
@@ -30,8 +40,24 @@ const CATEGORY_CONCENTRATION_RATIO = 0.5;
 /** Nº mínimo de lançamentos do mês pra uma leitura de "categoria concentrada" fazer sentido (não alarmar com 1 lançamento isolado). */
 const MIN_ENTRIES_FOR_CATEGORY_INSIGHT = 3;
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+/** Quanto a semana atual precisa superar a anterior pra virar insight — evita alarmar com uma diferença de poucos reais. */
+const WEEKLY_SPEND_INCREASE_RATIO = 1.2;
+/** Dias sem nenhuma despesa registrada antes de perguntar se o usuário esqueceu de anotar. */
+const DAYS_WITHOUT_EXPENSE_THRESHOLD = 3;
+/** Missões concluídas seguidas (sem nenhuma outra ação da Timeline entre elas) pra reconhecer consistência. */
+const CONSECUTIVE_MISSIONS_THRESHOLD = 3;
+/** Dias desde a criação de uma meta/projeto, ainda sem conclusão, pra a Nova perguntar como está o andamento. */
+const STALE_GOAL_DAYS_THRESHOLD = 3;
+/** Dias de antecedência pra avisar que uma viagem já cadastrada está próxima. */
+const UPCOMING_TRIP_DAYS_THRESHOLD = 7;
+
 function monthPrefixOf(date: string): string {
   return date.slice(0, 7);
+}
+
+function daysBetween(fromIso: string, toIso: string): number {
+  return Math.floor((new Date(toIso).getTime() - new Date(fromIso).getTime()) / MS_PER_DAY);
 }
 
 export function generateRecommendations(ctx: NovaReadOnlyContext): NovaRecommendation[] {
@@ -88,7 +114,10 @@ export function generateRecommendations(ctx: NovaReadOnlyContext): NovaRecommend
   if (metaProxima) {
     recommendations.push({
       category: 'antecipar_metas',
-      message: `A meta "${metaProxima.title}" já está em ${metaProxima.progress}% — pode valer antecipar os próximos passos.`,
+      // Etapa 13: reaproximado do exemplo do spec ("Você está muito
+      // próximo de concluir sua meta.") — continua citando título e
+      // progresso reais, só a abertura da frase ficou mais direta.
+      message: `Você está muito próximo de concluir sua meta "${metaProxima.title}" (${metaProxima.progress}%) — pode valer antecipar os próximos passos.`,
     });
   }
 
@@ -97,6 +126,130 @@ export function generateRecommendations(ctx: NovaReadOnlyContext): NovaRecommend
     recommendations.push({
       category: 'priorizar_tarefas',
       message: `${missõesEmRisco.length} missão${missõesEmRisco.length > 1 ? 'ões' : ''} em risco de prazo — pode valer priorizar essa${missõesEmRisco.length > 1 ? 's' : ''} primeiro.`,
+    });
+  }
+
+  // CONTROL OS — Etapa 13 (NOVA Proativa) — a partir daqui, categorias
+  // novas. Mesmo princípio das anteriores: só dispara com dado real, nunca
+  // um valor inventado.
+
+  // Semana atual vs semana anterior (mesmo padrão de "hoje vs ontem" já
+  // usado em `services/nova/insights`) — só compara quando as duas semanas
+  // têm despesa real lançada, nunca contra uma base vazia.
+  const seteDiasAtras = new Date(Date.now() - 7 * MS_PER_DAY).toISOString().slice(0, 10);
+  const catorzeDiasAtras = new Date(Date.now() - 14 * MS_PER_DAY).toISOString().slice(0, 10);
+  const despesasSemanaAtual = ctx.financeEntries.filter(
+    (entry) => entry.type === 'despesa' && entry.date >= seteDiasAtras && entry.date <= today
+  );
+  const despesasSemanaAnterior = ctx.financeEntries.filter(
+    (entry) => entry.type === 'despesa' && entry.date >= catorzeDiasAtras && entry.date < seteDiasAtras
+  );
+  if (despesasSemanaAtual.length > 0 && despesasSemanaAnterior.length > 0) {
+    const totalSemanaAtual = despesasSemanaAtual.reduce((sum, entry) => sum + entry.amount, 0);
+    const totalSemanaAnterior = despesasSemanaAnterior.reduce((sum, entry) => sum + entry.amount, 0);
+    if (totalSemanaAtual >= totalSemanaAnterior * WEEKLY_SPEND_INCREASE_RATIO) {
+      recommendations.push({
+        category: 'gasto_semanal_alto',
+        message: `Percebi que esta semana você gastou mais do que na semana passada (R$ ${totalSemanaAtual.toFixed(2)} contra R$ ${totalSemanaAnterior.toFixed(2)}).`,
+      });
+    }
+  }
+
+  // Nenhuma despesa registrada nos últimos dias — só dispara se já existe
+  // pelo menos um lançamento no histórico (nunca alarma um usuário
+  // completamente novo, que nunca registrou nada).
+  if (ctx.financeEntries.some((entry) => entry.type === 'despesa')) {
+    const ultimaDespesa = [...ctx.financeEntries]
+      .filter((entry) => entry.type === 'despesa')
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+    const diasSemRegistro = ultimaDespesa ? daysBetween(ultimaDespesa.date, today) : 0;
+    if (diasSemRegistro >= DAYS_WITHOUT_EXPENSE_THRESHOLD) {
+      recommendations.push({
+        category: 'retomar_registro',
+        message: `Faz ${diasSemRegistro} dias que você não registra nenhuma despesa — se gastou algo nesse meio tempo, é só me contar.`,
+      });
+    }
+  }
+
+  // Missões concluídas em sequência, lendo de trás pra frente na Timeline
+  // até encontrar a primeira que não é uma conclusão — "consecutivas" no
+  // sentido literal: as últimas N ações do usuário no sistema foram todas
+  // fechar uma missão.
+  const timelineRecente = [...ctx.timeline].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+  let missõesConcluidasSeguidas = 0;
+  for (const evento of timelineRecente) {
+    if (evento.type !== 'missao_concluida') break;
+    missõesConcluidasSeguidas += 1;
+  }
+  if (missõesConcluidasSeguidas >= CONSECUTIVE_MISSIONS_THRESHOLD) {
+    recommendations.push({
+      category: 'reconhecer_consistencia',
+      message: `Você concluiu ${missõesConcluidasSeguidas} missões consecutivas. Excelente consistência.`,
+    });
+  }
+
+  // Dívidas em aberto somam mais que o saldo atual — leitura conservadora
+  // de fluxo de caixa: `Debt` não tem data de vencimento no modelo hoje
+  // (ver `services/nova/insights`), então a Nova nunca afirma algo sobre
+  // "o mês que vem" especificamente, só compara os dois totais reais que
+  // já existem.
+  const saldoAtual = totalReceitas - totalDespesas;
+  const totalDividasAbertas = ctx.debts.reduce((sum, debt) => sum + debt.remainingAmount, 0);
+  if (totalDividasAbertas > 0 && totalDividasAbertas > saldoAtual) {
+    recommendations.push({
+      category: 'revisar_fluxo_caixa',
+      message: `Suas dívidas em aberto somam R$ ${totalDividasAbertas.toFixed(2)}, mais que seu saldo atual (R$ ${saldoAtual.toFixed(2)}) — seu fluxo de caixa merece atenção.`,
+    });
+  }
+
+  // Acompanhamento: meta/projeto criado há alguns dias, ainda sem
+  // conclusão. A única fonte real de "quando foi criado" é o evento
+  // `missao_criada` da Timeline (`Mission` não tem `createdAt`) — casado
+  // pelo mesmo título usado em `createMissionFromBlueprint`
+  // (`services/nova/actions/create-mission.ts`).
+  function staleMissionOf(kind: 'meta' | 'projeto'): { title: string; dias: number } | undefined {
+    const candidatas = ctx.missions.filter((mission) => mission.kind === kind && mission.status !== 'concluida');
+    let maisAntiga: { title: string; dias: number } | undefined;
+    for (const mission of candidatas) {
+      const criacao = ctx.timeline.find((evento) => evento.type === 'missao_criada' && evento.title === `Missão criada: ${mission.title}`);
+      if (!criacao) continue;
+      const dias = daysBetween(criacao.timestamp, today);
+      if (dias >= STALE_GOAL_DAYS_THRESHOLD && (!maisAntiga || dias > maisAntiga.dias)) {
+        maisAntiga = { title: mission.title, dias };
+      }
+    }
+    return maisAntiga;
+  }
+
+  const metaParada = staleMissionOf('meta');
+  if (metaParada) {
+    recommendations.push({
+      category: 'acompanhar_meta',
+      message: `Faz ${metaParada.dias} dias que definimos a meta "${metaParada.title}". Como está o andamento?`,
+    });
+  }
+
+  const projetoParado = staleMissionOf('projeto');
+  if (projetoParado) {
+    recommendations.push({
+      category: 'acompanhar_projeto',
+      message: `Você conseguiu avançar no projeto "${projetoParado.title}" desde que o criamos, há ${projetoParado.dias} dias?`,
+    });
+  }
+
+  // Viagem cadastrada com início próximo.
+  const viagemProxima = ctx.trips
+    .filter((trip) => {
+      const dias = daysBetween(today, trip.startDate);
+      return dias >= 0 && dias <= UPCOMING_TRIP_DAYS_THRESHOLD;
+    })
+    .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())[0];
+  if (viagemProxima) {
+    recommendations.push({
+      category: 'viagem_proxima',
+      message: `Sua viagem para ${viagemProxima.destination} está chegando. Deseja revisar o planejamento?`,
     });
   }
 

@@ -244,6 +244,16 @@ export interface NovaContext {
   documents: PersonalDocument[];
   assets: Asset[];
   notes: Note[];
+  /**
+   * Adicionado na Etapa 13 (NOVA Proativa) — `Mission` não tem campo de
+   * criação (`createdAt`); a Timeline (`addTimelineEvent`, sempre escrita
+   * ao criar uma missão/meta/projeto, ver `create-mission.ts`) é a única
+   * fonte real de "quando isso foi criado", necessária pro acompanhamento
+   * ("meta criada há alguns dias, ainda sem conclusão"). Só leitura — a
+   * escrita já existia (`actions.addTimelineEvent`), só nunca tinha sido
+   * exposta de volta pro lado que só lê.
+   */
+  timeline: TimelineEvent[];
   /** Primeiro nome do usuário — usado pra personalizar a resposta de "olá"/plano do dia. */
   userName: string;
 }

@@ -3,7 +3,19 @@
 import * as React from 'react';
 import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
-import { Activity, CalendarClock, Flag, Target, Wallet, type LucideIcon } from 'lucide-react';
+import {
+  Activity,
+  CalendarClock,
+  Flag,
+  Plane,
+  Receipt,
+  Rocket,
+  Target,
+  TrendingUp,
+  Trophy,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react';
 import { NovaInput, type NovaInputSource } from '@/components/nova/nova-input';
 import { NovaConversation } from '@/components/nova/nova-conversation';
 import type { ConversationMessage, ConversationMessageStatus } from '@/components/nova/nova-message-bubble';
@@ -13,7 +25,7 @@ import { QuickAction } from '@/components/ui/quick-action';
 import { Skeleton } from '@/components/ui/skeleton';
 import { IntelligentPanel } from '@/components/home/intelligent-panel';
 import { conversationService, KEEP_RECENT_TURNS, shouldCondense } from '@/services/ai';
-import { generateRecommendations, toReadOnlyContext } from '@/services/nova';
+import { buildProactiveOpening, generateRecommendations, toReadOnlyContext } from '@/services/nova';
 import type { NovaRecommendationCategory, NovaStatus } from '@/services/nova';
 import { getVoiceProvider } from '@/services/voice';
 import { useAppStore } from '@/lib/store';
@@ -50,6 +62,14 @@ const SUGGESTION_ICON_BY_CATEGORY: Record<NovaRecommendationCategory, LucideIcon
   reorganizar_agenda: CalendarClock,
   antecipar_metas: Flag,
   priorizar_tarefas: Target,
+  // CONTROL OS — Etapa 13 (NOVA Proativa).
+  gasto_semanal_alto: TrendingUp,
+  retomar_registro: Receipt,
+  reconhecer_consistencia: Trophy,
+  revisar_fluxo_caixa: Wallet,
+  acompanhar_meta: Flag,
+  acompanhar_projeto: Rocket,
+  viagem_proxima: Plane,
 };
 
 const SUGGESTION_LABEL_BY_CATEGORY: Record<NovaRecommendationCategory, string> = {
@@ -59,6 +79,14 @@ const SUGGESTION_LABEL_BY_CATEGORY: Record<NovaRecommendationCategory, string> =
   reorganizar_agenda: 'Quer reorganizar sua agenda?',
   antecipar_metas: 'Quer antecipar os próximos passos da sua meta?',
   priorizar_tarefas: 'Quer priorizar o que está em risco?',
+  // CONTROL OS — Etapa 13 (NOVA Proativa).
+  gasto_semanal_alto: 'Quer ver seu gasto desta semana?',
+  retomar_registro: 'Quer registrar uma despesa?',
+  reconhecer_consistencia: 'Ver minhas missões concluídas',
+  revisar_fluxo_caixa: 'Quer revisar meu fluxo de caixa?',
+  acompanhar_meta: 'Ver andamento da minha meta',
+  acompanhar_projeto: 'Ver andamento do meu projeto',
+  viagem_proxima: 'Revisar planejamento da viagem',
 };
 
 // Nenhuma tela acessa a IA diretamente (CONTROL OS — Preparação para OpenAI
@@ -195,14 +223,61 @@ export function NovaWorkspace({
   const novaContext = useNovaContext();
 
   /**
+   * NOVA Proativa (CONTROL OS — Etapa 13): "a Nova pode abrir a conversa
+   * sozinha, sem esperar o usuário perguntar" — só quando a conversa ainda
+   * está vazia (nunca interrompe uma conversa em andamento) e só quando
+   * existe um motivo real: `buildProactiveOpening` devolve `null` quando não
+   * há nenhum dado que justifique falar primeiro, e neste caso o efeito não
+   * faz nada — nunca preenche o silêncio com uma frase genérica.
+   *
+   * `hasCheckedOpeningRef` garante que isto rode no máximo uma vez por
+   * montagem (o mesmo componente é reaproveitado tanto pela Home quanto pelo
+   * `NovaFloatingPanel`, e `messages`/`novaContext` mudam a cada mensagem
+   * nova, o que recriaria o efeito repetidamente sem esta trava). A checagem
+   * de "conversa vazia" lê `useAppStore.getState()` (estado mais recente),
+   * não a variável `messages` fechada no closure — mesmo motivo de
+   * `maybeCondenseConversation` abaixo.
+   *
+   * Deliberadamente NÃO passa por `conversationService.processTurn` nem por
+   * nenhum provedor de IA — é o mesmo `addNovaMessage` direto que qualquer
+   * outra resposta da Nova usa (mesmo formato de `ConversationMessage`),
+   * só que com texto calculado 100% local e determinístico
+   * (`buildProactiveOpening`). Nunca toca `ConversationService`, `EventBus`
+   * ou a integração OpenAI — só lê o mesmo `NovaReadOnlyContext` que os
+   * outros pontos da tela já leem.
+   */
+  const hasCheckedOpeningRef = React.useRef(false);
+  React.useEffect(() => {
+    if (hasCheckedOpeningRef.current) return;
+    if (useAppStore.getState().novaMessages.length > 0) return;
+    hasCheckedOpeningRef.current = true;
+
+    const opening = buildProactiveOpening(toReadOnlyContext(novaContext));
+    if (!opening) return;
+
+    addNovaMessage({
+      id: nextMessageId('nova'),
+      role: 'nova',
+      content: opening,
+      status: 'success',
+    });
+  }, [novaContext, addNovaMessage]);
+
+  /**
    * Sugestões da Home (CONTROL OS — Etapa 9): "nunca sugestões aleatórias,
    * sempre baseadas nos dados" — reaproveita o Recommendation Engine
    * (`generateRecommendations`, Etapa 7) em vez do `QUICK_ACTIONS` estático.
    * Cai de volta pro `QUICK_ACTIONS` só quando não há nenhuma recomendação
    * real ainda (usuário novo, sem dados suficientes).
+   *
+   * CONTROL OS — Etapa 13 (NOVA Proativa): "até três sugestões naturais" —
+   * o Recommendation Engine ganhou 7 categorias novas nesta etapa e, com
+   * dado suficiente, pode gerar bem mais de 3 recomendações reais ao mesmo
+   * tempo; sem o corte, o campo de conversa viraria uma parede de pills
+   * (exatamente o "jamais exagerar" que a etapa pede pra evitar).
    */
   const suggestions = React.useMemo(() => {
-    const recommendations = generateRecommendations(toReadOnlyContext(novaContext));
+    const recommendations = generateRecommendations(toReadOnlyContext(novaContext)).slice(0, 3);
     return recommendations.map((recommendation) => ({
       icon: SUGGESTION_ICON_BY_CATEGORY[recommendation.category],
       label: SUGGESTION_LABEL_BY_CATEGORY[recommendation.category],

@@ -42,6 +42,8 @@ export function useNovaContext(): NovaContext {
   const documents = useDataStore((state) => state.documents);
   const assets = useDataStore((state) => state.assets);
   const notes = useDataStore((state) => state.notes);
+  // Etapa 13 (NOVA Proativa) — ver comentário de `timeline` em `NovaContext`.
+  const timeline = useDataStore((state) => state.timeline);
 
   return React.useMemo(
     () => ({
@@ -68,6 +70,7 @@ export function useNovaContext(): NovaContext {
       documents,
       assets,
       notes,
+      timeline,
       userName: NOVA_USER_FIRST_NAME,
     }),
     [
@@ -91,6 +94,7 @@ export function useNovaContext(): NovaContext {
       documents,
       assets,
       notes,
+      timeline,
     ]
   );
 }

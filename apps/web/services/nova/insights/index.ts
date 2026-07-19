@@ -1,5 +1,5 @@
 import type { NovaReadOnlyContext } from '../interfaces';
-import { generateRecommendations } from '../recommendations';
+import { generateRecommendations, type NovaRecommendationCategory } from '../recommendations';
 
 /** Nº máximo de bullets mostrados na Home — mesmo espírito de "resumo", nunca uma lista longa. */
 const MAX_HOME_INSIGHTS = 5;
@@ -80,4 +80,61 @@ export function buildHomeInsights(ctx: NovaReadOnlyContext): string[] {
   }
 
   return bullets.slice(0, MAX_HOME_INSIGHTS);
+}
+
+/**
+ * Ordem de prioridade de `buildProactiveOpening` — do que mais precisa de
+ * atenção agora (fluxo de caixa, algo em risco) até o que é só continuidade
+ * ("como está aquele projeto?") ou reconhecimento positivo. Intencionalmente
+ * uma lista separada da ordem em que `generateRecommendations` empurra pro
+ * array (aquela é a ordem dos pills de sugestão, otimizada pra variedade;
+ * esta é a ordem de "o que vale mais a pena a Nova falar primeiro, sozinha,
+ * sem ser perguntada").
+ */
+const PROACTIVE_OPENING_PRIORITY: NovaRecommendationCategory[] = [
+  'revisar_fluxo_caixa',
+  'priorizar_tarefas',
+  'acompanhar_meta',
+  'acompanhar_projeto',
+  'viagem_proxima',
+  'antecipar_metas',
+  'reconhecer_consistencia',
+  'gasto_semanal_alto',
+  'reduzir_gastos',
+  'revisar_gastos',
+  'retomar_registro',
+  'reorganizar_agenda',
+  'concluir_habitos',
+];
+
+/**
+ * NOVA Proativa (CONTROL OS — Etapa 13): a frase com que a Nova "abre" a
+ * conversa sozinha, antes de qualquer pergunta do usuário — só quando existe
+ * um motivo real pra isso ("sempre existir um motivo pra falar. Jamais
+ * enviar mensagens sem contexto"). Reaproveita 100% o Recommendation Engine
+ * (`generateRecommendations`) em vez de duplicar heurística nova — a única
+ * coisa própria daqui é a ordem de prioridade (`PROACTIVE_OPENING_PRIORITY`)
+ * e o fato de devolver no máximo UMA frase (nunca uma lista — abrir a
+ * conversa com uma lista de avisos é o oposto de "não ser invasiva").
+ *
+ * Deliberadamente NÃO passa pelo `ConversationService` nem por nenhum
+ * provedor de IA — é texto local, determinístico, calculado só a partir de
+ * `NovaReadOnlyContext`, chamado uma única vez por `NovaWorkspace` quando a
+ * conversa ainda está vazia (ver comentário lá). `null` quando nada no
+ * momento justifica a Nova falar primeiro — nunca preenche o silêncio com
+ * uma frase genérica.
+ */
+export function buildProactiveOpening(ctx: NovaReadOnlyContext): string | null {
+  const recommendations = generateRecommendations(ctx);
+  if (recommendations.length === 0) return null;
+
+  for (const category of PROACTIVE_OPENING_PRIORITY) {
+    const match = recommendations.find((recommendation) => recommendation.category === category);
+    if (match) return match.message;
+  }
+
+  // Categoria nova que ainda não entrou na lista de prioridade acima —
+  // melhor abrir com ela do que ficar em silêncio (ela já passou por toda
+  // a checagem de dado real do Recommendation Engine).
+  return recommendations[0]?.message ?? null;
 }
