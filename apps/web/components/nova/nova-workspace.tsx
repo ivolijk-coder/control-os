@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
 import {
   Activity,
@@ -23,8 +22,8 @@ import type { ConversationMessage, ConversationMessageStatus } from '@/component
 import type { NovaThinkingStatus } from '@/components/nova/nova-thinking';
 import type { NovaOrbStatus } from '@/components/nova/nova-orb';
 import { QuickAction } from '@/components/ui/quick-action';
-import { Skeleton } from '@/components/ui/skeleton';
 import { IntelligentPanel } from '@/components/home/intelligent-panel';
+import { NovaHeroStage } from '@/components/nova/nova-hero-stage';
 import { conversationService, KEEP_RECENT_TURNS, shouldCondense } from '@/services/ai';
 import { buildProactiveOpening, generateRecommendations, toReadOnlyContext } from '@/services/nova';
 import type { NovaRecommendationCategory, NovaStatus } from '@/services/nova';
@@ -33,21 +32,13 @@ import { useAppStore } from '@/lib/store';
 import { useNovaContext } from '@/lib/use-nova-context';
 import { transitionOut, transitionSpring } from '@/lib/motion';
 
-// Canvas é inerentemente client-only — mesmo tratamento do BackgroundNetwork.
-// `loading` (CONTROL OS — Etapa 10B) evita o "buraco" vazio enquanto o chunk
-// do canvas carrega.
-// CONTROL OS — Etapa 17 (Hero Scene R3F): "toda a mudança fica isolada na
-// Hero Scene" — só a Orb grande e central da Home troca de tecnologia
-// (Canvas 2D → React Three Fiber). A `NovaOrb` (Canvas 2D, em
-// `nova-orb.tsx`) continua existindo e sendo usada por
-// `NovaFloatingLauncher` e qualquer outro uso pequeno da esfera — só não é
-// mais importada NESTE arquivo, já que a única Orb que este componente
-// renderiza é a Hero Scene abaixo. Mesmo tratamento `dynamic({ ssr: false })`
-// — WebGL é inerentemente client-only.
-const NovaHeroScene = dynamic(() => import('@/components/nova/nova-hero-scene').then((mod) => mod.NovaHeroScene), {
-  ssr: false,
-  loading: () => <Skeleton className="h-full w-full rounded-full" />,
-});
+// CONTROL OS — HERO SCENE REBOOT: qual tecnologia renderiza o Hero Object
+// agora depende da persona — decisão isolada em `NovaHeroStage`. NOVA usa
+// um anel flat em CSS (`nova-ring-object.tsx`, réplica do mockup aprovado
+// pelo usuário); LEGENDARY continua no Hero Scene em React Three Fiber
+// (`nova-hero-scene.tsx`, Etapa 17), intocado. `NovaOrb` (Canvas 2D)
+// continua existindo à parte, usada por `NovaFloatingLauncher` e o painel
+// flutuante inline.
 
 // Sugestões genéricas — só aparecem quando ainda não há nenhuma recomendação
 // real (usuário novo, sem dados suficientes ainda). Nunca a fonte principal
@@ -506,13 +497,14 @@ export function NovaWorkspace({
               className="flex h-[44vh] w-[44vh] max-h-[20rem] max-w-[20rem] shrink-0 items-center justify-center sm:h-80 sm:w-80"
             >
               {/* CONTROL OS — Etapa 9: "NOVA ORB. Grande. Viva. Respirando."
-                  CONTROL OS — Etapa 17 (Hero Scene R3F): esta é a única Orb
-                  grande e central do produto — a que agora renderiza de
-                  verdade em React Three Fiber em vez de desenhar em Canvas
-                  2D (ver `nova-hero-scene.tsx`). `NovaFloatingLauncher` e o
+                  CONTROL OS — HERO SCENE REBOOT: esta é a única Orb grande
+                  e central do produto — `NovaHeroStage` decide, por
+                  persona, se renderiza o anel flat da NOVA (CSS) ou o
+                  cristal em React Three Fiber da LEGENDARY (ver
+                  `nova-hero-stage.tsx`). `NovaFloatingLauncher` e o
                   `NovaFloatingPanel` inline continuam usando a `NovaOrb`
                   original, intocados. */}
-              <NovaHeroScene status={orbStatus} pulseSignal={speechPulse} persona={activePersona} />
+              <NovaHeroStage status={orbStatus} pulseSignal={speechPulse} persona={activePersona} />
             </motion.div>
 
             {messages.length === 0 && belowOrbContent}
