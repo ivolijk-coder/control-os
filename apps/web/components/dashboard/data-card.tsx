@@ -16,6 +16,15 @@ export interface DataCardProps {
   /** `wide` = 2 colunas no grid de 4; `default` = 1 coluna. */
   span?: 'default' | 'wide';
   className?: string;
+  /**
+   * Conteúdo livre entre `listRows` e `novaNote` — usado para embutir os
+   * mini-gráficos existentes (`MiniSparkline`, `MiniBarChart`, etc. de
+   * `mini-charts.tsx`) sem criar um segundo componente de card paralelo
+   * (Reorganização da Home / "quatro pilares": Financeiro precisa do
+   * sparkline de fluxo de caixa, Hábitos do gráfico de evolução semanal —
+   * ambos dentro do MESMO card visual usado em toda a Home).
+   */
+  children?: React.ReactNode;
 }
 
 /**
@@ -29,7 +38,16 @@ export interface DataCardProps {
  * protótipo exatamente como está, sem ajustar tons — ver
  * `HANDOFF-control-os-design.md`, tabela "Paleta usada no protótipo".
  */
-export function DataCard({ label, value, description, listRows, novaNote, span = 'default', className }: DataCardProps) {
+export function DataCard({
+  label,
+  value,
+  description,
+  listRows,
+  novaNote,
+  span = 'default',
+  className,
+  children,
+}: DataCardProps) {
   return (
     <div
       className={cn(
@@ -59,6 +77,8 @@ export function DataCard({ label, value, description, listRows, novaNote, span =
           ))}
         </div>
       )}
+
+      {children}
 
       {novaNote && (
         <div className="mt-1 flex items-start gap-2 border-t border-dashed border-[rgba(79,216,255,0.18)] pt-[10px] text-[11.5px] leading-[1.5] text-[#9cc7e8]">
