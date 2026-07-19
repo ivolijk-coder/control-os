@@ -177,6 +177,73 @@ function lerpRgb(a: readonly [number, number, number], b: readonly [number, numb
 }
 
 /**
+ * CONTROL OS — Etapa 16B (LEGENDARY): geometria do cristal facetado — a
+ * escolha explícita do usuário foi "construir a geometria de cristal
+ * facetado" (não só recolorir a esfera): a LEGENDARY passa a ser um sólido
+ * de faces triangulares planas (bipirâmide de 8 lados — "coroa" curta em
+ * cima, "pavilhão" mais longo embaixo, como um corte de gema), sombreado
+ * por direção de luz fixa (metal escovado/dourado) em vez da nuvem de
+ * partículas orgânica da NOVA. Geometria estática (nunca recalculada por
+ * frame) — só a ROTAÇÃO/inclinação aplicadas em `drawFrame` mudam a cada
+ * frame, reaproveitando exatamente `shellAngles[0]`/`tiltAngle`, os mesmos
+ * estados que já giram/inclinam a esfera (nunca uma segunda física
+ * paralela). Continua no MESMO canvas/`drawFrame` que a esfera — nunca um
+ * segundo componente/canvas — a transição entre as duas geometrias é um
+ * crossfade de opacidade puro governado por `personaBlend` (ver uso de
+ * `ctx.globalAlpha` mais abaixo), a mesma variável que já governa cor e
+ * comportamento do resto do efeito.
+ */
+function sub3(a: readonly [number, number, number], b: readonly [number, number, number]): [number, number, number] {
+  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+}
+function cross3(a: readonly [number, number, number], b: readonly [number, number, number]): [number, number, number] {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+function normalize3(v: readonly [number, number, number]): [number, number, number] {
+  const len = Math.hypot(v[0], v[1], v[2]) || 1;
+  return [v[0] / len, v[1] / len, v[2] / len];
+}
+function dot3(a: readonly [number, number, number], b: readonly [number, number, number]): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+interface CrystalFace {
+  readonly indices: readonly [number, number, number];
+}
+interface CrystalGeometry {
+  readonly vertices: readonly (readonly [number, number, number])[];
+  readonly faces: readonly CrystalFace[];
+}
+
+/** 8 lados — coroa curta (ápice + anel) em cima, pavilhão mais longo (anel + ápice) embaixo, como um corte de gema. Índices fixos: 0 = ápice de cima, 1 = ápice de baixo, 2..9 = anel. */
+const CRYSTAL_SIDES = 8;
+function buildCrystalGeometry(): CrystalGeometry {
+  const vertices: Array<readonly [number, number, number]> = [
+    [0, -1.3, 0], // 0 — ápice de cima (coroa)
+    [0, 1.05, 0], // 1 — ápice de baixo (pavilhão, mais longo que a coroa)
+  ];
+  const girdleStart = 2;
+  for (let i = 0; i < CRYSTAL_SIDES; i += 1) {
+    const theta = (i / CRYSTAL_SIDES) * Math.PI * 2;
+    vertices.push([Math.cos(theta) * 0.95, -0.1, Math.sin(theta) * 0.95]);
+  }
+  const faces: CrystalFace[] = [];
+  for (let i = 0; i < CRYSTAL_SIDES; i += 1) {
+    const next = (i + 1) % CRYSTAL_SIDES;
+    faces.push({ indices: [0, girdleStart + i, girdleStart + next] });
+    faces.push({ indices: [1, girdleStart + next, girdleStart + i] });
+  }
+  return { vertices, faces };
+}
+const CRYSTAL_GEOMETRY: CrystalGeometry = buildCrystalGeometry();
+// Luz fixa vindo de cima-esquerda-frente — "iluminação de vitrine" sobre
+// metal escovado, nunca uma luz que acompanha a câmera (o que faria o
+// cristal parecer sempre uniformemente iluminado, sem volume).
+const CRYSTAL_LIGHT_DIR: readonly [number, number, number] = normalize3([-0.5, -0.8, 0.6]);
+const CRYSTAL_SHADE_DARK_RGB: readonly [number, number, number] = [52, 38, 18];
+const CRYSTAL_SHADE_BRIGHT_RGB: readonly [number, number, number] = [255, 226, 168];
+
+/**
  * Multiplicadores da LEGENDARY sobre cada parâmetro de comportamento já
  * existente (rotação, respiração, jitter, batimento, ondas, partículas de
  * execução) — nunca uma tabela paralela por status: em `personaBlend = 0`
@@ -560,6 +627,12 @@ export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'no
       // geométrico perfeito — "como um organismo respirando") e um brilho
       // de borda suave simulando refração — mais claro perto da borda do
       // que no centro, sem nunca virar um anel nítido.
+      // CONTROL OS — Etapa 16B: casca de vidro é uma característica da
+      // NOVA (esfera orgânica) — desvanece conforme `personaBlend` avança
+      // pra LEGENDARY, dando lugar ao cristal facetado (desenhado abaixo,
+      // depois do núcleo). `globalAlpha` some, nunca um corte seco.
+      ctx.save();
+      ctx.globalAlpha = 1 - personaBlend;
       ctx.beginPath();
       for (let i = 0; i <= SILHOUETTE_SEGMENTS; i += 1) {
         const angle = (i / SILHOUETTE_SEGMENTS) * Math.PI * 2;
@@ -578,6 +651,7 @@ export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'no
       glass.addColorStop(1, 'rgba(255, 255, 255, 0)');
       ctx.fillStyle = glass;
       ctx.fill();
+      ctx.restore();
 
       // Camada 3 — núcleo com pulso de batimento, muito suave ("quase
       // imperceptível" — duas batidas por ciclo, nunca um brilho contínuo
@@ -601,6 +675,75 @@ export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'no
       ctx.beginPath();
       ctx.arc(cx, cy, radius * 1.1, 0, Math.PI * 2);
       ctx.fill();
+
+      // CONTROL OS — Etapa 16B (LEGENDARY): cristal facetado — desenhado
+      // por cima do núcleo (a luz interna ilumina o sólido por trás) e
+      // antes das ondas/reflexo (que continuam por cima, compartilhados
+      // entre as duas personas). Faces triangulares planas, sombreadas por
+      // uma direção de luz fixa (nunca a nuvem de pontos da NOVA) — ver
+      // `CRYSTAL_GEOMETRY`/`buildCrystalGeometry` acima. Reaproveita
+      // `shellAngles[0]`/`tiltAngle`, os mesmos estados que já giram e
+      // inclinam a esfera — nunca uma segunda física paralela. Só
+      // desenhado quando `personaBlend` já saiu de zero (evita trabalho
+      // por frame na NOVA pura) e sempre com `globalAlpha = personaBlend`
+      // — crossfade puro contra a esfera, nunca um corte seco.
+      if (personaBlend > 0.001) {
+        const rotY = shellAngles[0] ?? 0;
+        const cosRot = Math.cos(rotY);
+        const sinRot = Math.sin(rotY);
+        const cosTilt = Math.cos(tiltAngle);
+        const sinTilt = Math.sin(tiltAngle);
+
+        const transformed = CRYSTAL_GEOMETRY.vertices.map(([vx, vy, vz]) => {
+          const rx = vx * cosRot + vz * sinRot;
+          const rz = -vx * sinRot + vz * cosRot;
+          const ty = vy * cosTilt - rz * sinTilt;
+          const tz = vy * sinTilt + rz * cosTilt;
+          return [rx, ty, tz] as const;
+        });
+
+        const facesWithDepth = CRYSTAL_GEOMETRY.faces.map((face) => {
+          const [i0, i1, i2] = face.indices;
+          const v0 = transformed[i0] ?? [0, 0, 0];
+          const v1 = transformed[i1] ?? [0, 0, 0];
+          const v2 = transformed[i2] ?? [0, 0, 0];
+          const centroid: [number, number, number] = [
+            (v0[0] + v1[0] + v2[0]) / 3,
+            (v0[1] + v1[1] + v2[1]) / 3,
+            (v0[2] + v1[2] + v2[2]) / 3,
+          ];
+          let normal = normalize3(cross3(sub3(v1, v0), sub3(v2, v0)));
+          if (dot3(normal, centroid) < 0) normal = [-normal[0], -normal[1], -normal[2]];
+          // Piso de 0.25 — mesmo em faces de sombra plena, o metal nunca
+          // vira preto chapado ("iluminação de vitrine", nunca um recorte).
+          const lambert = Math.max(0, dot3(normal, CRYSTAL_LIGHT_DIR)) * 0.75 + 0.25;
+          return { v0, v1, v2, depth: centroid[2], lambert };
+        });
+        facesWithDepth.sort((a, b) => a.depth - b.depth);
+
+        ctx.save();
+        ctx.globalAlpha = personaBlend;
+        for (const face of facesWithDepth) {
+          const shade = lerpRgb(CRYSTAL_SHADE_DARK_RGB, CRYSTAL_SHADE_BRIGHT_RGB, Math.min(1, face.lambert));
+          const p0 = { x: cx + face.v0[0] * radius, y: cy + face.v0[1] * radius * DEPTH_SQUASH };
+          const p1 = { x: cx + face.v1[0] * radius, y: cy + face.v1[1] * radius * DEPTH_SQUASH };
+          const p2 = { x: cx + face.v2[0] * radius, y: cy + face.v2[1] * radius * DEPTH_SQUASH };
+          ctx.beginPath();
+          ctx.moveTo(p0.x, p0.y);
+          ctx.lineTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.closePath();
+          ctx.fillStyle = `rgba(${shade}, 0.92)`;
+          ctx.fill();
+          // Aresta com aceso dourado — "gold edge lighting" da referência —
+          // mais forte nas faces já mais claras (reforça o volume, nunca
+          // um contorno uniforme tipo cartoon).
+          ctx.strokeStyle = `rgba(${glowRgb}, ${(0.22 + face.lambert * 0.28).toFixed(3)})`;
+          ctx.lineWidth = 0.7;
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
 
       // Ondas de energia — anéis nascendo e se dissolvendo (por temporizador
       // e por palavra falada, ver `wavesRef`).
@@ -663,13 +806,20 @@ export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'no
       });
 
       // Desenha de trás pra frente — profundidade visual sem WebGL.
+      // CONTROL OS — Etapa 16B: a nuvem de pontos é a identidade da NOVA —
+      // some conforme `personaBlend` avança pro cristal da LEGENDARY
+      // (desenhado acima), mesmo crossfade de `globalAlpha` da casca de
+      // vidro.
       projected.sort((a, b) => a.z - b.z);
+      ctx.save();
+      ctx.globalAlpha = 1 - personaBlend;
       for (const point of projected) {
         ctx.fillStyle = `rgba(${pointColorRgb}, ${Math.min(1, point.opacity * brightness).toFixed(3)})`;
         ctx.beginPath();
         ctx.arc(point.x, point.y, point.size, 0, Math.PI * 2);
         ctx.fill();
       }
+      ctx.restore();
 
       // Partículas emitidas pra fora — só enquanto 'executando' ("emite
       // partículas para os lados, como se estivesse enviando comandos").
