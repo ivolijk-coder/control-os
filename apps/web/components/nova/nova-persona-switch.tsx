@@ -52,7 +52,16 @@ export function NovaPersonaSwitch({ persona, onChange, className }: NovaPersonaS
             aria-selected={active}
             onClick={() => onChange(option.value)}
             className={cn(
-              'relative rounded-full px-3.5 py-1.5 text-[11px] font-semibold tracking-wide transition-colors duration-fast ease-out',
+              // CONTROL OS — Etapa 16H (Responsividade): px-3.5/py-1.5
+              // rendia um alvo de toque de ~28px de altura — abaixo do
+              // mínimo confortável já usado em outros controles frequentes
+              // do produto (mic/enviar da NovaInput foram de 32px pra 40-
+              // 44px na Etapa 12B, citando o Apple HIG). Este é o único
+              // controle que troca a identidade inteira da conversa
+              // (NOVA/LEGENDARY) — merece o mesmo padrão. Mantém a pílula
+              // compacta (nunca vira um botão grande) — só ganha respiro
+              // vertical.
+              'relative rounded-full px-4 py-2.5 text-[11px] font-semibold tracking-wide transition-colors duration-fast ease-out',
               active ? 'text-text-primary' : 'text-text-tertiary hover:text-text-secondary'
             )}
           >
