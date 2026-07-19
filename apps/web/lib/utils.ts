@@ -36,3 +36,18 @@ export function getInitials(name: string): string {
     .map((part) => part[0]?.toUpperCase() ?? '')
     .join('');
 }
+
+/**
+ * Converte `#rrggbb` em `rgba(r, g, b, alpha)`. Usado pelos "Hero Objects"
+ * da NOVA/LEGENDARY (`nova-ring-object.tsx`, `legendary-crystal-object.tsx`)
+ * — antes vivia duplicado como helper local em `nova-ring-object.tsx`;
+ * movido pra cá quando `legendary-crystal-object.tsx` também passou a
+ * precisar dele, pra nunca ter duas cópias divergentes da mesma conversão.
+ */
+export function hexToRgba(hex: string, alpha: number): string {
+  const value = hex.replace('#', '');
+  const r = parseInt(value.substring(0, 2), 16);
+  const g = parseInt(value.substring(2, 4), 16);
+  const b = parseInt(value.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
