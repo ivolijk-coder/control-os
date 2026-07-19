@@ -41,12 +41,22 @@ interface HeroLightingProps {
  * normal apontar quase exatamente pra uma dessas fontes pequenas; todas as
  * outras caem no escuro. É esse recorte, não a intensidade total, que cria
  * o contraste "extremo" pedido.
+ *
+ * CONTROL OS — correção pós-Etapa 17B (o cristal sumiu de tela): a causa
+ * raiz principal foi um bug de geometria (`hero-crystal-geometry.ts`,
+ * corrigido). Como margem de segurança adicional — ambiente quase-zero
+ * significa que QUALQUER problema (geometria, winding, ângulo de câmera)
+ * pode fazer o objeto ler como "invisível" contra o fundo preto, sem
+ * nenhuma luz de base garantindo um mínimo de visibilidade — o ambiente
+ * sobe um pouco (ainda bem abaixo do v2) e o painel de preenchimento
+ * ganha mais intensidade. Contraste extremo continua sendo a meta; "nunca
+ * pode desaparecer" passa a ser um piso não-negociável por baixo dela.
  */
 export function HeroLighting({ colorHex, colorDimHex }: HeroLightingProps) {
   return (
     <>
-      {/* Ambiente — quase inexistente. Preenchimento uniforme é o inimigo do contraste extremo. */}
-      <ambientLight intensity={0.02} color="#0a0a14" />
+      {/* Ambiente — baixo, mas nunca zero: um piso mínimo de visibilidade que o contraste extremo não pode violar. */}
+      <ambientLight intensity={0.07} color="#0a0a14" />
 
       {/* Luz inferior — nasce do pedestal, mesma cor da persona. */}
       <pointLight position={[0, -1.55, 0]} intensity={9} color={colorHex} distance={7} decay={2} />
@@ -59,8 +69,8 @@ export function HeroLighting({ colorHex, colorDimHex }: HeroLightingProps) {
 
       {/* Ambiente HDRI sintético — só pra alimentar reflexos/Fresnel do material físico do Hero Object, nunca visível como fundo (`background={false}`, o padrão). Painéis pequenos e intensos (luz de estúdio de produto) em vez de painéis grandes e fracos (luz de preenchimento) — reflexo concentrado, não brilho difuso. */}
       <Environment resolution={128}>
-        <Lightformer form="rect" intensity={4.2} color="#ffffff" scale={[1.6, 0.9, 1]} position={[0, 3, 2]} target={[0, 0, 0]} />
-        <Lightformer form="rect" intensity={0.3} color={colorHex} scale={[3, 1.5, 1]} position={[-3, 0.5, -1]} target={[0, 0, 0]} />
+        <Lightformer form="rect" intensity={4.2} color="#ffffff" scale={[2.2, 1.3, 1]} position={[0, 3, 2]} target={[0, 0, 0]} />
+        <Lightformer form="rect" intensity={0.7} color={colorHex} scale={[3, 1.5, 1]} position={[-3, 0.5, -1]} target={[0, 0, 0]} />
         <Lightformer form="ring" intensity={1.1} color={colorHex} scale={[2, 2, 1]} position={[0, -1.4, 1.5]} target={[0, 0, 0]} />
       </Environment>
     </>

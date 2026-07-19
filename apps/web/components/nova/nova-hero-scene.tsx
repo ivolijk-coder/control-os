@@ -167,12 +167,15 @@ function HeroSceneContent({ status, pulseSignal, persona }: HeroSceneContentProp
  * `NovaOrb` já tinha.
  *
  * CONTROL OS — Etapa 17B (Hero Art Direction): câmera afastada (`z: 5.4 →
- * 6.6`) — a forma mais direta de fazer o Hero Object ocupar uma fatia menor
+ * 6.2`) — a forma mais direta de fazer o Hero Object ocupar uma fatia menor
  * do quadro sem tocar em nenhuma das constantes de escala/respiração que já
  * governam o comportamento por status (`HERO_RADIUS_SCALE` etc. em
  * `hero-scene-constants.ts`, intocadas). É uma decisão de enquadramento
  * (onde a câmera está), não de tamanho do objeto em si — a diferença entre
- * "meu objeto é pequeno" e "meu objeto está numa cena grande".
+ * "meu objeto é pequeno" e "meu objeto está numa cena grande". (Recuado de
+ * 6.6 pra 6.2 na correção seguinte — um objeto já pequeno na tela é a
+ * pior combinação possível com qualquer problema de iluminação/geometria
+ * residual: mais margem de segurança visual sem abrir mão do reenquadramento.)
  */
 export function NovaHeroScene({ status = 'idle', pulseSignal, persona = 'nova', className }: NovaHeroSceneProps) {
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
@@ -182,7 +185,7 @@ export function NovaHeroScene({ status = 'idle', pulseSignal, persona = 'nova', 
       <Canvas
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
-        camera={{ fov: 36, position: [0, 0.5, 6.6], near: 0.1, far: 50 }}
+        camera={{ fov: 36, position: [0, 0.5, 6.2], near: 0.1, far: 50 }}
         frameloop={prefersReducedMotion ? 'demand' : 'always'}
         performance={{ min: 0.4 }}
         onCreated={({ gl }) => {

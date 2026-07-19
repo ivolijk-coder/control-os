@@ -68,6 +68,17 @@ interface HeroLegendaryCrystalProps {
  * confiável mesmo com o material da coroa ficando mais escuro no geral,
  * garantindo "bordas extremamente luminosas" mesmo quando a faceta ao lado
  * está no escuro.
+ *
+ * CONTROL OS — correção pós-Etapa 17B (o cristal sumiu de tela): a causa
+ * raiz era um bug real em `hero-crystal-geometry.ts` — a faixa entre a
+ * cintura e o pavilhão usava uma fase errada e produzia triângulos
+ * torcidos/autointerceptantes (corrigido lá). Como margem de segurança
+ * adicional — `transmission` combinado com `side: DoubleSide` numa malha
+ * que chegou a ficar não-manifold é um caso conhecido de comportamento
+ * instável no passe de transmissão do Three —, `transmission` também
+ * baixou (0.16 → 0.08): o metal (`metalness=0.9`) já é o responsável
+ * principal pela leitura da superfície, a transmissão era só "um resquício
+ * de translucidez nas bordas", nunca o efeito dominante.
  */
 export function HeroLegendaryCrystal({ colorHex, colorBrightHex }: HeroLegendaryCrystalProps) {
   const geometry = React.useMemo(() => createCrystalGeometry(), []);
@@ -83,7 +94,7 @@ export function HeroLegendaryCrystal({ colorHex, colorBrightHex }: HeroLegendary
           side={THREE.DoubleSide}
           metalness={0.9}
           roughness={0.11}
-          transmission={0.16}
+          transmission={0.08}
           thickness={0.6}
           ior={1.5}
           attenuationColor={attenuationColor}

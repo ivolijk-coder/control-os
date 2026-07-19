@@ -21,7 +21,8 @@ import * as THREE from 'three';
  * que resolve o contraste lendo a normal real da geometria.
  */
 const CRYSTAL_SIDES = 8;
-const HALF_STEP = Math.PI / CRYSTAL_SIDES;
+const FULL_STEP = (Math.PI * 2) / CRYSTAL_SIDES;
+const HALF_STEP = FULL_STEP / 2;
 
 const APEX_TOP_Y = 1.3;
 const APEX_BOTTOM_Y = -1.15;
@@ -71,7 +72,14 @@ export function createCrystalGeometry(): THREE.BufferGeometry {
   const bottomApex: Point3 = [0, APEX_BOTTOM_Y, 0];
   const crownRing = buildRing(CROWN_RADIUS, CROWN_Y, 0);
   const girdleRing = buildRing(GIRDLE_RADIUS, GIRDLE_Y, HALF_STEP);
-  const pavilionRing = buildRing(PAVILION_RADIUS, PAVILION_Y, 0);
+  // Fase = HALF_STEP + HALF_STEP (não 0!) — `pushAntiprismBand` exige que
+  // ringB fique HALF_STEP à FRENTE de ringA em ângulo; como `girdleRing`
+  // já está em HALF_STEP, o pavilhão precisa estar em 2×HALF_STEP, não de
+  // volta em 0. Fase 0 aqui era um bug real: cada `pavilionRing[i]` ficava
+  // atrás de `girdleRing[i]` em vez de entre `girdleRing[i]` e
+  // `girdleRing[i+1]`, produzindo triângulos torcidos/autointerceptantes
+  // nessa faixa — a causa mais provável do cristal ter sumido de tela.
+  const pavilionRing = buildRing(PAVILION_RADIUS, PAVILION_Y, FULL_STEP);
 
   // Coroa — ápice de cima fechando no anel da coroa.
   for (let i = 0; i < CRYSTAL_SIDES; i += 1) {
@@ -83,7 +91,7 @@ export function createCrystalGeometry(): THREE.BufferGeometry {
   // Bezel superior — coroa até a cintura (girada meio-setor: "torção" nº 1).
   pushAntiprismBand(positions, crownRing, girdleRing);
 
-  // Bezel inferior — cintura até o pavilhão (torção nº 2, volta à fase da coroa).
+  // Bezel inferior — cintura até o pavilhão (torção nº 2, mais um meio-setor).
   pushAntiprismBand(positions, girdleRing, pavilionRing);
 
   // Pavilhão — anel do pavilhão fechando no ápice de baixo.
