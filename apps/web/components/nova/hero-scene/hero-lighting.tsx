@@ -51,27 +51,36 @@ interface HeroLightingProps {
  * sobe um pouco (ainda bem abaixo do v2) e o painel de preenchimento
  * ganha mais intensidade. Contraste extremo continua sendo a meta; "nunca
  * pode desaparecer" passa a ser um piso não-negociável por baixo dela.
+ *
+ * CONTROL OS — correção nº 2 (cristal e pedestal renderizando quase pretos):
+ * a redução de `metalness` (ver `hero-legendary-crystal.tsx` e
+ * `hero-pedestal.tsx`) é a correção principal — agora as luzes
+ * direcionais/pontual abaixo têm algo real pra iluminar (componente
+ * difuso). Ambiente e luz-chave sobem mais uma vez, e os Lightformers
+ * ficam um pouco maiores — não de volta pro "flood" uniforme do v2, mas
+ * o suficiente pra cobrir um arco mais largo de ângulos conforme o objeto
+ * gira, em vez de só um ponto exato.
  */
 export function HeroLighting({ colorHex, colorDimHex }: HeroLightingProps) {
   return (
     <>
       {/* Ambiente — baixo, mas nunca zero: um piso mínimo de visibilidade que o contraste extremo não pode violar. */}
-      <ambientLight intensity={0.07} color="#0a0a14" />
+      <ambientLight intensity={0.16} color="#0a0a14" />
 
       {/* Luz inferior — nasce do pedestal, mesma cor da persona. */}
-      <pointLight position={[0, -1.55, 0]} intensity={9} color={colorHex} distance={7} decay={2} />
+      <pointLight position={[0, -1.55, 0]} intensity={10} color={colorHex} distance={7} decay={2} />
 
       {/* Luz-chave — dura, direcional, concentrada num só lado: desenha a fronteira clara/escura entre facetas vizinhas. */}
-      <directionalLight position={[3.2, 2.2, 2.4]} intensity={2.8} color="#f5f5f0" />
+      <directionalLight position={[3.2, 2.2, 2.4]} intensity={3.6} color="#f5f5f0" />
 
       {/* Luz traseira — rim light discreto, cor escura da mesma família da persona (nunca cinza puro). */}
-      <directionalLight position={[-2.4, 1.4, -3.2]} intensity={1} color={colorDimHex} />
+      <directionalLight position={[-2.4, 1.4, -3.2]} intensity={1.3} color={colorDimHex} />
 
       {/* Ambiente HDRI sintético — só pra alimentar reflexos/Fresnel do material físico do Hero Object, nunca visível como fundo (`background={false}`, o padrão). Painéis pequenos e intensos (luz de estúdio de produto) em vez de painéis grandes e fracos (luz de preenchimento) — reflexo concentrado, não brilho difuso. */}
       <Environment resolution={128}>
-        <Lightformer form="rect" intensity={4.2} color="#ffffff" scale={[2.2, 1.3, 1]} position={[0, 3, 2]} target={[0, 0, 0]} />
-        <Lightformer form="rect" intensity={0.7} color={colorHex} scale={[3, 1.5, 1]} position={[-3, 0.5, -1]} target={[0, 0, 0]} />
-        <Lightformer form="ring" intensity={1.1} color={colorHex} scale={[2, 2, 1]} position={[0, -1.4, 1.5]} target={[0, 0, 0]} />
+        <Lightformer form="rect" intensity={4.2} color="#ffffff" scale={[3.2, 1.8, 1]} position={[0, 3, 2]} target={[0, 0, 0]} />
+        <Lightformer form="rect" intensity={1.2} color={colorHex} scale={[3.4, 1.8, 1]} position={[-3, 0.5, -1]} target={[0, 0, 0]} />
+        <Lightformer form="ring" intensity={1.4} color={colorHex} scale={[2.4, 2.4, 1]} position={[0, -1.4, 1.5]} target={[0, 0, 0]} />
       </Environment>
     </>
   );

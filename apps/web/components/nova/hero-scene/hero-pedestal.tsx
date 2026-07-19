@@ -84,6 +84,13 @@ function PedestalChannels({ radius, y, height, color }: PedestalChannelsProps) {
  * sutil pra chamar atenção sozinho, mas o suficiente pra cada degrau deixar
  * de ser uma cópia idêntica do vizinho. Uma segunda `pointLight` na base
  * reforça "a luz nasce dali" em mais de uma altura, não só no topo.
+ *
+ * CONTROL OS — correção nº 2 (cristal e pedestal renderizando quase pretos):
+ * o mesmo problema do cristal (`hero-legendary-crystal.tsx`) se aplicava
+ * aqui — `metalness=0.9` sem componente difuso, sob luz concentrada,
+ * lia como cilindros pretos sólidos em vez de "metal escuro". `metalness`
+ * desce pra 0.5 pelo mesmo motivo: ganhar resposta difusa real às luzes da
+ * cena.
  */
 export function HeroPedestal({ colorHex, colorBrightHex }: HeroPedestalProps) {
   return (
@@ -97,7 +104,7 @@ export function HeroPedestal({ colorHex, colorBrightHex }: HeroPedestalProps) {
           <group key={i}>
             <mesh position={[0, y, 0]}>
               <cylinderGeometry args={[radius, radius * 1.08, height, 48]} />
-              <meshStandardMaterial color={metalColor} metalness={0.9} roughness={0.24} />
+              <meshStandardMaterial color={metalColor} metalness={0.5} roughness={0.34} />
             </mesh>
             <PedestalChannels radius={radius * 1.005} y={y} height={height * 0.72} color={colorBrightHex} />
             {/* Sulco — borda escura recuada, logo abaixo da tira emissiva. */}

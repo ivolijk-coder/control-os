@@ -79,6 +79,19 @@ interface HeroLegendaryCrystalProps {
  * baixou (0.16 → 0.08): o metal (`metalness=0.9`) já é o responsável
  * principal pela leitura da superfície, a transmissão era só "um resquício
  * de translucidez nas bordas", nunca o efeito dominante.
+ *
+ * CONTROL OS — correção nº 2 (cristal e pedestal renderizando quase pretos):
+ * o bug de geometria estava corrigido, mas `metalness=0.9` é o motivo por
+ * trás do preto total — metais PBR não têm componente difuso (não
+ * espalham luz em todas as direções como um material comum), então SÓ
+ * aparecem onde a reflexão especular de uma luz/painel pequeno aponta
+ * exatamente pra câmera. Com poucos Lightformers pequenos (a correção
+ * anterior), a maior parte da superfície não reflete nada — lê como preto
+ * sólido, não como "metal escuro". `metalness` desce pra 0.55: a
+ * superfície ganha um componente difuso real, que RESPONDE às luzes
+ * direcionais/pontuais já presentes na cena (que não dependem de ângulo de
+ * reflexão especular), então nunca mais fica pura preta — o `clearcoat`
+ * continua garantindo o brilho especular concentrado por cima disso.
  */
 export function HeroLegendaryCrystal({ colorHex, colorBrightHex }: HeroLegendaryCrystalProps) {
   const geometry = React.useMemo(() => createCrystalGeometry(), []);
@@ -92,8 +105,8 @@ export function HeroLegendaryCrystal({ colorHex, colorBrightHex }: HeroLegendary
         <meshPhysicalMaterial
           color={colorHex}
           side={THREE.DoubleSide}
-          metalness={0.9}
-          roughness={0.11}
+          metalness={0.55}
+          roughness={0.22}
           transmission={0.08}
           thickness={0.6}
           ior={1.5}
@@ -105,7 +118,7 @@ export function HeroLegendaryCrystal({ colorHex, colorBrightHex }: HeroLegendary
           clearcoatRoughness={0.04}
           emissive={colorHex}
           emissiveIntensity={0.05}
-          envMapIntensity={3.2}
+          envMapIntensity={2.2}
         />
       </mesh>
 
