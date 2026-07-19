@@ -427,7 +427,12 @@ export function NovaWorkspace({
 
   const inputRow = (
     <div className="mx-auto w-full max-w-2xl">
-      <NovaInput onSubmit={handleSend} disabled={isThinking} onListeningChange={setIsListening} />
+      <NovaInput
+        onSubmit={handleSend}
+        disabled={isThinking}
+        onListeningChange={setIsListening}
+        persona={activePersona}
+      />
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
         {quickActions.map((action) => (
           <QuickAction
@@ -450,6 +455,7 @@ export function NovaWorkspace({
           thinkingStatus={thinkingStatus}
           onConfirmPending={handleConfirmPending}
           onCancelPending={handleCancelPending}
+          persona={activePersona}
         />
       </div>
 

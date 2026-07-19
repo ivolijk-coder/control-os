@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowUp, Check, Mic } from 'lucide-react';
+import type { NovaPersona } from '@/services/nova';
 import { cn } from '@/lib/utils';
 import { transitionOut } from '@/lib/motion';
 import { getSpeechProvider } from '@/services/voice';
@@ -39,6 +40,13 @@ export interface NovaInputProps {
    * microfone está ativo (CONTROL OS — Etapa 11C).
    */
   onListeningChange?: (listening: boolean) => void;
+  /**
+   * Identidade ativa (CONTROL OS — Etapa 16E) — colore o foco do campo e o
+   * botão de microfone (roxo/dourado), o mesmo tratamento já aplicado ao
+   * avatar da conversa (`NovaMessageBubble`/`NovaThinking`) e ao seletor
+   * (`NovaPersonaSwitch`). Padrão `'nova'`.
+   */
+  persona?: NovaPersona;
 }
 
 /**
@@ -61,7 +69,14 @@ export interface NovaInputProps {
  * escuta imediatamente → fala final → envia sozinho, sem confirmações ou
  * cliques extras ("sem etapas extras" — Etapa 11C).
  */
-export function NovaInput({ className, onSubmit, disabled = false, onListeningChange }: NovaInputProps) {
+export function NovaInput({
+  className,
+  onSubmit,
+  disabled = false,
+  onListeningChange,
+  persona = 'nova',
+}: NovaInputProps) {
+  const isLegendary = persona === 'legendary';
   const [value, setValue] = React.useState('');
   const [focused, setFocused] = React.useState(false);
   const [exampleIndex, setExampleIndex] = React.useState(0);
@@ -181,7 +196,14 @@ export function NovaInput({ className, onSubmit, disabled = false, onListeningCh
         onSubmit={handleSubmit}
         className={cn(
           'group relative flex items-center gap-3 rounded-2xl border bg-card/60 px-5 py-4 shadow-e4 backdrop-blur-xl transition-colors duration-base ease-out',
-          focused || isListening ? 'border-accent-purple/40' : 'border-white/[0.08] hover:border-white/[0.14]',
+          // CONTROL OS — Etapa 16E: o brilho de foco do campo (a "casa" da
+          // conversa) segue a mesma dualidade roxo/dourado do avatar e do
+          // seletor — antes era sempre roxo, mesmo com LEGENDARY ativo.
+          focused || isListening
+            ? isLegendary
+              ? 'border-accent-gold/40'
+              : 'border-accent-purple/40'
+            : 'border-white/[0.08] hover:border-white/[0.14]',
           className
         )}
       >
@@ -204,7 +226,13 @@ export function NovaInput({ className, onSubmit, disabled = false, onListeningCh
             // botão mais importante do produto — a NOVA é o centro absoluto
             // da experiência, e este é o gatilho de voz dela.
             'flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-30',
-            isListening ? 'bg-accent-purple text-white' : 'text-accent-purple hover:bg-accent-purple/10'
+            isLegendary
+              ? isListening
+                ? 'bg-accent-gold text-black'
+                : 'text-accent-gold hover:bg-accent-gold/10'
+              : isListening
+                ? 'bg-accent-purple text-white'
+                : 'text-accent-purple hover:bg-accent-purple/10'
           )}
         >
           <Mic className="h-4 w-4" />

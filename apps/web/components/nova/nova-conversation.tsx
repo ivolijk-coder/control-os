@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { AnimatePresence } from 'framer-motion';
+import type { NovaPersona } from '@/services/nova';
 import { NovaMessageBubble, type ConversationMessage } from './nova-message-bubble';
 import { NovaThinking, type NovaThinkingStatus } from './nova-thinking';
 
@@ -19,6 +20,17 @@ export interface NovaConversationProps {
    */
   onConfirmPending?: () => void;
   onCancelPending?: () => void;
+  /**
+   * Identidade ATIVA agora (CONTROL OS — Etapa 16E) — colore o avatar de
+   * toda mensagem da NOVA e do indicador "Pensando/Executando". Como a
+   * conversa é uma única linha do tempo compartilhada entre NOVA e
+   * LEGENDARY (nunca duas conversas separadas — Etapa 15), isto pinta TODAS
+   * as respostas com a identidade de agora, não a de quando cada uma foi
+   * enviada; é uma simplificação deliberada — persistir qual persona
+   * respondeu cada mensagem passada exigiria mudar o formato salvo no
+   * `useAppStore`, fora do escopo visual desta etapa.
+   */
+  persona?: NovaPersona;
 }
 
 /**
@@ -37,6 +49,7 @@ export function NovaConversation({
   thinkingStatus,
   onConfirmPending,
   onCancelPending,
+  persona = 'nova',
 }: NovaConversationProps) {
   if (messages.length === 0 && !isThinking) return null;
 
@@ -51,9 +64,10 @@ export function NovaConversation({
             message={message}
             onConfirm={message.id === lastMessageId ? onConfirmPending : undefined}
             onCancel={message.id === lastMessageId ? onCancelPending : undefined}
+            persona={persona}
           />
         ))}
-        {isThinking && <NovaThinking key="thinking" status={thinkingStatus} />}
+        {isThinking && <NovaThinking key="thinking" status={thinkingStatus} persona={persona} />}
       </AnimatePresence>
     </div>
   );

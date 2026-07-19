@@ -4,6 +4,7 @@ import * as React from 'react';
 import { motion } from 'framer-motion';
 import { AlertCircle, Check, Sparkles } from 'lucide-react';
 import { Button } from '@control-os/ui';
+import type { NovaPersona } from '@/services/nova';
 import { cn } from '@/lib/utils';
 import { fadeUp, transitionOut } from '@/lib/motion';
 
@@ -35,6 +36,14 @@ export interface NovaMessageBubbleProps {
    */
   onConfirm?: () => void;
   onCancel?: () => void;
+  /**
+   * Identidade que respondeu esta mensagem (CONTROL OS — Etapa 16E). Colore
+   * só o avatar da NOVA (roxo/dourado) — nunca a bolha em si, que continua
+   * neutra (`bg-card/60`) independente de quem respondeu. Padrão `'nova'`
+   * por retrocompatibilidade com qualquer chamador que ainda não passe a
+   * prop.
+   */
+  persona?: NovaPersona;
 }
 
 /**
@@ -46,10 +55,11 @@ export interface NovaMessageBubbleProps {
  * Quando `status === 'error'`, reaproveita o padrão visual de `FormError`
  * (borda/fundo vermelhos + microinteração de shake).
  */
-export function NovaMessageBubble({ message, onConfirm, onCancel }: NovaMessageBubbleProps) {
+export function NovaMessageBubble({ message, onConfirm, onCancel, persona = 'nova' }: NovaMessageBubbleProps) {
   const isUser = message.role === 'user';
   const isError = message.status === 'error';
   const isPendingConfirmation = message.status === 'pending_confirmation';
+  const isLegendary = persona === 'legendary';
 
   return (
     <motion.div
@@ -65,7 +75,14 @@ export function NovaMessageBubble({ message, onConfirm, onCancel }: NovaMessageB
         <span
           className={cn(
             'flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
-            isError ? 'bg-accent-red/15 text-accent-red' : 'bg-accent-purple/15 text-accent-purple'
+            isError
+              ? 'bg-accent-red/15 text-accent-red'
+              : // CONTROL OS — Etapa 16E: o avatar da NOVA reflete quem
+                // respondeu (roxo/dourado) — a mesma dualidade que já existe
+                // na Orb e no seletor, agora também na conversa em texto.
+                isLegendary
+                ? 'bg-accent-gold/15 text-accent-gold'
+                : 'bg-accent-purple/15 text-accent-purple'
           )}
         >
           {isError ? <AlertCircle className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
