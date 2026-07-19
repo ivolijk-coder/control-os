@@ -26,6 +26,16 @@ export interface SectionHeaderProps {
  * de bloco logo abaixo. Como este componente é reusado em praticamente
  * toda página de módulo, o salto de hierarquia agora é sentido no produto
  * inteiro de uma vez.
+ *
+ * CONTROL OS — Etapa 16G (Art Direction — tipografia): `level="page"` foi
+ * de `text-2xl font-semibold` (24px/600) pra `text-3xl font-bold sm:text-4xl`
+ * (30px→36px/700) — as MESMAS classes de `HomeHero` (`/nova`). Antes o
+ * título de "Bom dia, Ivoli." na Home e o título "Financeiro" no módulo
+ * usavam duas escalas diferentes, então a transição entre os dois lugares
+ * quebrava a sensação de "mesma obra" pedida na direção de arte. `level=
+ * "section"` ganhou `font-semibold` (antes `font-medium`) — não pra crescer
+ * em tamanho (o contraste de escala com `page` continua o mesmo, "hierarquia
+ * extremamente clara" depende desse salto), só um traço a mais de peso.
  */
 export function SectionHeader({ title, description, meta, action, level = 'section' }: SectionHeaderProps) {
   return (
@@ -34,8 +44,8 @@ export function SectionHeader({ title, description, meta, action, level = 'secti
         <h2
           className={
             level === 'page'
-              ? 'text-2xl font-semibold tracking-tight text-text-primary'
-              : 'text-sm font-medium text-text-primary'
+              ? 'text-3xl font-bold tracking-tight text-text-primary sm:text-4xl'
+              : 'text-sm font-semibold text-text-primary'
           }
         >
           {title}
