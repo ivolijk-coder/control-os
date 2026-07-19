@@ -43,6 +43,64 @@ interface OrbBurst {
   angle: number;
 }
 
+/**
+ * CONTROL OS — Etapa 16K (Energy Field): 6 camadas de campo de energia ao
+ * redor da Orb, todas geradas UMA VEZ no mount (mesmo padrão de
+ * `createShellPoints`/`OrbPoint` — nunca recalculadas por frame, só
+ * reposicionadas). `radiusFactor` é sempre uma fração do raio do círculo de
+ * clip (`clipRadius`, todo o espaço visível do componente), não do raio da
+ * Orb — o campo ocupa "todo o espaço ao redor", não só a vizinhança
+ * imediata da esfera.
+ */
+interface FieldDustPoint {
+  angle: number;
+  radiusFactor: number;
+  /** 0 (longe) .. 1 (perto) — controla tamanho, brilho e velocidade, "algumas próximas, outras distantes". */
+  depth: number;
+  seed: number;
+  speedFactor: number;
+}
+interface FieldLine {
+  radiusFactor: number;
+  startAngle: number;
+  sweep: number;
+  /** Quanto o arco "estufa" pra fora do raio nominal — nunca uma linha reta. */
+  curvature: number;
+  seed: number;
+  speedFactor: number;
+}
+interface FieldFragment {
+  angle: number;
+  radiusFactor: number;
+  length: number;
+  curveAmount: number;
+  depth: number;
+  seed: number;
+  speedFactor: number;
+}
+interface FieldOrbiter {
+  angle: number;
+  radiusFactor: number;
+  size: number;
+  depth: number;
+  seed: number;
+  speedFactor: number;
+}
+interface FieldRingConfig {
+  radiusFactor: number;
+  startAngle: number;
+  /** `< 2π` — "alguns incompletos, interrompidos". */
+  sweep: number;
+  speedFactor: number;
+  squash: number;
+  seed: number;
+}
+interface FieldSpark {
+  bornAt: number;
+  angle: number;
+  radiusFactor: number;
+}
+
 const POINT_COUNT = 420;
 const TARGET_FRAME_MS = 33; // ~30fps — mesmo orçamento de frame do BackgroundNetwork.
 
@@ -195,6 +253,43 @@ const FIELD_COLOR_RGB: Record<NovaPersona, readonly [number, number, number]> = 
   nova: [148, 226, 255],
   legendary: [214, 168, 96],
 };
+
+/**
+ * CONTROL OS — Etapa 16K (Energy Field): quantidade e ritmo de cada uma das
+ * 6 camadas. Contagens propositalmente baixas (a soma de todos os pontos
+ * desenhados por frame fica bem abaixo do orçamento já gasto pela nuvem de
+ * 420 pontos da própria Orb) — "elegante, quase imperceptível", nunca uma
+ * "chuva" de partículas.
+ *
+ * Rotação: um único "relógio mestre" (`fieldAngle`, acumulado por frame em
+ * `step()`, nunca recalculado a partir de tempo absoluto — mesmo motivo de
+ * `shellAngles`: sobrevive a pausas de `visibilitychange` sem saltar) —
+ * cada camada aplica seu próprio multiplicador (`FIELD_*_ROTATION_MULT`)
+ * sobre esse relógio, e cada ponto/linha individual ainda aplica o próprio
+ * `speedFactor` (sinal aleatório incluído — metade gira num sentido, metade
+ * no outro) por cima disso. Pontos mais perto do centro giram mais rápido
+ * (`/ (radiusFactor + 0.2)`, uma aproximação simples de órbita
+ * gravitacional) — "tudo gravitacionalmente influenciado pela Orb como
+ * centro", nunca um movimento aleatório desconectado do núcleo.
+ */
+const FIELD_DUST_COUNT = 70;
+const FIELD_LINE_COUNT = 5;
+const FIELD_FRAGMENT_COUNT = 16;
+const FIELD_ORBITER_COUNT = 6;
+const FIELD_RING_COUNT = 4;
+const FIELD_ANGLE_STEP = 0.00045;
+const FIELD_DUST_ROTATION_MULT = 1;
+const FIELD_LINE_ROTATION_MULT = 0.35;
+const FIELD_FRAGMENT_ROTATION_MULT = 0.7;
+const FIELD_ORBITER_ROTATION_MULT = 0.85;
+const FIELD_RING_ROTATION_MULT = 1.2;
+/** Faísca rara — vida curtíssima ("aparece e desaparece quase instantaneamente"), intervalo aleatório generoso entre uma e outra. */
+const FIELD_SPARK_LIFETIME_MS = 260;
+const FIELD_SPARK_INTERVAL_MIN_MS = 1400;
+const FIELD_SPARK_INTERVAL_MAX_MS = 3600;
+/** Parallax por mouse — deslocamento máximo em pixels, "nunca exagerado". */
+const FIELD_PARALLAX_MAX_PX = 7;
+const FIELD_PARALLAX_EASE = 0.035;
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
@@ -438,6 +533,62 @@ function createShellPoints(count: number): OrbPoint[] {
   }));
 }
 
+/** Sinal aleatório de rotação (+1/-1) — metade dos elementos de cada camada do campo gira num sentido, metade no outro, nunca todos juntos. */
+function randomSignedSpeed(min: number, max: number): number {
+  return (Math.random() < 0.5 ? -1 : 1) * (min + Math.random() * (max - min));
+}
+
+function createFieldDust(count: number): FieldDustPoint[] {
+  return Array.from({ length: count }, () => ({
+    angle: Math.random() * Math.PI * 2,
+    radiusFactor: 0.32 + Math.random() * 0.66,
+    depth: Math.random(),
+    seed: Math.random() * 1000,
+    speedFactor: randomSignedSpeed(0.4, 1),
+  }));
+}
+function createFieldLines(count: number): FieldLine[] {
+  return Array.from({ length: count }, () => ({
+    radiusFactor: 0.4 + Math.random() * 0.48,
+    startAngle: Math.random() * Math.PI * 2,
+    sweep: Math.PI / 3 + Math.random() * (Math.PI / 2),
+    curvature: 0.06 + Math.random() * 0.1,
+    seed: Math.random() * 1000,
+    speedFactor: randomSignedSpeed(0.3, 0.8),
+  }));
+}
+function createFieldFragments(count: number): FieldFragment[] {
+  return Array.from({ length: count }, () => ({
+    angle: Math.random() * Math.PI * 2,
+    radiusFactor: 0.3 + Math.random() * 0.62,
+    length: 0.04 + Math.random() * 0.05,
+    curveAmount: (Math.random() - 0.5) * 0.05,
+    depth: Math.random(),
+    seed: Math.random() * 1000,
+    speedFactor: randomSignedSpeed(0.4, 1),
+  }));
+}
+function createFieldOrbiters(count: number): FieldOrbiter[] {
+  return Array.from({ length: count }, () => ({
+    angle: Math.random() * Math.PI * 2,
+    radiusFactor: 0.5 + Math.random() * 0.5,
+    size: 1.4 + Math.random() * 1.6,
+    depth: Math.random(),
+    seed: Math.random() * 1000,
+    speedFactor: randomSignedSpeed(0.3, 0.7),
+  }));
+}
+function createFieldRings(count: number): FieldRingConfig[] {
+  return Array.from({ length: count }, (_, i) => ({
+    radiusFactor: 0.45 + (i / count) * 0.48 + Math.random() * 0.06,
+    startAngle: Math.random() * Math.PI * 2,
+    sweep: Math.random() < 0.5 ? Math.PI * 2 : Math.PI * (0.5 + Math.random() * 1.1),
+    speedFactor: randomSignedSpeed(0.2, 0.6),
+    squash: 0.32 + Math.random() * 0.18,
+    seed: Math.random() * 1000,
+  }));
+}
+
 export interface NovaOrbProps {
   /** Velocidade de rotação — espelha o estado da conversa (ver `NovaThinkingStatus`). */
   status?: NovaOrbStatus;
@@ -461,6 +612,17 @@ export interface NovaOrbProps {
    * fazem ao trocar de `status`.
    */
   persona?: NovaPersona;
+  /**
+   * CONTROL OS — Etapa 16K (Energy Field): ativa as 6 camadas de campo de
+   * energia orbitando ao redor da Orb (poeira luminosa, linhas
+   * gravitacionais, fragmentos orgânicos, partículas maiores atrás da Orb,
+   * anéis orbitais e faíscas raras) mais um parallax sutil pelo mouse.
+   * Padrão `false` — opt-in deliberado: o `NovaFloatingLauncher` (56px) e
+   * outros usos pequenos da Orb continuam exatamente como antes, sem
+   * nenhum trabalho extra por frame; só a Orb grande da Home
+   * (`NovaWorkspace`, variante `docked`) liga isso.
+   */
+  energyField?: boolean;
 }
 
 /**
@@ -511,7 +673,7 @@ export interface NovaOrbProps {
  * (roxo/azul → dourado/âmbar) sem nunca reiniciar, remontar ou parecer um
  * corte entre dois chatbots diferentes.
  */
-export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'nova' }: NovaOrbProps) {
+export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'nova', energyField = false }: NovaOrbProps) {
   const wrapperRef = React.useRef<HTMLDivElement | null>(null);
   const haloRef = React.useRef<HTMLDivElement | null>(null);
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
@@ -527,6 +689,11 @@ export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'no
   // dentro do efeito abaixo) suavemente na direção do novo alvo.
   const personaRef = React.useRef(persona);
   personaRef.current = persona;
+
+  // CONTROL OS — Etapa 16K (Energy Field): mesmo padrão de ref — ligar/
+  // desligar o campo nunca recria o loop de animação.
+  const energyFieldRef = React.useRef(energyField);
+  energyFieldRef.current = energyField;
 
   // Ondas nascidas por temporizador (loop de animação) E por fronteira de
   // palavra (efeito separado abaixo) precisam do mesmo array — por isso vive
@@ -577,6 +744,41 @@ export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'no
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
     const shellPoints = SHELLS.map((shell) => createShellPoints(Math.max(1, Math.round(POINT_COUNT * shell.pointShare))));
+
+    // CONTROL OS — Etapa 16K (Energy Field): geradas uma única vez no
+    // mount, mesmo padrão de `shellPoints` acima — o loop de animação só
+    // reposiciona (via `fieldAngle`), nunca recria estes arrays.
+    const fieldDust = createFieldDust(FIELD_DUST_COUNT);
+    const fieldLines = createFieldLines(FIELD_LINE_COUNT);
+    const fieldFragments = createFieldFragments(FIELD_FRAGMENT_COUNT);
+    const fieldOrbiters = createFieldOrbiters(FIELD_ORBITER_COUNT);
+    const fieldRings = createFieldRings(FIELD_RING_COUNT);
+    let fieldSparks: FieldSpark[] = [];
+    let nextSparkAt = 0;
+    // "Relógio mestre" do campo — acumulado por frame em `step()`, nunca a
+    // partir de tempo absoluto (sobrevive a pausas de `visibilitychange`
+    // sem saltar, mesmo raciocínio de `shellAngles`).
+    let fieldAngle = 0;
+    // Parallax por mouse — alvo atualizado pelo listener de ponteiro
+    // abaixo, posição real eased em direção ao alvo dentro de `step()`.
+    let parallaxX = 0;
+    let parallaxY = 0;
+    let parallaxTargetX = 0;
+    let parallaxTargetY = 0;
+
+    const handleFieldPointerMove = (event: PointerEvent) => {
+      if (!energyFieldRef.current || !wrapperRef.current) return;
+      const rect = wrapperRef.current.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      const nx = (event.clientX - rect.left) / rect.width - 0.5;
+      const ny = (event.clientY - rect.top) / rect.height - 0.5;
+      parallaxTargetX = nx * FIELD_PARALLAX_MAX_PX;
+      parallaxTargetY = ny * FIELD_PARALLAX_MAX_PX;
+    };
+    const handleFieldPointerLeave = () => {
+      parallaxTargetX = 0;
+      parallaxTargetY = 0;
+    };
 
     // Arrow functions (não `function` hoisted) preservam o estreitamento de
     // tipo de `canvas`/`ctx` dos `if (!x) return` acima — mesmo motivo
@@ -636,10 +838,151 @@ export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'no
       // de burst, reflexo — ser desenhado nos cantos, mesmo que um ajuste
       // futuro de raio erre a conta de novo. `ctx.restore()` no fim de
       // `drawFrame` remove o clip antes do próximo frame.
+      const clipRadius = Math.min(width, height) / 2;
       ctx.save();
       ctx.beginPath();
-      ctx.arc(cx, cy, Math.min(width, height) / 2, 0, Math.PI * 2);
+      ctx.arc(cx, cy, clipRadius, 0, Math.PI * 2);
       ctx.clip();
+
+      // CONTROL OS — Etapa 16K (Energy Field): as 6 camadas do campo de
+      // energia, desenhadas ANTES de qualquer camada da própria esfera
+      // (halo/vidro/núcleo/cristal, todas abaixo) — a ORDEM de desenho por
+      // si só garante "a Orb continua protagonista" e "as partículas
+      // maiores passam por trás da Orb, nunca na frente", sem precisar de
+      // nenhum teste de profundidade manual. Só roda quando `energyField`
+      // está ativo (opt-in — ver `NovaOrbProps`); o launcher flutuante e
+      // outros usos pequenos da Orb continuam sem nenhum trabalho extra por
+      // frame.
+      if (energyFieldRef.current) {
+        const maxFieldRadius = clipRadius * 0.96;
+        const fieldPulseT = time / 1000;
+        ctx.save();
+        ctx.translate(parallaxX, parallaxY);
+
+        // Camada 02 — linhas "gravitacionais": arcos quase invisíveis,
+        // nunca retos, opacidade oscilando muito devagar (fade in/out).
+        for (const line of fieldLines) {
+          const rotation = fieldAngle * FIELD_LINE_ROTATION_MULT * line.speedFactor;
+          const start = line.startAngle + rotation;
+          const end = start + line.sweep;
+          const r = maxFieldRadius * line.radiusFactor;
+          const fade = 0.5 + 0.5 * Math.sin(fieldPulseT * 0.09 + line.seed);
+          const opacity = Math.max(0, fade) * 0.05;
+          if (opacity <= 0.002) continue;
+          const midAngle = (start + end) / 2;
+          const bulge = r * (1 + line.curvature);
+          const startX = cx + Math.cos(start) * r;
+          const startY = cy + Math.sin(start) * r * DEPTH_SQUASH;
+          const endX = cx + Math.cos(end) * r;
+          const endY = cy + Math.sin(end) * r * DEPTH_SQUASH;
+          const ctrlX = cx + Math.cos(midAngle) * bulge;
+          const ctrlY = cy + Math.sin(midAngle) * bulge * DEPTH_SQUASH;
+          ctx.strokeStyle = `rgba(${fieldColorRgb}, ${opacity.toFixed(3)})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(startX, startY);
+          ctx.quadraticCurveTo(ctrlX, ctrlY, endX, endY);
+          ctx.stroke();
+        }
+
+        // Camada 05 — anéis orbitais: alguns incompletos/interrompidos
+        // (`sweep < 2π`), cada um girando numa velocidade própria.
+        for (const ring of fieldRings) {
+          const rotation = fieldAngle * FIELD_RING_ROTATION_MULT * ring.speedFactor;
+          const r = maxFieldRadius * ring.radiusFactor;
+          const opacity = Math.max(0, 0.045 + 0.02 * Math.sin(fieldPulseT * 0.12 + ring.seed));
+          ctx.strokeStyle = `rgba(${fieldColorRgb}, ${opacity.toFixed(3)})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, r, r * ring.squash, 0, ring.startAngle + rotation, ring.startAngle + rotation + ring.sweep);
+          ctx.stroke();
+        }
+
+        // Camada 01 — poeira luminosa: pontos pequenos e discretos,
+        // deslocamento extremamente lento, "algumas próximas, outras
+        // distantes" (profundidade = tamanho/brilho/velocidade). Órbita
+        // gravitacional simplificada — quanto mais perto do centro, mais
+        // rápido.
+        ctx.globalCompositeOperation = 'lighter';
+        for (const point of fieldDust) {
+          const angularVelocity = (fieldAngle * FIELD_DUST_ROTATION_MULT * point.speedFactor) / (point.radiusFactor + 0.2);
+          const angle = point.angle + angularVelocity;
+          const r = maxFieldRadius * point.radiusFactor;
+          const px = cx + Math.cos(angle) * r;
+          const py = cy + Math.sin(angle) * r * DEPTH_SQUASH;
+          const size = 0.5 + point.depth * 1.1;
+          const opacity = Math.max(0, (0.06 + point.depth * 0.16) * (0.7 + 0.3 * Math.sin(fieldPulseT * 0.5 + point.seed)));
+          ctx.fillStyle = `rgba(${fieldColorRgb}, ${opacity.toFixed(3)})`;
+          ctx.beginPath();
+          ctx.arc(px, py, size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Camada 03 — fragmentos orgânicos de energia: pequenos traços
+        // curvos ("como poeira do espaço"), nunca retos — cada um é uma
+        // curva quadrática bem curta, tangente à própria órbita.
+        for (const fragment of fieldFragments) {
+          const angularVelocity = (fieldAngle * FIELD_FRAGMENT_ROTATION_MULT * fragment.speedFactor) / (fragment.radiusFactor + 0.2);
+          const angle = fragment.angle + angularVelocity;
+          const r = maxFieldRadius * fragment.radiusFactor;
+          const wobble = pseudoNoise(fragment.seed, fieldPulseT * 0.15) * 0.015;
+          const baseX = cx + Math.cos(angle) * r;
+          const baseY = cy + Math.sin(angle) * r * DEPTH_SQUASH;
+          const tangent = angle + Math.PI / 2;
+          const half = (maxFieldRadius * fragment.length) / 2;
+          const p0x = baseX - Math.cos(tangent) * half;
+          const p0y = baseY - Math.sin(tangent) * half * DEPTH_SQUASH;
+          const p1x = baseX + Math.cos(tangent) * half;
+          const p1y = baseY + Math.sin(tangent) * half * DEPTH_SQUASH;
+          const ctrlX = baseX + Math.cos(angle) * maxFieldRadius * (fragment.curveAmount + wobble);
+          const ctrlY = baseY + Math.sin(angle) * maxFieldRadius * (fragment.curveAmount + wobble) * DEPTH_SQUASH;
+          const opacity = 0.05 + fragment.depth * 0.09;
+          ctx.strokeStyle = `rgba(${fieldColorRgb}, ${opacity.toFixed(3)})`;
+          ctx.lineWidth = 0.8 + fragment.depth * 0.6;
+          ctx.beginPath();
+          ctx.moveTo(p0x, p0y);
+          ctx.quadraticCurveTo(ctrlX, ctrlY, p1x, p1y);
+          ctx.stroke();
+        }
+
+        // Camada 04 — poucas partículas maiores, lentas. Como esta camada
+        // inteira é desenhada ANTES do corpo da esfera (halo/vidro/núcleo/
+        // cristal logo abaixo), elas ficam sempre atrás da Orb, nunca na
+        // frente — sem precisar comparar profundidade com nada da esfera.
+        for (const orbiter of fieldOrbiters) {
+          const angularVelocity = (fieldAngle * FIELD_ORBITER_ROTATION_MULT * orbiter.speedFactor) / (orbiter.radiusFactor + 0.2);
+          const angle = orbiter.angle + angularVelocity;
+          const r = maxFieldRadius * orbiter.radiusFactor;
+          const px = cx + Math.cos(angle) * r;
+          const py = cy + Math.sin(angle) * r * DEPTH_SQUASH;
+          const opacity = 0.08 + orbiter.depth * 0.1;
+          const orbGlow = ctx.createRadialGradient(px, py, 0, px, py, orbiter.size * 2.4);
+          orbGlow.addColorStop(0, `rgba(${fieldColorRgb}, ${opacity.toFixed(3)})`);
+          orbGlow.addColorStop(1, `rgba(${fieldColorRgb}, 0)`);
+          ctx.fillStyle = orbGlow;
+          ctx.beginPath();
+          ctx.arc(px, py, orbiter.size * 2.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Camada 06 — micro faíscas raras: flash rápido e brilhante, some
+        // quase instantaneamente — nunca uma "chuva" de partículas.
+        for (const spark of fieldSparks) {
+          const age = time - spark.bornAt;
+          const lifeFraction = age / FIELD_SPARK_LIFETIME_MS;
+          if (lifeFraction >= 1 || lifeFraction < 0) continue;
+          const r = maxFieldRadius * spark.radiusFactor;
+          const sx = cx + Math.cos(spark.angle) * r;
+          const sy = cy + Math.sin(spark.angle) * r * DEPTH_SQUASH;
+          const opacity = Math.max(0, Math.sin(lifeFraction * Math.PI) * 0.8);
+          ctx.fillStyle = `rgba(${rimRgb}, ${opacity.toFixed(3)})`;
+          ctx.beginPath();
+          ctx.arc(sx, sy, 1.1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.restore();
+      }
 
       // Respiração: o próprio raio da esfera oscila, não só o container CSS
       // por fora — é isso que faz a orb parecer respirando de dentro pra
@@ -1085,6 +1428,26 @@ export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'no
       }
       bursts = bursts.filter((burst) => time - burst.bornAt < BURST_LIFETIME_MS);
 
+      // CONTROL OS — Etapa 16K (Energy Field): relógio mestre do campo
+      // (acumulado por frame, nunca a partir de tempo absoluto — mesmo
+      // motivo de `shellAngles`) e parallax por mouse, eased em direção ao
+      // alvo escrito pelo listener de ponteiro — "nunca exagerado". Ambos
+      // avançam mesmo com `energyField` desligado (custo desprezível), pra
+      // já estarem no valor certo se a prop ligar em runtime.
+      fieldAngle += FIELD_ANGLE_STEP;
+      parallaxX += (parallaxTargetX - parallaxX) * FIELD_PARALLAX_EASE;
+      parallaxY += (parallaxTargetY - parallaxY) * FIELD_PARALLAX_EASE;
+      if (energyFieldRef.current) {
+        if (time >= nextSparkAt) {
+          fieldSparks = [
+            ...fieldSparks,
+            { bornAt: time, angle: Math.random() * Math.PI * 2, radiusFactor: 0.3 + Math.random() * 0.6 },
+          ];
+          nextSparkAt = time + FIELD_SPARK_INTERVAL_MIN_MS + Math.random() * (FIELD_SPARK_INTERVAL_MAX_MS - FIELD_SPARK_INTERVAL_MIN_MS);
+        }
+        fieldSparks = fieldSparks.filter((spark) => time - spark.bornAt < FIELD_SPARK_LIFETIME_MS);
+      }
+
       // Flutuação constante — "nunca deveria ficar parada, mesmo parada.
       // Respira. Sobe lentamente. Desce lentamente." Aplicada no wrapper
       // (fora do canvas), não no raio — é um deslocamento vertical do
@@ -1130,10 +1493,23 @@ export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'no
     window.addEventListener('resize', resize);
     document.addEventListener('visibilitychange', handleVisibility);
 
+    // CONTROL OS — Etapa 16K (Energy Field): listener no wrapper (não no
+    // canvas — o canvas tem `pointer-events-none`, ver JSX abaixo) captado
+    // uma única vez aqui, mesmo elemento durante toda a vida do efeito.
+    const wrapperEl = wrapperRef.current;
+    if (wrapperEl) {
+      wrapperEl.addEventListener('pointermove', handleFieldPointerMove);
+      wrapperEl.addEventListener('pointerleave', handleFieldPointerLeave);
+    }
+
     return () => {
       window.cancelAnimationFrame(frameId);
       window.removeEventListener('resize', resize);
       document.removeEventListener('visibilitychange', handleVisibility);
+      if (wrapperEl) {
+        wrapperEl.removeEventListener('pointermove', handleFieldPointerMove);
+        wrapperEl.removeEventListener('pointerleave', handleFieldPointerLeave);
+      }
     };
   }, [prefersReducedMotion]);
 

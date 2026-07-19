@@ -499,8 +499,14 @@ export function NovaWorkspace({
               {/* CONTROL OS — Etapa 9: "NOVA ORB. Grande. Viva. Respirando."
                   A respiração em si vem de dentro da própria `NovaOrb` desde
                   a Etapa 10A (overhaul visual) — não precisa mais de uma
-                  classe CSS externa aqui. */}
-              <NovaOrb status={orbStatus} pulseSignal={speechPulse} persona={activePersona} />
+                  classe CSS externa aqui.
+
+                  CONTROL OS — Etapa 16K (Energy Field): `energyField` só
+                  liga aqui — a única Orb grande e central do produto. O
+                  `NovaFloatingLauncher` (56px) e o `NovaFloatingPanel`
+                  inline continuam sem o campo, sem nenhum custo extra por
+                  frame nesses usos menores. */}
+              <NovaOrb status={orbStatus} pulseSignal={speechPulse} persona={activePersona} energyField />
             </motion.div>
 
             {messages.length === 0 && belowOrbContent}
