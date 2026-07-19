@@ -23,6 +23,13 @@
   --blue: #3b82f6;
   --purple: #8b5cf6;
   --red: #ef4444;
+  /* CONTROL OS — Etapa 15 (LEGENDARY) / Etapa 16A: dourado/âmbar — mesmos
+     valores já declarados em `tailwind.config.ts` (`accent.gold`/
+     `accent.gold-soft`); faltavam aqui como custom property (só as 4 cores
+     originais tinham a dupla declaração CSS var + Tailwind). Aditivo — as
+     4 cores acima continuam intocadas. */
+  --gold: #d9a455;
+  --gold-soft: #ebc78a;
 
   /* Espaçamento (base 4px) */
   --sp-1: 4px;
@@ -62,6 +69,11 @@
   --dur-slow: 480ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* CONTROL OS — Etapa 16A: tracking de eyebrow/label — mesmo valor de
+     `letterSpacing.eyebrow` em tailwind.config.ts (classe `tracking-eyebrow`
+     ou `.text-eyebrow` abaixo). */
+  --tracking-eyebrow: 0.22em;
 
   /* shadcn/ui — mapeados sobre os tokens acima para reaproveitar os primitivos Radix */
   --background: 0 0% 2%;
@@ -153,6 +165,18 @@ p {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+/* CONTROL OS — Etapa 16A (Design System premium — extração da referência
+   visual): "eyebrow"/label em caixa alta com rastro extremamente aberto —
+   o elemento tipográfico mais reconhecível da referência ("NOVA EM AÇÃO",
+   "FALANDO COM LEGENDARY", "INTELIGÊNCIA OPERACIONAL"). Reutilizável em
+   qualquer tela — cor/tamanho continuam vindo das classes Tailwind normais
+   (text-tertiary, text-xs etc.), esta classe só resolve o tracking/caixa. */
+.text-eyebrow {
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow, 0.22em);
+  font-weight: 600;
 }
 
 @font-face {

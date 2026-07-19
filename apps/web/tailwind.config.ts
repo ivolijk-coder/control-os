@@ -29,6 +29,13 @@ const config: Config = {
           // sabedoria"), aditivo à paleta existente (roxo/azul continuam a
           // identidade da NOVA, intocados).
           gold: '#D9A455',
+          // CONTROL OS — Etapa 16A (Design System premium — extração da
+          // referência visual): tom dourado mais claro/quente, mesma família
+          // de `gold` — usado em badges/destaques secundários da LEGENDARY,
+          // igual a `blue` já ser a variação secundária de `purple` na NOVA
+          // (ver `PERSONA_LISTENING_GLOW_RGB.legendary` em `nova-orb.tsx`,
+          // mesmo valor). Aditivo — `gold` continua o tom primário.
+          'gold-soft': '#EBC78A',
         },
       },
       spacing: {
@@ -86,6 +93,14 @@ const config: Config = {
         sans: ['var(--font-inter)', 'Inter', 'sans-serif'],
         mono: ['var(--font-jetbrains-mono)', 'JetBrains Mono', 'monospace'],
       },
+      // CONTROL OS — Etapa 16A: rastro extremamente aberto para eyebrows/
+      // labels em caixa alta ("NOVA EM AÇÃO", "FALANDO COM LEGENDARY") — o
+      // traço mais reconhecível da referência de luxo/tecnologia analisada.
+      // Aditivo à escala padrão do Tailwind (`tracking-tight`/`-wide`/etc
+      // continuam intocados) — usar via `tracking-eyebrow`.
+      letterSpacing: {
+        eyebrow: '0.22em',
+      },
       // CONTROL OS — Etapa 10A: "remover preto chapado, criar profundidade,
       // gradientes extremamente suaves, glow discreto, sensação de
       // ambiente". Duas manchas radiais bem sutis (intensidade baixa,
@@ -94,6 +109,15 @@ const config: Config = {
       backgroundImage: {
         'ambient-glow':
           'radial-gradient(ellipse 140% 70% at 12% -10%, rgba(139,92,246,0.14), transparent 60%), radial-gradient(ellipse 120% 60% at 100% 110%, rgba(59,130,246,0.10), transparent 60%)',
+        // CONTROL OS — Etapa 16A: "disco de luz no chão sob o objeto 3D,
+        // como spot de vitrine" — o padrão de apresentação da NovaOrb/futuro
+        // cristal da LEGENDARY como um objeto exposto, nunca só "flutuando
+        // no vazio". Uma elipse achatada e bem baixa (nunca um círculo),
+        // pensada pra ficar atrás/abaixo do objeto hero, nunca no lugar do
+        // halo dele. Duas variantes (roxo/dourado) — mesmo par de cores já
+        // usado no resto da identidade de cada persona.
+        'pedestal-glow-purple': 'radial-gradient(ellipse 60% 100% at 50% 50%, rgba(139,92,246,0.35), transparent 70%)',
+        'pedestal-glow-gold': 'radial-gradient(ellipse 60% 100% at 50% 50%, rgba(217,164,85,0.35), transparent 70%)',
       },
       keyframes: {
         'fade-in': {
