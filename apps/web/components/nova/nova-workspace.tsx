@@ -36,7 +36,15 @@ import { transitionOut, transitionSpring } from '@/lib/motion';
 // Canvas é inerentemente client-only — mesmo tratamento do BackgroundNetwork.
 // `loading` (CONTROL OS — Etapa 10B) evita o "buraco" vazio enquanto o chunk
 // do canvas carrega.
-const NovaOrb = dynamic(() => import('@/components/nova/nova-orb').then((mod) => mod.NovaOrb), {
+// CONTROL OS — Etapa 17 (Hero Scene R3F): "toda a mudança fica isolada na
+// Hero Scene" — só a Orb grande e central da Home troca de tecnologia
+// (Canvas 2D → React Three Fiber). A `NovaOrb` (Canvas 2D, em
+// `nova-orb.tsx`) continua existindo e sendo usada por
+// `NovaFloatingLauncher` e qualquer outro uso pequeno da esfera — só não é
+// mais importada NESTE arquivo, já que a única Orb que este componente
+// renderiza é a Hero Scene abaixo. Mesmo tratamento `dynamic({ ssr: false })`
+// — WebGL é inerentemente client-only.
+const NovaHeroScene = dynamic(() => import('@/components/nova/nova-hero-scene').then((mod) => mod.NovaHeroScene), {
   ssr: false,
   loading: () => <Skeleton className="h-full w-full rounded-full" />,
 });
@@ -158,8 +166,9 @@ export interface NovaWorkspaceProps {
  *
  * A Home (`variant="docked"`) é propositalmente limpa — objetivo declarado
  * pelo usuário: "só a bola no meio", sem painéis, sensação de estar
- * conversando com alguém. A `NovaOrb` fica sempre visível (não some depois
- * da primeira mensagem) e cresce (`scale`) conforme o estado da conversa —
+ * conversando com alguém. O Hero Object (`NovaHeroScene`, CONTROL OS —
+ * Etapa 17: React Three Fiber) fica sempre visível (não some depois da
+ * primeira mensagem) e cresce (`scale`) conforme o estado da conversa —
  * pensando/executando —, como se estivesse reagindo. Reaproveitado também
  * pelo `NovaFloatingPanel` (`variant="inline"`, sem esfera — painel pequeno
  * demais para o efeito valer a pena).
@@ -497,16 +506,13 @@ export function NovaWorkspace({
               className="flex h-[44vh] w-[44vh] max-h-[20rem] max-w-[20rem] shrink-0 items-center justify-center sm:h-80 sm:w-80"
             >
               {/* CONTROL OS — Etapa 9: "NOVA ORB. Grande. Viva. Respirando."
-                  A respiração em si vem de dentro da própria `NovaOrb` desde
-                  a Etapa 10A (overhaul visual) — não precisa mais de uma
-                  classe CSS externa aqui.
-
-                  CONTROL OS — Etapa 16K (Energy Field): `energyField` só
-                  liga aqui — a única Orb grande e central do produto. O
-                  `NovaFloatingLauncher` (56px) e o `NovaFloatingPanel`
-                  inline continuam sem o campo, sem nenhum custo extra por
-                  frame nesses usos menores. */}
-              <NovaOrb status={orbStatus} pulseSignal={speechPulse} persona={activePersona} energyField />
+                  CONTROL OS — Etapa 17 (Hero Scene R3F): esta é a única Orb
+                  grande e central do produto — a que agora renderiza de
+                  verdade em React Three Fiber em vez de desenhar em Canvas
+                  2D (ver `nova-hero-scene.tsx`). `NovaFloatingLauncher` e o
+                  `NovaFloatingPanel` inline continuam usando a `NovaOrb`
+                  original, intocados. */}
+              <NovaHeroScene status={orbStatus} pulseSignal={speechPulse} persona={activePersona} />
             </motion.div>
 
             {messages.length === 0 && belowOrbContent}
