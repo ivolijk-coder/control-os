@@ -9,7 +9,7 @@ import {
   rememberTurn,
   toReadOnlyContext,
 } from '@/services/nova';
-import type { NovaActionResult, NovaContext, NovaIntent, NovaTurnResult } from '@/services/nova';
+import type { NovaActionResult, NovaContext, NovaIntent, NovaPersona, NovaTurnResult } from '@/services/nova';
 import { AI_PROVIDER, getAIProvider } from '../config';
 import { AIProviderError, AI_ERROR_FRIENDLY_MESSAGES } from '../errors';
 import type { AIProvider, ReasoningProvider, ReasoningTurn, ToolExecutionOutput } from '../interfaces';
@@ -33,6 +33,13 @@ const mockFallbackProvider = new MockAIProvider();
  * sem exigir que o único chamador atual mude nada.
  */
 const DEFAULT_SESSION_ID = 'default';
+
+/**
+ * CONTROL OS — Etapa 15 (LEGENDARY): persona padrão pra qualquer chamador
+ * que ainda não passa uma (mesmo default de `buildSystemPrompt`) — nunca
+ * uma segunda fonte de verdade, só o valor de fallback deste serviço.
+ */
+const DEFAULT_PERSONA: NovaPersona = 'nova';
 
 /**
  * Fallback automático para `MockAIProvider` quando `OpenAIProvider` falha
@@ -121,6 +128,13 @@ interface PendingTurn {
   items: PendingItem[];
   /** Só presente no caminho de raciocínio — necessário pra `continueWithToolResults` depois da confirmação. */
   continuationToken?: string;
+  /**
+   * CONTROL OS — Etapa 15 (LEGENDARY): qual persona estava conduzindo o
+   * turno que gerou esta pendência — usada só se a confirmação chegar sem
+   * uma persona explícita (ver `confirmPending`). Trocar de persona nunca
+   * limpa uma pendência; só decide qual identidade narra o resultado.
+   */
+  persona: NovaPersona;
 }
 
 /** Formata o resultado de uma tool call em texto pro modelo interpretar — nunca o `NovaActionResult` bruto (que carrega tipos internos). */
@@ -161,12 +175,17 @@ function formatResultForModel(results: NovaActionResult[]): string {
 export class ConversationService {
   private pendingBySession = new Map<string, PendingTurn>();
 
-  async processTurn(text: string, ctx: NovaContext, sessionId: string = DEFAULT_SESSION_ID): Promise<NovaTurnResult> {
+  async processTurn(
+    text: string,
+    ctx: NovaContext,
+    sessionId: string = DEFAULT_SESSION_ID,
+    persona: NovaPersona = DEFAULT_PERSONA
+  ): Promise<NovaTurnResult> {
     if (this.pendingBySession.has(sessionId)) {
       const trimmed = text.trim();
       if (CONFIRM_PATTERN.test(trimmed)) {
         rememberTurn(text);
-        return this.executePending(ctx, sessionId);
+        return this.executePending(ctx, sessionId, persona);
       }
       // Não foi uma confirmação clara — descarta a pendência (cancelamento
       // explícito ou o usuário simplesmente mudou de assunto) e trata a
@@ -179,7 +198,7 @@ export class ConversationService {
     }
 
     if (AI_PROVIDER === 'openai') {
-      return this.processTurnWithReasoning(text, ctx, sessionId);
+      return this.processTurnWithReasoning(text, ctx, sessionId, persona);
     }
 
     const provider = getAIProvider();
@@ -203,15 +222,19 @@ export class ConversationService {
       intent = fallbackIntent;
     }
 
-    return this.finishWithClassifiedIntent(intent, ctx, text, sessionId);
+    return this.finishWithClassifiedIntent(intent, ctx, text, sessionId, persona);
   }
 
   /** Chamado pelo botão "Confirmar" na UI — executa o lote guardado em `pendingBySession`. */
-  async confirmPending(ctx: NovaContext, sessionId: string = DEFAULT_SESSION_ID): Promise<NovaTurnResult> {
+  async confirmPending(
+    ctx: NovaContext,
+    sessionId: string = DEFAULT_SESSION_ID,
+    persona: NovaPersona = DEFAULT_PERSONA
+  ): Promise<NovaTurnResult> {
     if (!this.pendingBySession.has(sessionId)) {
       return { status: 'concluido', reply: NO_PENDING_ACTION_REPLY, checklist: [], results: [] };
     }
-    return this.executePending(ctx, sessionId);
+    return this.executePending(ctx, sessionId, persona);
   }
 
   /** Chamado pelo botão "Cancelar" na UI — descarta a pendência da sessão sem executar nada. */
@@ -241,7 +264,12 @@ export class ConversationService {
    * executam na hora e voltam pra OpenAI narrar o resultado
    * (`executeAndNarrate`).
    */
-  private async processTurnWithReasoning(text: string, ctx: NovaContext, sessionId: string): Promise<NovaTurnResult> {
+  private async processTurnWithReasoning(
+    text: string,
+    ctx: NovaContext,
+    sessionId: string,
+    persona: NovaPersona
+  ): Promise<NovaTurnResult> {
     const provider = getAIProvider();
     if (!isReasoningProvider(provider)) {
       // Nunca alcançado em runtime — só chega aqui quando `AI_PROVIDER === 'openai'`, e só `OpenAIProvider` é instanciado nesse caso.
@@ -253,7 +281,7 @@ export class ConversationService {
 
     let turn: ReasoningTurn;
     try {
-      turn = await provider.converse(text, aiContext);
+      turn = await provider.converse(text, aiContext, persona);
     } catch (error) {
       const fallbackIntent = await this.tryMockFallback(text);
       if (!fallbackIntent) {
@@ -261,7 +289,7 @@ export class ConversationService {
         const message = error instanceof AIProviderError ? error.friendlyMessage : AI_ERROR_FRIENDLY_MESSAGES.unavailable;
         return { status: 'erro', reply: message, checklist: [], results: [] };
       }
-      return this.finishWithClassifiedIntent(fallbackIntent, ctx, text, sessionId);
+      return this.finishWithClassifiedIntent(fallbackIntent, ctx, text, sessionId, persona);
     }
 
     if (turn.toolCalls.length === 0) {
@@ -277,7 +305,7 @@ export class ConversationService {
 
     const anySensitive = items.some((item) => isSensitiveIntent(item.intent));
     if (anySensitive) {
-      this.pendingBySession.set(sessionId, { items, continuationToken: turn.continuationToken });
+      this.pendingBySession.set(sessionId, { items, continuationToken: turn.continuationToken, persona });
       rememberTurn(text);
       return {
         status: 'aguardando_confirmacao',
@@ -288,7 +316,7 @@ export class ConversationService {
     }
 
     rememberTurn(text);
-    return this.executeAndNarrate(ctx, items, turn.continuationToken, sessionId);
+    return this.executeAndNarrate(ctx, items, turn.continuationToken, sessionId, persona);
   }
 
   /**
@@ -303,7 +331,8 @@ export class ConversationService {
     intent: NovaIntent,
     ctx: NovaContext,
     text: string,
-    sessionId: string
+    sessionId: string,
+    persona: NovaPersona
   ): Promise<NovaTurnResult> {
     if (intent.kind === 'desconhecido') {
       rememberTurn(text);
@@ -322,13 +351,13 @@ export class ConversationService {
     }
 
     if (isSensitiveIntent(intent)) {
-      this.pendingBySession.set(sessionId, { items: [{ intent, action: intentResolver.resolve(intent) }] });
+      this.pendingBySession.set(sessionId, { items: [{ intent, action: intentResolver.resolve(intent) }], persona });
       rememberTurn(text);
       return { status: 'aguardando_confirmacao', reply: buildConfirmationPreview(intent), checklist: [], results: [] };
     }
 
     rememberTurn(text);
-    return this.executeAndNarrate(ctx, [{ intent, action: intentResolver.resolve(intent) }], undefined, sessionId);
+    return this.executeAndNarrate(ctx, [{ intent, action: intentResolver.resolve(intent) }], undefined, sessionId, persona);
   }
 
   /**
@@ -350,13 +379,18 @@ export class ConversationService {
     }
   }
 
-  private async executePending(ctx: NovaContext, sessionId: string): Promise<NovaTurnResult> {
+  private async executePending(ctx: NovaContext, sessionId: string, persona: NovaPersona): Promise<NovaTurnResult> {
     const pending = this.pendingBySession.get(sessionId);
     this.pendingBySession.delete(sessionId);
     if (!pending) {
       return { status: 'concluido', reply: NO_PENDING_ACTION_REPLY, checklist: [], results: [] };
     }
-    return this.executeAndNarrate(ctx, pending.items, pending.continuationToken, sessionId);
+    // A persona ATUAL (quem confirmou agora) narra o resultado — não a que
+    // estava ativa quando a pendência nasceu (`pending.persona` existe só
+    // pra futura auditoria/depuração, nunca é o que decide aqui). Trocar de
+    // persona no meio de uma confirmação é exatamente o caso "continuidade
+    // sem perder histórico" do spec da Etapa 15.
+    return this.executeAndNarrate(ctx, pending.items, pending.continuationToken, sessionId, persona);
   }
 
   /**
@@ -383,7 +417,8 @@ export class ConversationService {
     ctx: NovaContext,
     items: PendingItem[],
     continuationToken: string | undefined,
-    sessionId: string
+    sessionId: string,
+    persona: NovaPersona
   ): Promise<NovaTurnResult> {
     const perItemResults = items.map((item) => {
       const toolStartedAt = Date.now();
@@ -423,7 +458,7 @@ export class ConversationService {
     }));
 
     try {
-      const final = await provider.continueWithToolResults(continuationToken, outputs, aiContext);
+      const final = await provider.continueWithToolResults(continuationToken, outputs, aiContext, persona);
       return { status: ok ? 'concluido' : 'erro', reply: final.replyText ?? templateReply, checklist, results };
     } catch {
       // A ação já foi executada de verdade — só a narração final falhou.

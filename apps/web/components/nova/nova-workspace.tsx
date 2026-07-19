@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { NovaInput, type NovaInputSource } from '@/components/nova/nova-input';
 import { NovaConversation } from '@/components/nova/nova-conversation';
+import { NovaPersonaSwitch } from '@/components/nova/nova-persona-switch';
 import type { ConversationMessage, ConversationMessageStatus } from '@/components/nova/nova-message-bubble';
 import type { NovaThinkingStatus } from '@/components/nova/nova-thinking';
 import type { NovaOrbStatus } from '@/components/nova/nova-orb';
@@ -182,6 +183,12 @@ export function NovaWorkspace({
   const messages = useAppStore((state) => state.novaMessages);
   const addNovaMessage = useAppStore((state) => state.addNovaMessage);
   const replaceNovaMessages = useAppStore((state) => state.replaceNovaMessages);
+  // CONTROL OS — Etapa 15 (LEGENDARY): qual identidade conduz o PRÓXIMO
+  // turno — vive no `useAppStore` (não `useState` local) pelo mesmo motivo
+  // de `novaMessages`: sobrevive a fechar/reabrir o painel flutuante e a
+  // navegar entre páginas, sem duplicar estado entre a Home e o painel.
+  const activePersona = useAppStore((state) => state.activePersona);
+  const setActivePersona = useAppStore((state) => state.setActivePersona);
   const [isThinking, setIsThinking] = React.useState(false);
   const [thinkingStatus, setThinkingStatus] = React.useState<NovaThinkingStatus>('pensando');
   // CONTROL OS — Etapa 11C: campo de conversa unificado — o microfone
@@ -332,7 +339,7 @@ export function NovaWorkspace({
         // ela chega (nunca atrasa nada, só preenche a espera quando existe).
         const executingTimer = window.setTimeout(() => setThinkingStatus('executando'), EXECUTING_SWITCH_MS);
 
-        const result = await conversationService.processTurn(text, novaContext);
+        const result = await conversationService.processTurn(text, novaContext, undefined, activePersona);
         window.clearTimeout(executingTimer);
         addNovaMessage({
           id: nextMessageId('nova'),
@@ -360,7 +367,7 @@ export function NovaWorkspace({
         }
       })();
     },
-    [novaContext, addNovaMessage, maybeCondenseConversation]
+    [novaContext, addNovaMessage, maybeCondenseConversation, activePersona]
   );
 
   const handleConfirmPending = React.useCallback(() => {
@@ -368,7 +375,10 @@ export function NovaWorkspace({
     setThinkingStatus('executando');
 
     void (async () => {
-      const result = await conversationService.confirmPending(novaContext);
+      // A persona ATUAL confirma — se o usuário trocou de identidade entre
+      // a pergunta e a confirmação, é a identidade de agora que narra o
+      // resultado (ver comentário em `ConversationService.executePending`).
+      const result = await conversationService.confirmPending(novaContext, undefined, activePersona);
       addNovaMessage({
         id: nextMessageId('nova'),
         role: 'nova',
@@ -379,7 +389,7 @@ export function NovaWorkspace({
       setIsThinking(false);
       maybeCondenseConversation();
     })();
-  }, [novaContext, addNovaMessage, maybeCondenseConversation]);
+  }, [novaContext, addNovaMessage, maybeCondenseConversation, activePersona]);
 
   const handleCancelPending = React.useCallback(() => {
     const result = conversationService.cancelPending();
@@ -460,6 +470,12 @@ export function NovaWorkspace({
       <div className="flex h-[calc(100vh-4rem)] flex-col">
         <div ref={dockedScrollRef} className="flex-1 overflow-y-auto px-6 py-8">
           <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-6">
+            {/* CONTROL OS — Etapa 15 (LEGENDARY): seletor sempre visível, no
+                topo da conversa — nunca só na abertura — pra trocar de
+                identidade a qualquer momento, inclusive no meio de um
+                histórico já longo, sem nunca perdê-lo. */}
+            <NovaPersonaSwitch persona={activePersona} onChange={setActivePersona} />
+
             {messages.length === 0 && topContent}
 
             {/* Tamanho do container é fixo por breakpoint — só o `scale`
@@ -478,7 +494,7 @@ export function NovaWorkspace({
                   A respiração em si vem de dentro da própria `NovaOrb` desde
                   a Etapa 10A (overhaul visual) — não precisa mais de uma
                   classe CSS externa aqui. */}
-              <NovaOrb status={orbStatus} pulseSignal={speechPulse} />
+              <NovaOrb status={orbStatus} pulseSignal={speechPulse} persona={activePersona} />
             </motion.div>
 
             {messages.length === 0 && belowOrbContent}
@@ -495,6 +511,11 @@ export function NovaWorkspace({
 
   return (
     <div className="flex w-full flex-col gap-6">
+      {/* Mesmo seletor do `variant="docked"` (ver comentário lá) — o painel
+          flutuante (`NovaFloatingPanel`) usa este `variant="inline"`. */}
+      <div className="flex justify-center">
+        <NovaPersonaSwitch persona={activePersona} onChange={setActivePersona} />
+      </div>
       {inputRow}
       {conversationArea}
     </div>

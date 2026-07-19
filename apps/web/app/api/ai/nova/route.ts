@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import type { AIProviderErrorCode } from '@/services/ai/errors';
-import { SYSTEM_PROMPT } from '@/services/ai/prompts';
+import { buildSystemPrompt } from '@/services/ai/prompts';
 import { INTENT_TOOL_SCHEMAS, type ToolSchema } from '@/services/ai/tools/schemas';
 import type {
   ChatMessage,
@@ -11,6 +11,7 @@ import type {
   NovaAIToolCall,
   NovaAIToolOutput,
 } from '@/services/ai/types';
+import type { NovaPersona } from '@/services/nova';
 
 /**
  * Route Handler server-only (CONTROL OS — Etapa 4: Preparação profissional
@@ -114,6 +115,11 @@ function isNovaAIRequestMode(value: string): value is NovaAIRequestMode {
   );
 }
 
+/** CONTROL OS — Etapa 15 (LEGENDARY): type predicate, mesmo padrão de `isNovaAIRequestMode`. */
+function isNovaPersona(value: string): value is NovaPersona {
+  return value === 'nova' || value === 'legendary';
+}
+
 function isNovaAIRequestBody(value: unknown): value is NovaAIRequestBody {
   if (typeof value !== 'object' || value === null) return false;
   if (!('mode' in value) || typeof value.mode !== 'string') return false;
@@ -131,6 +137,9 @@ function isNovaAIRequestBody(value: unknown): value is NovaAIRequestBody {
   }
   if ('toolOutputs' in value && value.toolOutputs !== undefined) {
     if (!Array.isArray(value.toolOutputs) || !value.toolOutputs.every(isNovaAIToolOutput)) return false;
+  }
+  if ('persona' in value && value.persona !== undefined) {
+    if (typeof value.persona !== 'string' || !isNovaPersona(value.persona)) return false;
   }
   return true;
 }
@@ -250,8 +259,8 @@ function toOpenAITools(schemas: ToolSchema[]): Array<{ type: 'function'; name: s
   }));
 }
 
-function buildInstructions(contextSummary: string | undefined): string {
-  const parts = [SYSTEM_PROMPT];
+function buildInstructions(contextSummary: string | undefined, persona: NovaPersona | undefined): string {
+  const parts = [buildSystemPrompt(persona)];
   if (contextSummary) {
     parts.push(`Contexto atual do usuário:\n${contextSummary}`);
   }
@@ -314,7 +323,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<NovaAIRes
   }
 
   const model = process.env.OPENAI_MODEL ?? 'gpt-5.5';
-  const instructions = buildInstructions(body.contextSummary);
+  const instructions = buildInstructions(body.contextSummary, body.persona);
   const input = buildResponsesInput(body);
   const tools = body.mode === 'reason' || body.mode === 'classify' ? toOpenAITools(INTENT_TOOL_SCHEMAS) : undefined;
 

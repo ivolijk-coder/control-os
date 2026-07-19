@@ -9,6 +9,7 @@ import type {
   PersonalDocument,
   Trip,
 } from '@control-os/types';
+import type { NovaPersona } from '@/services/nova';
 import type { AIProviderErrorCode } from '../errors';
 
 /**
@@ -110,6 +111,14 @@ export interface NovaAIRequestBody {
   previousResponseId?: string;
   /** Resultados das tool calls já executadas — só presente na continuação do modo `'reason'`. */
   toolOutputs?: NovaAIToolOutput[];
+  /**
+   * CONTROL OS — Etapa 15 (LEGENDARY): qual identidade conduz este turno —
+   * decide só qual `SystemPrompt` a rota monta (`buildSystemPrompt`), nunca
+   * qual provider/rota/histórico é usado. Ausente = `'nova'` (ver default em
+   * `buildSystemPrompt`) — mantém qualquer chamador antigo funcionando sem
+   * mudança.
+   */
+  persona?: NovaPersona;
 }
 
 /** Argumentos de uma tool call — sempre string ou number nas Tools atuais (ver `services/ai/tools/schemas.ts`). */

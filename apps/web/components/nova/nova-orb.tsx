@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useMediaQuery } from '@control-os/hooks';
+import type { NovaPersona } from '@/services/nova';
 
 // CONTROL OS — Etapa 8: `'ouvindo'`/`'respondendo'` adicionados de forma
 // aditiva (Modo Conversa por voz) — os três estados originais continuam
@@ -129,17 +130,84 @@ const WAVE_INTERVAL_MS: Record<NovaOrbStatus, number> = {
   respondendo: 2600,
 };
 
-const GLOW_COLOR_BY_STATUS: Record<NovaOrbStatus, string> = {
-  // Roxo é a cor de base da NOVA em todo o resto do produto (accent-purple)
-  // — só 'ouvindo' recebe um tom azulado, ecoando os nós de destaque do
-  // `BackgroundNetwork` e reforçando "está escutando" sem introduzir uma
-  // terceira cor à identidade.
-  idle: '139, 92, 246',
-  pensando: '139, 92, 246',
-  executando: '139, 92, 246',
-  respondendo: '139, 92, 246',
-  ouvindo: '99, 141, 246',
+/**
+ * CONTROL OS — Etapa 15 (LEGENDARY): identidade visual por persona — cor
+ * (glow/partículas) e comportamento (rotação/respiração/jitter/batimento/
+ * ondas) mudam suavemente entre NOVA (roxo/azul, "tecnológica, enérgica") e
+ * LEGENDARY (dourado/âmbar, "elegante, calma, sábia"), nunca com um corte
+ * seco de um frame pro outro — ver `personaBlend`/`PERSONA_BLEND_EASE`
+ * abaixo, mesma técnica de easing-em-direção-ao-alvo já usada por
+ * `ROTATION_EASE`/`TILT_EASE`.
+ *
+ * Cores em tuplas `[r, g, b]` (não strings pré-formatadas) porque cada
+ * frame precisa INTERPOLAR entre a cor da NOVA e a da LEGENDARY conforme
+ * `personaBlend` avança — uma tupla numérica permite fazer essa média sem
+ * parsear string nenhuma (`lerpRgb` abaixo). Substitui o antigo
+ * `GLOW_COLOR_BY_STATUS` (que só cobria a NOVA) — os valores de
+ * `PERSONA_BASE_GLOW_RGB.nova`/`PERSONA_LISTENING_GLOW_RGB.nova` são
+ * exatamente os mesmos de antes, então a NOVA continua pixel-idêntica a
+ * antes desta etapa.
+ */
+const PERSONA_BASE_GLOW_RGB: Record<NovaPersona, readonly [number, number, number]> = {
+  // Roxo é a cor de base da NOVA em todo o resto do produto (accent-purple).
+  nova: [139, 92, 246],
+  // Dourado/âmbar (accent-gold, `tailwind.config.ts`) — identidade própria
+  // da LEGENDARY, nunca uma variação da paleta da NOVA.
+  legendary: [217, 164, 85],
 };
+/** Só `'ouvindo'` usa esta variação — reforça "está escutando" sem introduzir uma terceira cor à identidade de cada persona. */
+const PERSONA_LISTENING_GLOW_RGB: Record<NovaPersona, readonly [number, number, number]> = {
+  // Tom azulado, ecoando os nós de destaque do `BackgroundNetwork`.
+  nova: [99, 141, 246],
+  // Dourado mais claro e quente — "presença atenta" na mesma família de cor
+  // da LEGENDARY, nunca azul (que pertence só à identidade da NOVA).
+  legendary: [235, 199, 138],
+};
+/** Cor das partículas em si (pontos da esfera + partículas de execução) — mesma lógica de blend do glow, só mais clara/saturada. */
+const PERSONA_POINT_COLOR_RGB: Record<NovaPersona, readonly [number, number, number]> = {
+  nova: [196, 181, 253],
+  legendary: [240, 214, 168],
+};
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+function lerpRgb(a: readonly [number, number, number], b: readonly [number, number, number], t: number): string {
+  return `${Math.round(lerp(a[0], b[0], t))}, ${Math.round(lerp(a[1], b[1], t))}, ${Math.round(lerp(a[2], b[2], t))}`;
+}
+
+/**
+ * Multiplicadores da LEGENDARY sobre cada parâmetro de comportamento já
+ * existente (rotação, respiração, jitter, batimento, ondas, partículas de
+ * execução) — nunca uma tabela paralela por status: em `personaBlend = 0`
+ * (NOVA pura) todo multiplicador aplicado é 1 (nenhuma mudança); em
+ * `personaBlend = 1` (LEGENDARY pura) cada parâmetro passa a valer
+ * `base * este multiplicador`. "Mais fluida, orgânica, contemplativa" vira,
+ * em números: gira mais devagar, respira mais devagar e mais amplo, jitter
+ * (tremor individual das partículas) mais suave, batimento mais discreto,
+ * ondas mais espaçadas — o oposto de "mais enérgica, tecnológica" (NOVA).
+ */
+const PERSONA_LEGENDARY_MULTIPLIER = {
+  rotation: 0.5,
+  breatheSpeed: 0.65,
+  breatheAmplitude: 1.3,
+  jitter: 0.55,
+  heartbeat: 0.7,
+  waveInterval: 1.7,
+  silhouette: 1.35,
+  burstInterval: 1.8,
+} as const;
+
+/** `1` em `blend = 0` (NOVA), `PERSONA_LEGENDARY_MULTIPLIER[key]` em `blend = 1` (LEGENDARY) — interpolado suavemente entre os dois durante a transição. */
+function personaMultiplier(key: keyof typeof PERSONA_LEGENDARY_MULTIPLIER, blend: number): number {
+  return 1 + (PERSONA_LEGENDARY_MULTIPLIER[key] - 1) * blend;
+}
+
+// "500–700ms, nada brusco" (Etapa 15) — mesma técnica de easing-em-direção-
+// ao-alvo de `ROTATION_EASE`/`TILT_EASE`, nunca um corte seco de um frame
+// pro outro. `(1 - 0.15)^18 ≈ 0.05` — a transição fica ~95% completa em 18
+// frames, que a ~30fps (`TARGET_FRAME_MS`) é ~600ms.
+const PERSONA_BLEND_EASE = 0.15;
 
 // CONTROL OS — Etapa 11B: "o núcleo deve ser muito suave, quase
 // imperceptível, e pulsar lentamente" — duas batidas curtas por ciclo (como
@@ -274,6 +342,16 @@ export interface NovaOrbProps {
    * por um instante (ver `wavesRef`/`PULSE_GLOW_BOOST`).
    */
   pulseSignal?: number;
+  /**
+   * CONTROL OS — Etapa 15 (LEGENDARY): qual identidade a esfera representa
+   * agora — `'nova'` (padrão) é roxo/azul, enérgica, tecnológica;
+   * `'legendary'` é dourado/âmbar, fluida, contemplativa. Trocar este valor
+   * NUNCA reinicia a animação (mesmo `canvas`, mesmo loop, mesmos
+   * partículas) — só desloca `personaBlend` suavemente em ~600ms na direção
+   * do novo alvo (ver `PERSONA_BLEND_EASE`), igual à inclinação/rotação já
+   * fazem ao trocar de `status`.
+   */
+  persona?: NovaPersona;
 }
 
 /**
@@ -311,8 +389,20 @@ export interface NovaOrbProps {
  * cada frame. Respeita `prefers-reduced-motion` (renderiza um frame único
  * estático, sem flutuação/inclinação/partículas/halo animado) e pausa via
  * `visibilitychange`, igual ao `BackgroundNetwork`.
+ *
+ * CONTROL OS — Etapa 15 (LEGENDARY): a mesma esfera representa as duas
+ * personas do ecossistema — nunca dois componentes, nunca dois canvas.
+ * `persona` só desloca `personaBlend` (0 = NOVA, 1 = LEGENDARY) suavemente
+ * em ~600ms (`PERSONA_BLEND_EASE`) na direção do novo alvo, e cada
+ * parâmetro já existente (cor, velocidade de rotação, respiração, jitter,
+ * batimento, intervalo das ondas, silhueta) é interpolado por esse valor —
+ * nunca uma segunda tabela de comportamento paralela à dos `status`. O
+ * resultado: a mesma "criatura" muda de temperamento (mais enérgica e
+ * tecnológica na NOVA, mais fluida e contemplativa na LEGENDARY) e de cor
+ * (roxo/azul → dourado/âmbar) sem nunca reiniciar, remontar ou parecer um
+ * corte entre dois chatbots diferentes.
  */
-export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProps) {
+export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'nova' }: NovaOrbProps) {
   const wrapperRef = React.useRef<HTMLDivElement | null>(null);
   const haloRef = React.useRef<HTMLDivElement | null>(null);
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
@@ -322,6 +412,12 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
   // toda vez que `status` muda durante a conversa.
   const statusRef = React.useRef(status);
   statusRef.current = status;
+
+  // Mesmo padrão pra `persona` (CONTROL OS — Etapa 15) — trocar de NOVA pra
+  // LEGENDARY nunca recria o loop de animação, só move `personaBlend` (ver
+  // dentro do efeito abaixo) suavemente na direção do novo alvo.
+  const personaRef = React.useRef(persona);
+  personaRef.current = persona;
 
   // Ondas nascidas por temporizador (loop de animação) E por fronteira de
   // palavra (efeito separado abaixo) precisam do mesmo array — por isso vive
@@ -364,6 +460,11 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
     let nextWaveAt = 0;
     let bursts: OrbBurst[] = [];
     let nextBurstAt = 0;
+    // CONTROL OS — Etapa 15 (LEGENDARY): 0 = NOVA pura, 1 = LEGENDARY pura.
+    // Começa já no valor final da persona atual (nunca anima na primeira
+    // pintura, só quando `persona` de fato muda depois de montado — ver
+    // `step()` abaixo).
+    let personaBlend = personaRef.current === 'legendary' ? 1 : 0;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
     const shellPoints = SHELLS.map((shell) => createShellPoints(Math.max(1, Math.round(POINT_COUNT * shell.pointShare))));
@@ -385,7 +486,15 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
       const cy = height / 2;
       const baseRadius = Math.min(width, height) / 2.4;
       const currentStatus = statusRef.current;
-      const glowRgb = GLOW_COLOR_BY_STATUS[currentStatus];
+      // CONTROL OS — Etapa 15 (LEGENDARY): a cor de todo o efeito (glow,
+      // vidro, núcleo, ondas) é interpolada frame a frame entre a cor da
+      // NOVA e a da LEGENDARY conforme `personaBlend` avança — nunca um
+      // corte seco de cor de um frame pro outro.
+      const listeningNow = currentStatus === 'ouvindo';
+      const novaGlowRgb = listeningNow ? PERSONA_LISTENING_GLOW_RGB.nova : PERSONA_BASE_GLOW_RGB.nova;
+      const legendaryGlowRgb = listeningNow ? PERSONA_LISTENING_GLOW_RGB.legendary : PERSONA_BASE_GLOW_RGB.legendary;
+      const glowRgb = lerpRgb(novaGlowRgb, legendaryGlowRgb, personaBlend);
+      const pointColorRgb = lerpRgb(PERSONA_POINT_COLOR_RGB.nova, PERSONA_POINT_COLOR_RGB.legendary, personaBlend);
 
       // CONTROL OS — Etapa 11D: segunda camada de proteção contra o
       // "quadrado perceptível", além de conter cada gradiente ao seu
@@ -402,8 +511,11 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
 
       // Respiração: o próprio raio da esfera oscila, não só o container CSS
       // por fora — é isso que faz a orb parecer respirando de dentro pra
-      // fora, não só "crescendo".
-      const breatheFactor = 1 + Math.sin(breathePhase) * BREATHE_AMPLITUDE_BY_STATUS[currentStatus];
+      // fora, não só "crescendo". Amplitude escalada por persona — a
+      // LEGENDARY respira mais amplo e mais devagar (`breatheSpeed`, usado
+      // em `step()`), "mais fluida, contemplativa".
+      const breatheAmplitude = BREATHE_AMPLITUDE_BY_STATUS[currentStatus] * personaMultiplier('breatheAmplitude', personaBlend);
+      const breatheFactor = 1 + Math.sin(breathePhase) * breatheAmplitude;
 
       // Pulso de fala: decai linearmente nos primeiros `PULSE_DURATION_MS`
       // depois da última fronteira de palavra reportada, depois some. Move
@@ -415,7 +527,7 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
       const pulseGlowBoost = pulseFraction * PULSE_GLOW_BOOST;
 
       const radius = baseRadius * RADIUS_SCALE_BY_STATUS[currentStatus] * breatheFactor * (1 + pulseBoost);
-      const silhouetteAmplitude = SILHOUETTE_AMPLITUDE_BY_STATUS[currentStatus];
+      const silhouetteAmplitude = SILHOUETTE_AMPLITUDE_BY_STATUS[currentStatus] * personaMultiplier('silhouette', personaBlend);
 
       // Camada 1 — halo externo amplo e difuso, desenhado só como reforço
       // sutil (o halo "de verdade" — enorme, sem borda — é o CSS por trás do
@@ -475,7 +587,10 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
       const heartbeatValue = heartbeatPulse(heartbeatPhase);
       const coreOpacity = Math.min(
         0.42,
-        0.16 + breatheFactor * 0.04 + heartbeatValue * HEARTBEAT_INTENSITY_BY_STATUS[currentStatus] + pulseGlowBoost
+        0.16 +
+          breatheFactor * 0.04 +
+          heartbeatValue * HEARTBEAT_INTENSITY_BY_STATUS[currentStatus] * personaMultiplier('heartbeat', personaBlend) +
+          pulseGlowBoost
       );
       const coreGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 1.1);
       coreGlow.addColorStop(0, `rgba(${glowRgb}, ${coreOpacity.toFixed(3)})`);
@@ -511,14 +626,15 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
       const brightness = POINT_BRIGHTNESS_BY_STATUS[currentStatus];
       const projected: { x: number; y: number; z: number; size: number; opacity: number }[] = [];
 
+      const jitterMultiplier = personaMultiplier('jitter', personaBlend);
       SHELLS.forEach((shell, shellIndex) => {
-        const shellBreathe = 1 + Math.sin(breathePhase * 0.8 + shell.breathePhaseOffset) * BREATHE_AMPLITUDE_BY_STATUS[currentStatus] * 0.3;
+        const shellBreathe = 1 + Math.sin(breathePhase * 0.8 + shell.breathePhaseOffset) * breatheAmplitude * 0.3;
         const shellRadius = radius * shell.radiusFraction * shellBreathe;
         const angle = shellAngles[shellIndex] ?? 0;
         for (const point of shellPoints[shellIndex] ?? []) {
           const jitter = pseudoNoise(point.seed, tSeconds);
-          const jitteredRadius = shellRadius * (1 + jitter * JITTER_RADIUS_AMPLITUDE_BY_STATUS[currentStatus] * shell.jitterScale);
-          const phi = point.phi + jitter * JITTER_PHI_AMPLITUDE_BY_STATUS[currentStatus] * shell.jitterScale * 0.4;
+          const jitteredRadius = shellRadius * (1 + jitter * JITTER_RADIUS_AMPLITUDE_BY_STATUS[currentStatus] * shell.jitterScale * jitterMultiplier);
+          const phi = point.phi + jitter * JITTER_PHI_AMPLITUDE_BY_STATUS[currentStatus] * shell.jitterScale * jitterMultiplier * 0.4;
 
           // "Velocidade diferente" por partícula (Etapa 11C) — cada ponto
           // aplica `spinFactor` sobre o próprio ângulo da camada, então dois
@@ -549,7 +665,7 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
       // Desenha de trás pra frente — profundidade visual sem WebGL.
       projected.sort((a, b) => a.z - b.z);
       for (const point of projected) {
-        ctx.fillStyle = `rgba(196, 181, 253, ${Math.min(1, point.opacity * brightness).toFixed(3)})`;
+        ctx.fillStyle = `rgba(${pointColorRgb}, ${Math.min(1, point.opacity * brightness).toFixed(3)})`;
         ctx.beginPath();
         ctx.arc(point.x, point.y, point.size, 0, Math.PI * 2);
         ctx.fill();
@@ -564,7 +680,7 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
         const opacity = (1 - lifeFraction) * 0.5;
         const bx = cx + Math.cos(burst.angle) * dist;
         const by = cy + Math.sin(burst.angle) * dist * DEPTH_SQUASH;
-        ctx.fillStyle = `rgba(196, 181, 253, ${opacity.toFixed(3)})`;
+        ctx.fillStyle = `rgba(${pointColorRgb}, ${opacity.toFixed(3)})`;
         ctx.beginPath();
         ctx.arc(bx, by, 1.5 * (1 - lifeFraction * 0.4), 0, Math.PI * 2);
         ctx.fill();
@@ -585,6 +701,18 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
       ctx.fill();
 
       ctx.restore(); // fecha o clip circular aberto no início da função
+
+      // CONTROL OS — Etapa 15 (LEGENDARY): halo externo em CSS (fora do
+      // canvas) escrito a cada frame com o MESMO `glowRgb` já calculado
+      // acima — nunca uma segunda lógica de cor. Antes o terceiro stop do
+      // gradiente era um azul fixo (`rgba(99, 141, 246, 0.05)`) independente
+      // do estado/persona; agora usa a mesma cor interpolada dos outros
+      // stops — halo mais coerente, e a única forma de fazer a cor do halo
+      // (que é puro CSS, fora do canvas) acompanhar a transição suave de
+      // ~600ms entre NOVA e LEGENDARY sem depender de re-render do React.
+      if (haloRef.current) {
+        haloRef.current.style.background = `radial-gradient(circle, rgba(${glowRgb}, 0.16), rgba(${glowRgb}, 0.08) 28%, rgba(${glowRgb}, 0.05) 52%, transparent 78%)`;
+      }
     };
 
     const step = (time: number) => {
@@ -595,10 +723,18 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
       lastFrameTime = time;
 
       const currentStatus = statusRef.current;
-      const targetSpeed = ROTATION_SPEED[currentStatus];
+
+      // CONTROL OS — Etapa 15 (LEGENDARY): move `personaBlend` uma fração do
+      // caminho até o alvo a cada frame — mesma técnica de
+      // `currentRotationSpeed`/`tiltAngle` abaixo — nunca um salto de um
+      // frame pro outro, ~600ms pra completar a transição inteira.
+      const personaTarget = personaRef.current === 'legendary' ? 1 : 0;
+      personaBlend += (personaTarget - personaBlend) * PERSONA_BLEND_EASE;
+
+      const targetSpeed = ROTATION_SPEED[currentStatus] * personaMultiplier('rotation', personaBlend);
       currentRotationSpeed += (targetSpeed - currentRotationSpeed) * ROTATION_EASE;
       shellAngles = SHELLS.map((shell, index) => (shellAngles[index] ?? 0) + currentRotationSpeed * shell.rotationMultiplier);
-      breathePhase += BREATHE_SPEED_BY_STATUS[currentStatus];
+      breathePhase += BREATHE_SPEED_BY_STATUS[currentStatus] * personaMultiplier('breatheSpeed', personaBlend);
       highlightAngle += 0.0016;
 
       const tiltTarget = TILT_TARGET_BY_STATUS[currentStatus];
@@ -606,14 +742,14 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
 
       if (time >= nextWaveAt) {
         wavesRef.current = [...wavesRef.current, { bornAt: time }];
-        nextWaveAt = time + WAVE_INTERVAL_MS[currentStatus];
+        nextWaveAt = time + WAVE_INTERVAL_MS[currentStatus] * personaMultiplier('waveInterval', personaBlend);
       }
       wavesRef.current = wavesRef.current.filter((wave) => time - wave.bornAt < WAVE_LIFETIME_MS);
 
       if (currentStatus === 'executando') {
         if (time >= nextBurstAt) {
           bursts = [...bursts, { bornAt: time, angle: Math.random() * Math.PI * 2 }];
-          nextBurstAt = time + BURST_INTERVAL_MS + Math.random() * 120;
+          nextBurstAt = time + (BURST_INTERVAL_MS + Math.random() * 120) * personaMultiplier('burstInterval', personaBlend);
         }
       }
       bursts = bursts.filter((burst) => time - burst.bornAt < BURST_LIFETIME_MS);
@@ -630,7 +766,9 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
 
       // O halo CSS também "respira" — Etapa 11B: "o glow deve respirar,
       // aumentar, diminuir... sem parecer um efeito CSS estático." Escala e
-      // opacidade variam junto da própria respiração da esfera.
+      // opacidade variam junto da própria respiração da esfera. A cor em si
+      // é escrita dentro de `drawFrame` (mesmo `glowRgb` já calculado lá
+      // pro canvas) — ver comentário no final de `drawFrame`.
       if (haloRef.current) {
         const haloBreathe = 1 + Math.sin(breathePhase * 0.5) * 0.05;
         const haloOpacity = 0.85 + Math.sin(breathePhase * 0.5) * 0.15;
@@ -668,7 +806,14 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
     };
   }, [prefersReducedMotion]);
 
-  const haloColorRgb = GLOW_COLOR_BY_STATUS[status];
+  // Valor inicial só pra pré-pintura (antes do efeito de animação assumir o
+  // controle do `haloRef.current.style.background` a cada frame, ver fim de
+  // `drawFrame` acima) — usa a cor da persona/status atuais sem nenhuma
+  // interpolação (a transição suave só existe DEPOIS de montado, quando
+  // `personaBlend` passa a existir).
+  const initialListening = status === 'ouvindo';
+  const initialGlowTuple = initialListening ? PERSONA_LISTENING_GLOW_RGB[persona] : PERSONA_BASE_GLOW_RGB[persona];
+  const haloColorRgb = `${initialGlowTuple[0]}, ${initialGlowTuple[1]}, ${initialGlowTuple[2]}`;
 
   return (
     <div ref={wrapperRef} className={`relative ${className ?? 'h-full w-full'}`} aria-hidden>
@@ -689,13 +834,16 @@ export function NovaOrb({ status = 'idle', className, pulseSignal }: NovaOrbProp
           cada frame) — "enorme, sem bordas, sem círculos visíveis, apenas
           luz". Gradiente em múltiplos estágios suaves (nunca dois stops só,
           que criam uma faixa/banda visível) pra nunca ler como um círculo
-          colorido — roxo → azul → transparente, escala/opacidade animadas
-          por `haloRef` (respira junto da esfera, não é um blur CSS parado). */}
+          colorido, escala/opacidade/cor animadas por `haloRef` (respira
+          junto da esfera e cruza suavemente entre a cor da NOVA e da
+          LEGENDARY, nunca um blur CSS parado — ver fim de `drawFrame`
+          acima). O `background` abaixo é só o valor inicial antes do
+          primeiro frame do efeito de animação assumir. */}
       <div
         ref={haloRef}
         className="absolute inset-[-60%] rounded-full blur-[64px]"
         style={{
-          background: `radial-gradient(circle, rgba(${haloColorRgb}, 0.16), rgba(${haloColorRgb}, 0.08) 28%, rgba(99, 141, 246, 0.05) 52%, transparent 78%)`,
+          background: `radial-gradient(circle, rgba(${haloColorRgb}, 0.16), rgba(${haloColorRgb}, 0.08) 28%, rgba(${haloColorRgb}, 0.05) 52%, transparent 78%)`,
         }}
       />
       {/* O canvas em si nunca desenha nenhum fundo — só `clearRect` + a

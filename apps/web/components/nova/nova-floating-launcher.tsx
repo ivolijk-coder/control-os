@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { useAppStore } from '@/lib/store';
 import { hoverLift } from '@/lib/motion';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 // Escondido em /nova: a conversa já é o conteúdo principal dessa tela — não
 // faz sentido empilhar duas superfícies de conversa uma sobre a outra.
@@ -40,6 +41,11 @@ const NovaOrb = dynamic(() => import('@/components/nova/nova-orb').then((mod) =>
 export function NovaFloatingLauncher() {
   const pathname = usePathname();
   const setNovaVoiceOpen = useAppStore((state) => state.setNovaVoiceOpen);
+  // CONTROL OS — Etapa 15 (LEGENDARY): o botão flutuante é a primeira coisa
+  // que o usuário vê antes de abrir a conversa — precisa já refletir a
+  // identidade escolhida (`NovaPersonaSwitch`), nunca mostrar roxo por
+  // engano quando a conversa está em LEGENDARY.
+  const activePersona = useAppStore((state) => state.activePersona);
 
   if (pathname && HIDDEN_ON_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return null;
@@ -50,13 +56,16 @@ export function NovaFloatingLauncher() {
       type="button"
       onClick={() => setNovaVoiceOpen(true)}
       aria-label="Conversar com a Nova"
-      className="fixed bottom-6 right-6 z-30 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-accent-purple/90 shadow-e5 backdrop-blur-md"
+      className={cn(
+        'fixed bottom-6 right-6 z-30 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-white/10 shadow-e5 backdrop-blur-md transition-colors duration-slow ease-out',
+        activePersona === 'legendary' ? 'bg-accent-gold/90' : 'bg-accent-purple/90'
+      )}
       {...hoverLift}
       initial={{ opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
     >
-      <NovaOrb status="idle" className="h-full w-full" />
+      <NovaOrb status="idle" persona={activePersona} className="h-full w-full" />
     </motion.button>
   );
 }

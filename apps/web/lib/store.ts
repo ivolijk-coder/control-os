@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User } from '@control-os/types';
 import type { ConversationMessage } from '@/components/nova/nova-message-bubble';
+import type { NovaPersona } from '@/services/nova';
 import { MOCK_USER } from './mock-data';
 
 /** Limite de mensagens guardadas — evita crescimento sem fim numa sessão longa. */
@@ -74,6 +75,19 @@ interface AppState {
    * recentes continuam intactas. Diferente de `addNovaMessage` (só anexa).
    */
   replaceNovaMessages: (messages: ConversationMessage[]) => void;
+
+  /**
+   * Persona ativa da conversa (CONTROL OS — Etapa 15: LEGENDARY). Vive aqui
+   * — não em `useState` local de `NovaWorkspace` — pelo mesmo motivo de
+   * `novaMessages`: sobrevive a fechar/reabrir o painel flutuante e a
+   * navegar entre páginas, sem precisar de nenhum contexto novo. Efêmero
+   * como `novaMessages` (não persiste reload, ver `partialize` abaixo) —
+   * inconsistente reabrir o app amanhã com "LEGENDARY" selecionada e uma
+   * conversa vazia. Trocar de persona NUNCA mexe em `novaMessages` — é
+   * literalmente só isto: qual identidade conduz o próximo turno.
+   */
+  activePersona: NovaPersona;
+  setActivePersona: (persona: NovaPersona) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -107,6 +121,9 @@ export const useAppStore = create<AppState>()(
       addNovaMessage: (message) =>
         set((state) => ({ novaMessages: [...state.novaMessages, message].slice(-MAX_NOVA_MESSAGES) })),
       replaceNovaMessages: (messages) => set({ novaMessages: messages }),
+
+      activePersona: 'nova',
+      setActivePersona: (persona) => set({ activePersona: persona }),
     }),
     {
       name: 'control-os-app-state',

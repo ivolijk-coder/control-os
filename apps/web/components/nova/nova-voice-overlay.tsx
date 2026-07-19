@@ -112,6 +112,13 @@ function wait(ms: number): Promise<void> {
 export function NovaVoiceOverlay() {
   const open = useAppStore((state) => state.novaVoiceOpen);
   const setOpen = useAppStore((state) => state.setNovaVoiceOpen);
+  // CONTROL OS — Etapa 15 (LEGENDARY): mesma persona escolhida na conversa
+  // por texto (`NovaPersonaSwitch`, em `nova-workspace.tsx`) — o Modo
+  // Conversa por voz é só outro canal do MESMO ecossistema, nunca uma
+  // terceira identidade própria. Trocar de persona no chat também muda a
+  // cor/comportamento da esfera e o System Prompt aqui, na próxima vez que
+  // este overlay abrir ou falar.
+  const activePersona = useAppStore((state) => state.activePersona);
   const novaContext = useNovaContext();
 
   const [status, setStatus] = React.useState<VoiceModeStatus>('pronto');
@@ -153,7 +160,7 @@ export function NovaVoiceOverlay() {
           }, delayMs)
         );
 
-        const result = await conversationService.processTurn(transcript, novaContext, VOICE_SESSION_ID);
+        const result = await conversationService.processTurn(transcript, novaContext, VOICE_SESSION_ID, activePersona);
         timers.forEach((id) => window.clearTimeout(id));
         setWaitingLabel(undefined);
         setNovaReply(result.reply);
@@ -182,7 +189,7 @@ export function NovaVoiceOverlay() {
         });
       })();
     },
-    [novaContext, voiceSupported]
+    [novaContext, voiceSupported, activePersona]
   );
 
   const startListening = React.useCallback(() => {
@@ -290,7 +297,7 @@ export function NovaVoiceOverlay() {
               animate={{ scale: ORB_SCALE_BY_VOICE_STATUS[status] }}
               transition={{ duration: 0.4, ease: EASE_OUT }}
             >
-              <NovaOrb status={ORB_STATUS_BY_VOICE_STATUS[status]} pulseSignal={speechPulse} />
+              <NovaOrb status={ORB_STATUS_BY_VOICE_STATUS[status]} pulseSignal={speechPulse} persona={activePersona} />
             </motion.button>
 
             <div className="flex max-w-md flex-col items-center gap-2 text-center">

@@ -23,6 +23,20 @@ import type {
  * canal externo (ex.: WhatsApp), sem duplicar a lógica de negócio.
  */
 
+/**
+ * CONTROL OS — Etapa 15 (LEGENDARY): duas inteligências especializadas, uma
+ * única infraestrutura. `NovaPersona` NÃO é um segundo provider, um segundo
+ * `ConversationService` ou um segundo histórico — é só o parâmetro que
+ * decide qual identidade (`SystemPrompt`, cor, comportamento da `NovaOrb`)
+ * conduz o MESMO pipeline (intent → planner → executor → mesma memória,
+ * mesmo Event Bus, mesmo Tool Calling) já usado por tudo em `services/nova`
+ * e `services/ai`. `'nova'`: organiza, executa, administra — pensa como um
+ * Sistema Operacional. `'legendary'`: desenvolve o usuário (disciplina,
+ * consistência, hábitos, energia, foco, mentalidade, propósito) a partir
+ * dos mesmos dados reais — nunca cria dado novo, nunca duplica heurística.
+ */
+export type NovaPersona = 'nova' | 'legendary';
+
 export type NovaIntentKind =
   | 'registrar_despesa'
   | 'registrar_receita'

@@ -1,4 +1,4 @@
-import type { NovaIntent } from '@/services/nova';
+import type { NovaIntent, NovaPersona } from '@/services/nova';
 import { buildModelContextSummary } from '../context/buildModelContext';
 import { AIProviderError } from '../errors';
 import type { AIProvider, ProposedToolCall, ReasoningProvider, ReasoningTurn, ToolExecutionOutput } from '../interfaces';
@@ -96,11 +96,12 @@ export class OpenAIProvider implements AIProvider, ReasoningProvider {
    * `ConversationService` é quem resolve cada uma via `IntentResolver` e
    * decide se executa na hora ou pausa pra confirmação (ações sensíveis).
    */
-  async converse(text: string, context: AIConversationContext): Promise<ReasoningTurn> {
+  async converse(text: string, context: AIConversationContext, persona: NovaPersona): Promise<ReasoningTurn> {
     const response = await this.callRoute({
       mode: 'reason',
       prompt: text,
       contextSummary: buildModelContextSummary(context),
+      persona,
     });
     return toReasoningTurn(response, text);
   }
@@ -115,13 +116,15 @@ export class OpenAIProvider implements AIProvider, ReasoningProvider {
   async continueWithToolResults(
     continuationToken: string | undefined,
     outputs: ToolExecutionOutput[],
-    context: AIConversationContext
+    context: AIConversationContext,
+    persona: NovaPersona
   ): Promise<ReasoningTurn> {
     const response = await this.callRoute({
       mode: 'reason',
       previousResponseId: continuationToken,
       toolOutputs: outputs.map((output) => ({ callId: output.callId, output: output.output })),
       contextSummary: buildModelContextSummary(context),
+      persona,
     });
     // Sem `text` de usuário nesta chamada — só usado se a OpenAI, contra o
     // esperado, propuser MAIS uma tool call neste round (ver

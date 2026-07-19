@@ -24,6 +24,11 @@ const config: Config = {
           blue: '#3B82F6',
           purple: '#8B5CF6',
           red: '#EF4444',
+          // CONTROL OS — Etapa 15 (LEGENDARY): dourado/âmbar — identidade
+          // visual própria da segunda inteligência ("elegância, calma,
+          // sabedoria"), aditivo à paleta existente (roxo/azul continuam a
+          // identidade da NOVA, intocados).
+          gold: '#D9A455',
         },
       },
       spacing: {
@@ -59,6 +64,8 @@ const config: Config = {
         // base (nunca substitui a elevação, só adiciona um halo de cor).
         'glow-purple': '0 0 0 1px rgba(139,92,246,.16), 0 8px 32px rgba(139,92,246,.18)',
         'glow-blue': '0 0 0 1px rgba(59,130,246,.16), 0 8px 32px rgba(59,130,246,.18)',
+        // CONTROL OS — Etapa 15 (LEGENDARY) — mesmo padrão de glow-purple/-blue.
+        'glow-gold': '0 0 0 1px rgba(217,164,85,.18), 0 8px 32px rgba(217,164,85,.2)',
       },
       backdropBlur: {
         sm: '8px',

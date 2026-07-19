@@ -1,4 +1,4 @@
-import type { NovaIntent } from '@/services/nova';
+import type { NovaIntent, NovaPersona } from '@/services/nova';
 import type { AIConversationContext, AIExtractedEntities, ChatMessage } from '../types';
 
 /**
@@ -72,11 +72,12 @@ export interface ReasoningTurn {
  */
 export interface ReasoningProvider {
   /** Primeiro round: decide se responde direto (`replyText`) ou propõe tool calls. */
-  converse(text: string, context: AIConversationContext): Promise<ReasoningTurn>;
+  converse(text: string, context: AIConversationContext, persona: NovaPersona): Promise<ReasoningTurn>;
   /** Round seguinte: recebe os resultados já executados por `ActionExecutor` e devolve a resposta final. */
   continueWithToolResults(
     continuationToken: string | undefined,
     outputs: ToolExecutionOutput[],
-    context: AIConversationContext
+    context: AIConversationContext,
+    persona: NovaPersona
   ): Promise<ReasoningTurn>;
 }

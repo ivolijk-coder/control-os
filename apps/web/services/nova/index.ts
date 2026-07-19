@@ -55,6 +55,7 @@ export type {
   NovaDataActions,
   NovaIntent,
   NovaIntentKind,
+  NovaPersona,
   NovaReadOnlyContext,
   NovaStatus,
   NovaTurnResult,
