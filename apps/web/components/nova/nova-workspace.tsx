@@ -26,7 +26,7 @@ import { IntelligentPanel } from '@/components/home/intelligent-panel';
 import { NovaHeroStage } from '@/components/nova/nova-hero-stage';
 import { conversationService, KEEP_RECENT_TURNS, shouldCondense } from '@/services/ai';
 import { buildProactiveOpening, generateRecommendations, toReadOnlyContext } from '@/services/nova';
-import type { NovaRecommendationCategory, NovaStatus } from '@/services/nova';
+import type { NovaPersona, NovaRecommendationCategory, NovaStatus } from '@/services/nova';
 import { getVoiceProvider } from '@/services/voice';
 import { useAppStore } from '@/lib/store';
 import { useNovaContext } from '@/lib/use-nova-context';
@@ -148,6 +148,20 @@ export interface NovaWorkspaceProps {
    * que preserva a prioridade conceitual do spec sem quebrar o layout.
    */
   belowOrbContent?: React.ReactNode;
+  /**
+   * CONTROL OS — NOVA e LEGENDARY viraram dois ambientes/rotas fixos
+   * (`/nova` e `/legendary`), não mais um seletor dentro da mesma tela —
+   * "o usuário deve sentir que navegou para outro ambiente do sistema, e
+   * não apenas trocou de modelo de conversa". Quando esta prop existe, o
+   * workspace força `activePersona` pra este valor (nunca lê o que já
+   * estava no store) e NÃO renderiza o `NovaPersonaSwitch` — trocar de
+   * persona agora é navegar pra outra rota (botão flutuante global, ver
+   * `NovaFloatingLauncher`), nunca mutar estado local na mesma tela.
+   * Omitida (padrão): comportamento antigo, inalterado — é o caso do
+   * `NovaFloatingPanel` (`variant="inline"`), que continua sendo uma
+   * conversa só, com seletor de persona in-place.
+   */
+  lockedPersona?: NovaPersona;
 }
 
 /**
@@ -177,6 +191,7 @@ export function NovaWorkspace({
   variant = 'inline',
   topContent,
   belowOrbContent,
+  lockedPersona,
 }: NovaWorkspaceProps) {
   // Vive no `useAppStore` (não mais `useState` local) — sobrevive a
   // fechar/reabrir o painel flutuante. Ver comentário em `lib/store.ts`.
@@ -189,6 +204,18 @@ export function NovaWorkspace({
   // navegar entre páginas, sem duplicar estado entre a Home e o painel.
   const activePersona = useAppStore((state) => state.activePersona);
   const setActivePersona = useAppStore((state) => state.setActivePersona);
+
+  // `lockedPersona` (rotas /nova e /legendary): força o store pro valor do
+  // AMBIENTE atual assim que a página monta — nunca herda o que sobrou de
+  // uma navegação anterior. Efeito, não cálculo direto no render, porque
+  // `setActivePersona` escreve no store global (`useAppStore`), compartilhado
+  // com o `NovaFloatingPanel` em qualquer outra página.
+  React.useEffect(() => {
+    if (lockedPersona && activePersona !== lockedPersona) {
+      setActivePersona(lockedPersona);
+    }
+  }, [lockedPersona, activePersona, setActivePersona]);
+
   const [isThinking, setIsThinking] = React.useState(false);
   const [thinkingStatus, setThinkingStatus] = React.useState<NovaThinkingStatus>('pensando');
   // CONTROL OS — Etapa 11C: campo de conversa unificado — o microfone
@@ -476,11 +503,11 @@ export function NovaWorkspace({
       <div className="flex h-[calc(100vh-4rem)] flex-col">
         <div ref={dockedScrollRef} className="flex-1 overflow-y-auto px-6 py-8">
           <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-6">
-            {/* CONTROL OS — Etapa 15 (LEGENDARY): seletor sempre visível, no
-                topo da conversa — nunca só na abertura — pra trocar de
-                identidade a qualquer momento, inclusive no meio de um
-                histórico já longo, sem nunca perdê-lo. */}
-            <NovaPersonaSwitch persona={activePersona} onChange={setActivePersona} />
+            {/* CONTROL OS — /nova e /legendary agora são ambientes fixos
+                (`lockedPersona`) — trocar de identidade é navegar pro
+                outro, pelo botão flutuante global (`NovaFloatingLauncher`),
+                nunca mais um seletor que muda estado nesta mesma tela. */}
+            {!lockedPersona && <NovaPersonaSwitch persona={activePersona} onChange={setActivePersona} />}
 
             {messages.length === 0 && topContent}
 

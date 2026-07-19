@@ -5,6 +5,8 @@ import { motion } from 'framer-motion';
 import { useAppStore } from '@/lib/store';
 import { useDataStore } from '@/lib/data-store';
 import { cn, formatCurrency } from '@/lib/utils';
+import { NovaRingObject } from '@/components/nova/nova-ring-object';
+import { LegendaryCrystalObject } from '@/components/nova/legendary-crystal-object';
 import type { NovaPersona } from '@/services/nova';
 
 const TOGGLE_OPTIONS: ReadonlyArray<{ value: NovaPersona; label: string }> = [
@@ -147,6 +149,14 @@ export function AgentWidgetCard() {
   );
 }
 
+/**
+ * CONTROL OS — botão flutuante global: `NovaRingObject`/`LegendaryCrystalObject`
+ * viraram componentes reutilizáveis com `size` (antes eram funções locais
+ * `NovaRingMini`/`LegendaryCrystalMini` só deste arquivo) — "o mesmo
+ * objeto, materiais, iluminação e animações" precisa ser reaproveitado
+ * também no popover de `NovaFloatingLauncher`, nunca uma terceira versão
+ * desenhada à parte.
+ */
 function AgentStage({ persona }: { persona: NovaPersona }) {
   return (
     <div className="relative h-24 w-24 shrink-0">
@@ -156,7 +166,7 @@ function AgentStage({ persona }: { persona: NovaPersona }) {
         transition={{ duration: 0.35, ease: 'easeOut' }}
         style={{ pointerEvents: persona === 'nova' ? 'auto' : 'none' }}
       >
-        <NovaRingMini />
+        <NovaRingObject size={84} />
       </motion.div>
       <motion.div
         className="absolute inset-0 flex items-center justify-center"
@@ -164,71 +174,8 @@ function AgentStage({ persona }: { persona: NovaPersona }) {
         transition={{ duration: 0.35, ease: 'easeOut' }}
         style={{ pointerEvents: persona === 'legendary' ? 'auto' : 'none' }}
       >
-        <LegendaryCrystalMini />
+        <LegendaryCrystalObject size={66} />
       </motion.div>
-    </div>
-  );
-}
-
-function NovaRingMini() {
-  return (
-    <div className="relative h-[84px] w-[84px]">
-      <div
-        className="absolute inset-0 rounded-full"
-        style={{
-          border: '5px solid #10151d',
-          boxShadow: '0 0 0 1px rgba(79,216,255,0.15), 0 0 26px rgba(11,99,246,0.35), inset 0 0 12px rgba(11,99,246,0.15)',
-        }}
-      />
-      <motion.div
-        className="absolute -inset-0.5 rounded-full"
-        style={{
-          border: '1.5px solid transparent',
-          borderTopColor: '#4FD8FF',
-          borderRightColor: 'rgba(79,216,255,0.35)',
-          filter: 'drop-shadow(0 0 4px #0B63F6)',
-        }}
-        animate={{ rotate: 360 }}
-        transition={{ duration: 6, ease: 'linear', repeat: Infinity }}
-      />
-      <div
-        className="absolute inset-[16px] rounded-full"
-        style={{ border: '1px solid rgba(79,216,255,0.5)', boxShadow: '0 0 8px rgba(79,216,255,0.25)' }}
-      />
-      <div
-        className="absolute inset-0 flex items-center justify-center text-[16px] font-semibold"
-        style={{ color: '#F2F8FF', textShadow: '0 0 8px rgba(79,216,255,0.7)' }}
-      >
-        N
-      </div>
-    </div>
-  );
-}
-
-function LegendaryCrystalMini() {
-  return (
-    <div className="relative h-[66px] w-[66px]">
-      <motion.div
-        className="h-[66px] w-[66px]"
-        style={{
-          rotate: 45,
-          background: 'linear-gradient(135deg, #4a3616 0%, #C9962F 35%, #F4D889 50%, #C9962F 65%, #2a1d0a 100%)',
-          backgroundSize: '220% 220%',
-          boxShadow: '0 0 20px rgba(201,150,47,0.4), inset 0 0 8px rgba(0,0,0,0.4)',
-        }}
-        animate={{ backgroundPosition: ['0% 0%', '100% 100%', '0% 0%'] }}
-        transition={{ duration: 4, ease: 'easeInOut', repeat: Infinity }}
-      />
-      <div
-        className="absolute inset-[9px]"
-        style={{ background: '#0A0704', transform: 'rotate(45deg)', boxShadow: 'inset 0 0 8px rgba(201,150,47,0.3)' }}
-      />
-      <div
-        className="absolute inset-0 flex items-center justify-center text-[14px] font-semibold"
-        style={{ color: '#F4D889', textShadow: '0 0 6px rgba(201,150,47,0.8)' }}
-      >
-        L
-      </div>
     </div>
   );
 }

@@ -5,6 +5,15 @@ import { HERO_PERSONA_COLOR, HERO_PERSONA_COLOR_BRIGHT } from './hero-scene/hero
 
 export interface NovaRingObjectProps {
   className?: string;
+  /**
+   * Diâmetro do anel externo, em px. Padrão `190` — o tamanho original do
+   * Hero Object grande em `/nova`. Todas as outras medidas (espessura das
+   * bordas, inset do anel interno, tamanho do "N") são proporcionais a
+   * este valor, pra reaproveitar o MESMO objeto em qualquer escala — ex.:
+   * `NovaFloatingLauncher` usa um tamanho pequeno pro botão flutuante,
+   * "o mesmo objeto, materiais, iluminação e animações da página da NOVA".
+   */
+  size?: number;
 }
 
 /**
@@ -36,43 +45,49 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-export function NovaRingObject({ className }: NovaRingObjectProps) {
+/** Tamanho de referência (px) — todas as proporções abaixo foram medidas em cima deste valor original. */
+const BASE_SIZE = 190;
+
+export function NovaRingObject({ className, size = BASE_SIZE }: NovaRingObjectProps) {
   const color = HERO_PERSONA_COLOR.nova;
   const colorBright = HERO_PERSONA_COLOR_BRIGHT.nova;
+  const scale = size / BASE_SIZE;
 
   return (
     <div className={`relative flex h-full w-full items-center justify-center ${className ?? ''}`}>
-      <div className="relative h-[190px] w-[190px]">
+      <div className="relative" style={{ width: size, height: size }}>
         {/* ring-outer — anel de casca escura, o brilho vem só do box-shadow. */}
         <div
           className="absolute inset-0 rounded-full"
           style={{
-            border: '9px solid #10151d',
-            boxShadow: `0 0 0 1px ${hexToRgba(color, 0.15)}, 0 0 50px ${hexToRgba(color, 0.35)}, inset 0 0 24px ${hexToRgba(color, 0.15)}`,
+            border: `${9 * scale}px solid #10151d`,
+            boxShadow: `0 0 0 1px ${hexToRgba(color, 0.15)}, 0 0 ${50 * scale}px ${hexToRgba(color, 0.35)}, inset 0 0 ${24 * scale}px ${hexToRgba(color, 0.15)}`,
           }}
         />
         {/* ring-arc — arco HUD parado (posição fixa, sem rotação), igual ao mockup. */}
         <div
-          className="absolute -inset-[3px] rounded-full"
+          className="absolute rounded-full"
           style={{
-            border: '2px solid transparent',
+            inset: -3 * scale,
+            border: `${2 * scale}px solid transparent`,
             borderTopColor: color,
             borderRightColor: hexToRgba(color, 0.35),
-            filter: `drop-shadow(0 0 6px ${color})`,
+            filter: `drop-shadow(0 0 ${6 * scale}px ${color})`,
           }}
         />
         {/* ring-inner */}
         <div
-          className="absolute inset-[35px] rounded-full"
+          className="absolute rounded-full"
           style={{
-            border: `1.5px solid ${hexToRgba(color, 0.5)}`,
-            boxShadow: `0 0 16px ${hexToRgba(color, 0.25)}`,
+            inset: 35 * scale,
+            border: `${1.5 * scale}px solid ${hexToRgba(color, 0.5)}`,
+            boxShadow: `0 0 ${16 * scale}px ${hexToRgba(color, 0.25)}`,
           }}
         />
         {/* core-n */}
         <div
-          className="absolute inset-0 flex items-center justify-center text-[34px] font-semibold"
-          style={{ color: colorBright, textShadow: `0 0 16px ${hexToRgba(color, 0.7)}` }}
+          className="absolute inset-0 flex items-center justify-center font-semibold"
+          style={{ fontSize: 34 * scale, color: colorBright, textShadow: `0 0 ${16 * scale}px ${hexToRgba(color, 0.7)}` }}
         >
           N
         </div>

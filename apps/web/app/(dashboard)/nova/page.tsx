@@ -19,6 +19,11 @@ import { MOCK_USER } from '@/lib/mock-data';
  * `NovaWorkspace`) — a Home nunca vira um dashboard permanente por cima da
  * conversa. O Dashboard tradicional continua existindo em `/dashboard`,
  * alcançável pela Sidebar, como um módulo — não foi removido.
+ *
+ * `lockedPersona="nova"` — /nova virou o ambiente FIXO da NOVA (irmã de
+ * `/legendary`), não mais uma tela com seletor de persona por dentro.
+ * Trocar de inteligência agora é navegar entre as duas rotas, pelo botão
+ * flutuante global (`NovaFloatingLauncher`).
  */
 export default function NovaPage() {
   const firstName = MOCK_USER.name.split(' ')[0] ?? MOCK_USER.name;
@@ -26,6 +31,7 @@ export default function NovaPage() {
   return (
     <NovaWorkspace
       variant="docked"
+      lockedPersona="nova"
       topContent={<HomeHero firstName={firstName} />}
       belowOrbContent={
         <div className="flex w-full flex-col items-center gap-8">

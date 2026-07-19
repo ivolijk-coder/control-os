@@ -1,71 +1,136 @@
 'use client';
 
 import * as React from 'react';
-import dynamic from 'next/dynamic';
-import { usePathname } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { useAppStore } from '@/lib/store';
-import { hoverLift } from '@/lib/motion';
-import { Skeleton } from '@/components/ui/skeleton';
+import { useRouter } from 'next/navigation';
+import { AnimatePresence, motion } from 'framer-motion';
+import { hoverLift, transitionOut, transitionSpring } from '@/lib/motion';
+import { NovaRingObject } from '@/components/nova/nova-ring-object';
+import { LegendaryCrystalObject } from '@/components/nova/legendary-crystal-object';
 import { cn } from '@/lib/utils';
 
-// Escondido em /nova: a conversa já é o conteúdo principal dessa tela — não
-// faz sentido empilhar duas superfícies de conversa uma sobre a outra.
-const HIDDEN_ON_PREFIXES = ['/nova'];
+interface EnvironmentOption {
+  href: '/nova' | '/legendary';
+  label: string;
+  subtitle: string;
+}
 
-// Canvas é inerentemente client-only — mesmo tratamento do BackgroundNetwork.
-// `loading` (CONTROL OS — Etapa 10B) evita o botão aparecer vazio por um
-// instante enquanto o chunk do canvas carrega.
-const NovaOrb = dynamic(() => import('@/components/nova/nova-orb').then((mod) => mod.NovaOrb), {
-  ssr: false,
-  loading: () => <Skeleton className="h-full w-full rounded-full" />,
-});
+const ENVIRONMENT_OPTIONS: readonly EnvironmentOption[] = [
+  { href: '/nova', label: 'NOVA', subtitle: 'Inteligência Operacional' },
+  { href: '/legendary', label: 'LEGENDARY', subtitle: 'Mentor Estratégico' },
+];
 
 /**
- * NovaFloatingLauncher — botão flutuante permanente da Nova
- * (CONTROL OS — Etapa 3; reformulado na Etapa 8 — NOVA Voice Experience).
+ * NovaFloatingLauncher — acesso global às duas inteligências do CONTROL OS.
  *
- * "Não é apenas um microfone. É o centro do sistema." Canto inferior
- * direito, desktop e mobile, sempre visível por cima do conteúdo da
- * página — antes um ícone estático (`Sparkles`), agora a própria `NovaOrb`
- * em miniatura. A respiração vem de dentro da própria orb desde a Etapa
- * 10A (overhaul visual — respiração, pulso, ondas), não mais de uma classe
- * `animate-breathe` externa — evita duas animações de escala competindo no
- * mesmo elemento.
+ * Redefinido por completo (antes: botão único que abria o Modo Conversa
+ * por voz da NOVA em tela cheia, `NovaVoiceOverlay` — essa era a ÚNICA
+ * forma de abrir aquele modo; com a mudança abaixo ele fica sem gatilho
+ * na interface. Voz continua existindo no dia a dia via o microfone
+ * inline do `NovaInput`, já dentro de `/nova`/`/legendary` — Etapa 11C —
+ * só o atalho de "voz em tela cheia instantânea de qualquer lugar" que
+ * some; decisão explícita do usuário pra este botão, não um descuido).
  *
- * Ao tocar, abre o Modo Conversa por voz em tela cheia (`NovaVoiceOverlay`)
- * — não mais o painel de texto (`NovaFloatingPanel`/`novaPanelOpen`, que
- * continua existindo no código e acessível pela Home em `/nova`, só deixou
- * de ser o que este botão abre).
+ * Em repouso, sempre mostra a identidade oficial da NOVA (`NovaRingObject`,
+ * o MESMO objeto/cores/animação da página `/nova` — nunca uma esfera
+ * separada). Ao clicar, não abre um chat diretamente — abre um popover
+ * pequeno com as duas opções (NOVA azul / LEGENDARY dourado), cada uma
+ * com sua própria identidade visual. Selecionar uma opção NAVEGA para o
+ * ambiente daquela inteligência (`/nova` ou `/legendary`) — dois módulos
+ * fixos e independentes, não mais um toggle de modelo dentro da mesma
+ * tela (ver `nova-workspace.tsx`, prop `lockedPersona`).
+ *
+ * Visível em QUALQUER página, inclusive `/nova` e `/legendary` — antes o
+ * botão se escondia nessas rotas (a lógica antiga evitava empilhar duas
+ * superfícies de CONVERSA uma sobre a outra); agora o botão não abre mais
+ * uma conversa por conta própria, é só um menu de navegação, então faz
+ * sentido continuar disponível mesmo dentro de um dos dois ambientes —
+ * é o jeito mais rápido de pular de um para o outro.
  */
 export function NovaFloatingLauncher() {
-  const pathname = usePathname();
-  const setNovaVoiceOpen = useAppStore((state) => state.setNovaVoiceOpen);
-  // CONTROL OS — Etapa 15 (LEGENDARY): o botão flutuante é a primeira coisa
-  // que o usuário vê antes de abrir a conversa — precisa já refletir a
-  // identidade escolhida (`NovaPersonaSwitch`), nunca mostrar roxo por
-  // engano quando a conversa está em LEGENDARY.
-  const activePersona = useAppStore((state) => state.activePersona);
+  const router = useRouter();
+  const [open, setOpen] = React.useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
 
-  if (pathname && HIDDEN_ON_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
-    return null;
+  React.useEffect(() => {
+    if (!open) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false);
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  function handleSelect(href: EnvironmentOption['href']) {
+    setOpen(false);
+    router.push(href);
   }
 
   return (
-    <motion.button
-      type="button"
-      onClick={() => setNovaVoiceOpen(true)}
-      aria-label="Conversar com a Nova"
-      className={cn(
-        'fixed bottom-6 right-6 z-30 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-white/10 shadow-e5 backdrop-blur-md transition-colors duration-slow ease-out',
-        activePersona === 'legendary' ? 'bg-accent-gold/90' : 'bg-accent-purple/90'
-      )}
-      {...hoverLift}
-      initial={{ opacity: 0, scale: 0.8 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-    >
-      <NovaOrb status="idle" persona={activePersona} className="h-full w-full" />
-    </motion.button>
+    <div ref={containerRef} className="fixed bottom-6 right-6 z-30 flex flex-col items-end gap-3">
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            role="menu"
+            aria-label="Escolher inteligência do CONTROL OS"
+            initial={{ opacity: 0, scale: 0.94, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.94, y: 8 }}
+            transition={transitionSpring}
+            className="w-64 overflow-hidden rounded-2xl border border-white/[0.08] bg-card/90 p-2 shadow-e5-glass backdrop-blur-xl"
+          >
+            {ENVIRONMENT_OPTIONS.map((option) => (
+              <button
+                key={option.href}
+                type="button"
+                role="menuitem"
+                onClick={() => handleSelect(option.href)}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors duration-fast ease-out hover:bg-white/[0.05]"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center">
+                  {option.href === '/nova' ? <NovaRingObject size={30} /> : <LegendaryCrystalObject size={22} />}
+                </span>
+                <span className="flex flex-col">
+                  <span
+                    className={cn(
+                      'text-xs font-semibold tracking-wide',
+                      option.href === '/nova' ? 'text-[#4FD8FF]' : 'text-[#F4D889]'
+                    )}
+                  >
+                    {option.label}
+                  </span>
+                  <span className="text-[11px] text-text-tertiary">{option.subtitle}</span>
+                </span>
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <motion.button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Acessar NOVA ou LEGENDARY"
+        className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-[#0a0b0d]/90 shadow-e5 backdrop-blur-md"
+        {...hoverLift}
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={transitionOut(0.3)}
+      >
+        <NovaRingObject size={40} />
+      </motion.button>
+    </div>
   );
 }
