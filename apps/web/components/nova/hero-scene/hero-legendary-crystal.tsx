@@ -131,6 +131,40 @@ function createGlyphTexture(letter: string, color: string): THREE.CanvasTexture 
  * cristal em si NÃO foram tocados nesta rodada — depois de duas correções
  * de renderização seguidas, a prioridade agora é não mexer no que já foi
  * verificado como funcionando.
+ *
+ * CONTROL OS — correção nº 3 (cristal quase invisível de novo, /legendary):
+ * causa raiz real, não a geometria (já corrigida) nem um bug de código —
+ * uma ASSIMETRIA ARQUITETURAL entre os dois núcleos. `HeroNovaCore` é
+ * construído quase inteiramente com materiais SEM ILUMINAÇÃO
+ * (`meshBasicMaterial`/`toneMapped={false}`, sprites aditivos, anéis
+ * `meshBasicMaterial`) — eles renderizam na intensidade total sempre,
+ * não importa o ângulo de câmera, rotação do objeto ou luz da cena. Este
+ * cristal, ao contrário, é um único `meshPhysicalMaterial` com
+ * `metalness` real — sua superfície SÓ aparece onde alguma luz/Lightformer
+ * reflete diretamente pra câmera naquele instante exato. Isso é por design
+ * (Etapa 17B: "quase nenhuma face deve ter a mesma iluminação", ambiente
+ * quase-zero de propósito), mas o design foi longe demais: quando a
+ * geometria gira e nenhuma faceta está bem posicionada, o corpo inteiro
+ * cai pra quase-preto — só a `EdgesGeometry` (linhas HDR sem iluminação)
+ * e o núcleo/glifo (também sem iluminação) continuam visíveis, exatamente
+ * "uma silhueta escura" em vez de um cristal dourado. A câmera recuada da
+ * Etapa 17C (mais longe, mais alta) piora ainda mais esse caso, mesmo sem
+ * ter sido desenhada pensando nisso — ela nunca foi validada visualmente
+ * contra a LEGENDARY, só contra a NOVA (que é imune a esse problema por
+ * construção).
+ *
+ * A correção NÃO reduz o contraste metálico entre facetas (`metalness`
+ * continua real, só desce mais um pouco, `roughness` sobe um pouco pra
+ * espalhar o brilho especular por um arco maior de ângulos em vez de um
+ * ponto exato) — ela garante um PISO de visibilidade que a resposta à luz
+ * externa nunca pode violar: `emissiveIntensity` sobe de 0.05 pra 0.42 (o
+ * `emissive` de um `meshPhysicalMaterial` soma cor em cada fragmento
+ * INDEPENDENTE de luz/ângulo/câmera — é o mesmo princípio físico que já faz
+ * a `EdgesGeometry` e o núcleo nunca sumirem, agora aplicado ao corpo
+ * inteiro) e a `pointLight` própria do cristal quase triplica de
+ * intensidade. Resultado: cada faceta sempre tem uma base dourada visível,
+ * com o brilho metálico/reflexos concentrados por cima dela como textura —
+ * nunca mais tudo ou nada.
  */
 export function HeroLegendaryCrystal({ colorHex, colorBrightHex }: HeroLegendaryCrystalProps) {
   const geometry = React.useMemo(() => createCrystalGeometry(), []);
@@ -145,8 +179,8 @@ export function HeroLegendaryCrystal({ colorHex, colorBrightHex }: HeroLegendary
         <meshPhysicalMaterial
           color={colorHex}
           side={THREE.DoubleSide}
-          metalness={0.55}
-          roughness={0.22}
+          metalness={0.4}
+          roughness={0.32}
           transmission={0.08}
           thickness={0.6}
           ior={1.5}
@@ -157,7 +191,7 @@ export function HeroLegendaryCrystal({ colorHex, colorBrightHex }: HeroLegendary
           clearcoat={1}
           clearcoatRoughness={0.04}
           emissive={colorHex}
-          emissiveIntensity={0.05}
+          emissiveIntensity={0.42}
           envMapIntensity={2.2}
         />
       </mesh>
@@ -170,7 +204,7 @@ export function HeroLegendaryCrystal({ colorHex, colorBrightHex }: HeroLegendary
         <sphereGeometry args={[0.14, 24, 24]} />
         <meshBasicMaterial color={colorBrightHex} toneMapped={false} />
       </mesh>
-      <pointLight color={colorHex} intensity={1.3} distance={3} decay={2} />
+      <pointLight color={colorHex} intensity={3.4} distance={3.4} decay={2} />
 
       {/* Glifo holográfico — a assinatura de marca, sempre de frente pra câmera. */}
       <Billboard>
