@@ -35,6 +35,15 @@ interface HeroLegendaryCrystalProps {
  * "emissive interno... luz atravessando as extremidades". Arestas
  * reforçadas com `EdgesGeometry` (linhas finas douradas) — "reflexos nas
  * arestas", cada faceta lida com clareza mesmo à distância.
+ *
+ * CONTROL OS — v3 (após revisão em vídeo): o núcleo interno (esfera
+ * `meshBasicMaterial` sem tone mapping + `pointLight intensity=3.2`) estava
+ * forte demais — o Bloom (`nova-hero-scene.tsx`) estourava esse ponto num
+ * halo grande que engolia o cristal inteiro, lendo como "uma lâmpada âmbar
+ * em forma de diamante" em vez de facetas metálicas distintas respondendo
+ * à luz EXTERNA (`hero-lighting.tsx`). O núcleo continua existindo — "luz
+ * atravessando as extremidades" ainda é real — mas menor e mais fraco, pra
+ * ser um detalhe interno em vez de dominar a leitura da forma inteira.
  */
 export function HeroLegendaryCrystal({ colorHex, colorBrightHex }: HeroLegendaryCrystalProps) {
   const geometry = React.useMemo(() => createCrystalGeometry(), []);
@@ -63,10 +72,10 @@ export function HeroLegendaryCrystal({ colorHex, colorBrightHex }: HeroLegendary
       </lineSegments>
 
       <mesh>
-        <sphereGeometry args={[0.22, 24, 24]} />
+        <sphereGeometry args={[0.14, 24, 24]} />
         <meshBasicMaterial color={colorBrightHex} toneMapped={false} />
       </mesh>
-      <pointLight color={colorHex} intensity={3.2} distance={3.5} decay={2} />
+      <pointLight color={colorHex} intensity={1.3} distance={3} decay={2} />
     </group>
   );
 }
