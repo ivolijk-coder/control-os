@@ -8,6 +8,8 @@ import { CommandCenter } from '@/components/command/command-center';
 import { NovaFloatingLauncher } from '@/components/nova/nova-floating-launcher';
 import { NovaFloatingPanel } from '@/components/nova/nova-floating-panel';
 import { NovaVoiceOverlay } from '@/components/nova/nova-voice-overlay';
+import { useAppStore } from '@/lib/store';
+import { cn } from '@/lib/utils';
 
 // Canvas + randomização de posição são inerentemente client-only. `ssr:
 // false` evita mismatch de hidratação e mantém o SSR/streaming do restante
@@ -31,11 +33,30 @@ const BackgroundNetwork = dynamic(
  * parcialmente coberta. `pb-24` (96px — maior que os 56px do botão + a
  * margem de 24px) garante que o fim rolável de qualquer tela sempre deixa
  * esse canto livre, sem precisar tocar cada página uma por uma.
+ *
+ * CONTROL OS — Etapa 16F (Art Direction — Orb como coração do sistema): o
+ * glow ambiente do fundo (`bg-ambient-glow`) e as partículas de destaque do
+ * `BackgroundNetwork` seguiam SEMPRE roxo/azul, em toda página autenticada
+ * — mesmo com a LEGENDARY conduzindo a conversa em `/nova`. Isso quebrava a
+ * própria ideia de "a Orb é o coração do sistema, o resto da interface
+ * parece iluminado por ela": a identidade da persona ativa parava na Orb e
+ * no seletor, nunca chegava ao ambiente. Lê `activePersona` do mesmo
+ * `useAppStore` que a Orb/seletor já leem (nenhum estado novo) e troca a
+ * classe do glow de fundo + a cor das partículas juntas, em qualquer tela
+ * do produto — não só `/nova`.
  */
 export function LayoutPrincipal({ children }: { children: React.ReactNode }) {
+  const activePersona = useAppStore((state) => state.activePersona);
+  const isLegendary = activePersona === 'legendary';
+
   return (
-    <div className="relative flex h-screen w-full overflow-hidden bg-bg bg-ambient-glow bg-fixed motion-safe:animate-ambient-drift">
-      <BackgroundNetwork />
+    <div
+      className={cn(
+        'relative flex h-screen w-full overflow-hidden bg-bg bg-fixed motion-safe:animate-ambient-drift',
+        isLegendary ? 'bg-ambient-glow-gold' : 'bg-ambient-glow'
+      )}
+    >
+      <BackgroundNetwork persona={activePersona} />
       <Sidebar />
       <div className="relative flex min-w-0 flex-1 flex-col">
         <Topbar />

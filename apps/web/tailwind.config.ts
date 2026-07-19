@@ -120,6 +120,15 @@ const config: Config = {
       backgroundImage: {
         'ambient-glow':
           'radial-gradient(ellipse 140% 70% at 12% -10%, rgba(139,92,246,0.14), transparent 60%), radial-gradient(ellipse 120% 60% at 100% 110%, rgba(59,130,246,0.10), transparent 60%)',
+        // CONTROL OS — Etapa 16F (Art Direction — Orb como coração do
+        // sistema): variante dourada do mesmo par de manchas radiais acima —
+        // antes o fundo do produto INTEIRO (toda página autenticada, não só
+        // `/nova`) ficava sempre roxo/azul, mesmo com a LEGENDARY ativa.
+        // Mesma posição/intensidade/forma, só a cor troca — "a luz da Orb
+        // influencia discretamente o ambiente" só é verdade se o ambiente de
+        // fato mudar de cor junto com ela.
+        'ambient-glow-gold':
+          'radial-gradient(ellipse 140% 70% at 12% -10%, rgba(217,164,85,0.14), transparent 60%), radial-gradient(ellipse 120% 60% at 100% 110%, rgba(235,199,138,0.10), transparent 60%)',
         // CONTROL OS — Etapa 16A: "disco de luz no chão sob o objeto 3D,
         // como spot de vitrine" — o padrão de apresentação da NovaOrb/futuro
         // cristal da LEGENDARY como um objeto exposto, nunca só "flutuando

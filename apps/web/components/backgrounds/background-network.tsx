@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useMediaQuery } from '@control-os/hooks';
+import type { NovaPersona } from '@/services/nova';
 
 interface NetworkNode {
   x: number;
@@ -14,6 +15,13 @@ const NODE_COLOR = 'rgba(161, 161, 170, 0.55)';
 const LINE_COLOR_RGB = '255, 255, 255';
 const GLOW_PURPLE = 'rgba(139, 92, 246, 0.55)';
 const GLOW_BLUE = 'rgba(59, 130, 246, 0.55)';
+// CONTROL OS — Etapa 16F (Art Direction — Orb como coração do sistema): par
+// dourado dos dois tons de glow acima — mesmo papel que `GLOW_BLUE` cumpre
+// pra `GLOW_PURPLE` (variação secundária dentro da MESMA identidade), só que
+// do lado da LEGENDARY. Reaproveita os dois tons de dourado já definidos em
+// `tailwind.config.ts` (`accent.gold`/`accent['gold-soft']`).
+const GLOW_GOLD = 'rgba(217, 164, 85, 0.55)';
+const GLOW_GOLD_SOFT = 'rgba(235, 199, 138, 0.55)';
 
 const MAX_NODES = 46;
 const MIN_NODES = 18;
@@ -48,10 +56,19 @@ function createNodes(width: number, height: number): NetworkNode[] {
  * `prefers-reduced-motion` — nesse caso renderiza um único frame estático,
  * sem loop de animação. Pausa via `visibilitychange` quando a aba não está
  * ativa, para não gastar CPU/bateria à toa.
+ *
+ * CONTROL OS — Etapa 16F (Art Direction — Orb como coração do sistema): os
+ * "nós de destaque" (poeira com glow, ~1 a cada 7) trocam de roxo/azul pra
+ * dourado/âmbar quando `persona === 'legendary'`. Antes eram sempre
+ * roxo/azul em toda página autenticada, mesmo com a LEGENDARY conduzindo a
+ * conversa — o fundo do produto inteiro nunca refletia qual identidade
+ * estava ativa. Prop opcional (padrão `'nova'`) mantém retrocompatibilidade
+ * com qualquer chamador que ainda não a passe.
  */
-export function BackgroundNetwork({ className }: { className?: string }) {
+export function BackgroundNetwork({ className, persona = 'nova' }: { className?: string; persona?: NovaPersona }) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+  const isLegendary = persona === 'legendary';
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
@@ -104,7 +121,15 @@ export function BackgroundNetwork({ className }: { className?: string }) {
 
       nodes.forEach((node, index) => {
         const isGlowNode = index % 7 === 0;
-        const color = isGlowNode ? (index % 14 === 0 ? GLOW_PURPLE : GLOW_BLUE) : NODE_COLOR;
+        const color = isGlowNode
+          ? isLegendary
+            ? index % 14 === 0
+              ? GLOW_GOLD
+              : GLOW_GOLD_SOFT
+            : index % 14 === 0
+              ? GLOW_PURPLE
+              : GLOW_BLUE
+          : NODE_COLOR;
         ctx.fillStyle = color;
         // CONTROL OS — Etapa 10A: halo suave nos nós de destaque — "glow
         // discreto" pedido explicitamente. Reset sempre depois de desenhar,
@@ -164,7 +189,12 @@ export function BackgroundNetwork({ className }: { className?: string }) {
       window.removeEventListener('resize', resize);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [prefersReducedMotion]);
+    // `isLegendary` entra na dependência pra recolorir os nós de destaque
+    // assim que a persona muda — o efeito inteiro reexecuta (recria `nodes`
+    // via `resize()`), mesmo custo/comportamento que já acontecia a cada
+    // resize de janela; a troca de persona é uma ação rara do usuário, nunca
+    // um valor que muda em loop.
+  }, [prefersReducedMotion, isLegendary]);
 
   return (
     <canvas
