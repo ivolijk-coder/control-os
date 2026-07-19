@@ -51,9 +51,12 @@ function NavGroup({
   return (
     <div className="flex flex-col gap-1">
       {!collapsed && (
-        <span className="px-2 pb-2 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
-          {label}
-        </span>
+        // CONTROL OS — Etapa 16C (Design System premium): rótulo de grupo
+        // passa a usar o token canônico `.text-eyebrow` (Etapa 16A —
+        // tracking 0.22em) em vez do `tracking-wider` ad hoc — mesmo
+        // elemento tipográfico "NOVA EM AÇÃO" da referência, agora
+        // reaproveitado aqui em vez de duplicado.
+        <span className="text-eyebrow px-2 pb-2 text-[11px] text-text-tertiary">{label}</span>
       )}
       {items.map((item) => {
         const Icon = ICON_MAP[item.icon] ?? ICON_MAP.LayoutGrid;
@@ -67,7 +70,11 @@ function NavGroup({
               // (~40px) — alvo de toque mais confortável em mobile, sem
               // aumentar a densidade visual em telas largas (o drawer
               // mobile já usa a Sidebar inteira, nunca a versão colapsada).
-              'group relative flex items-center gap-3 rounded-md px-2.5 py-2.5 text-sm font-medium transition-all duration-fast ease-out hover:scale-[1.01] active:scale-[0.98]',
+              // Etapa 16C: hover ganha a mesma elevação sutil (`shadow-e1`)
+              // já usada nos cards do resto do produto — "cards, hover,
+              // depth" também vale pra navegação, não só pra superfícies de
+              // conteúdo.
+              'group relative flex items-center gap-3 rounded-md px-2.5 py-2.5 text-sm font-medium transition-all duration-fast ease-out hover:scale-[1.01] hover:shadow-e1 active:scale-[0.98]',
               isActive
                 ? 'bg-gradient-to-r from-accent-purple/[0.14] via-white/[0.05] to-transparent text-text-primary'
                 : 'text-text-secondary hover:bg-white/[0.04] hover:text-text-primary'
@@ -152,14 +159,22 @@ export function Sidebar() {
         }
         transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
         className={cn(
-          'flex h-screen flex-col border-r border-white/[0.08] bg-white/[0.02] backdrop-blur-xl',
+          // CONTROL OS — Etapa 16C: `shadow-[inset...]` acrescenta uma
+          // linha de luz de 1px na borda direita do vidro — "espessura,
+          // reflexos, bordas" do glassmorphism da referência: sem isso, o
+          // painel lê como uma cor sólida semitransparente; com o realce,
+          // lê como uma lâmina de vidro com borda iluminada por dentro.
+          'flex h-screen flex-col border-r border-white/[0.08] bg-white/[0.02] shadow-[inset_-1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-xl',
           isMobile ? 'fixed inset-y-0 left-0 z-50 shadow-e5' : 'relative'
         )}
       >
         {/* Cabeçalho / marca — leva para a Home conversacional (/nova) */}
         <div className="flex h-16 items-center gap-3 px-5">
           <Link href="/nova" className="group flex min-w-0 flex-1 items-center gap-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-white to-white/85 text-xs font-bold text-black shadow-e1 transition-transform duration-fast ease-out group-hover:scale-105">
+            {/* Etapa 16C: glow branco discreto e permanente atrás da marca —
+                "presença viva", nunca só no hover — reforçado no hover
+                (group-hover) sem depender só do scale existente. */}
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-white to-white/85 text-xs font-bold text-black shadow-[0_0_14px_rgba(255,255,255,0.18)] transition-transform duration-fast ease-out group-hover:scale-105 group-hover:shadow-[0_0_20px_rgba(255,255,255,0.28)]">
               C
             </span>
             {!effectiveCollapsed && (
@@ -184,9 +199,7 @@ export function Sidebar() {
       {/* Control Spaces */}
       <div className="flex flex-col gap-1 px-3 py-4">
         {!effectiveCollapsed && (
-          <span className="px-2 pb-2 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
-            Spaces
-          </span>
+          <span className="text-eyebrow px-2 pb-2 text-[11px] text-text-tertiary">Spaces</span>
         )}
         {MOCK_SPACES.map((space) => {
           const Icon = ICON_MAP[space.icon] ?? ICON_MAP.User;
@@ -194,7 +207,7 @@ export function Sidebar() {
             <button
               key={space.id}
               className={cn(
-                'group flex items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-all duration-fast ease-out hover:scale-[1.01] active:scale-[0.98]',
+                'group flex items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-all duration-fast ease-out hover:scale-[1.01] hover:shadow-e1 active:scale-[0.98]',
                 space.isActive
                   ? 'bg-white/[0.06] text-text-primary'
                   : 'text-text-secondary hover:bg-white/[0.04] hover:text-text-primary'

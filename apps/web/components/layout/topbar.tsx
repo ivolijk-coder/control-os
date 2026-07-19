@@ -40,7 +40,11 @@ export function Topbar() {
   const setMobileNavOpen = useAppStore((s) => s.setMobileNavOpen);
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/[0.08] bg-bg/60 px-6 backdrop-blur-xl">
+    // CONTROL OS — Etapa 16C (Design System premium): mesmo tratamento de
+    // "espessura de vidro" da Sidebar (Etapa 16C) — uma linha de luz de 1px
+    // no topo do painel, simulando a mesma fonte de luz vindo de cima que
+    // ilumina o resto da interface (glow/halo da NovaOrb, pedestal-glow).
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/[0.08] bg-bg/60 px-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl">
       <div className="flex items-center gap-3">
         <button
           onClick={() => setMobileNavOpen(true)}
@@ -65,7 +69,10 @@ export function Topbar() {
         {/* Desktop (>= md): barra completa com o atalho de teclado. */}
         <button
           onClick={() => setCommandCenterOpen(true)}
-          className="hidden w-full max-w-md items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-text-tertiary backdrop-blur-sm transition-all duration-fast ease-out hover:scale-[1.01] hover:border-white/20 hover:bg-white/[0.05] active:scale-[0.99] focus-visible:scale-[1.01] focus-visible:border-accent-purple/40 focus-visible:shadow-glow-purple focus-visible:outline-none md:flex"
+          // Etapa 16C: mesmo realce de espessura de vidro do cabeçalho,
+          // aplicado à própria barra de busca — ela também é uma superfície
+          // de vidro, não só o header por trás dela.
+          className="hidden w-full max-w-md items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-text-tertiary shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-sm transition-all duration-fast ease-out hover:scale-[1.01] hover:border-white/20 hover:bg-white/[0.05] active:scale-[0.99] focus-visible:scale-[1.01] focus-visible:border-accent-purple/40 focus-visible:shadow-glow-purple focus-visible:outline-none md:flex"
           aria-label="Busca universal (⌘K)"
         >
           <ICON_MAP.Search className="h-4 w-4" />
