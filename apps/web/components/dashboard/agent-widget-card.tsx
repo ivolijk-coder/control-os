@@ -7,6 +7,7 @@ import { useDataStore } from '@/lib/data-store';
 import { cn, formatCurrency } from '@/lib/utils';
 import { NovaRingObject } from '@/components/nova/nova-ring-object';
 import { LegendaryCrystalObject } from '@/components/nova/legendary-crystal-object';
+import { AiPanelGlow } from '@/components/dashboard/ai-panel-glow';
 import type { NovaPersona } from '@/services/nova';
 
 const TOGGLE_OPTIONS: ReadonlyArray<{ value: NovaPersona; label: string }> = [
@@ -86,7 +87,12 @@ export function AgentWidgetCard() {
 
   const openPanel = () => setNovaPanelOpen(true);
 
+  // AiPanelGlow embrulha o card por fora, sem tocar em nenhuma classe ou
+  // filho abaixo — "não altere layout, tamanho ou componentes internos,
+  // quero apenas transformar esse card no ponto focal da interface"
+  // (pedido explícito do usuário). Ver `ai-panel-glow.tsx`.
   return (
+    <AiPanelGlow persona={persona}>
     <div className="flex flex-col items-start gap-6 rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#0e0f11] p-5 sm:flex-row sm:items-center sm:gap-7 sm:p-6">
       <div className="flex shrink-0 flex-col gap-2.5">
         <div className="flex gap-1.5 rounded-full border border-[rgba(255,255,255,0.07)] bg-[#101215] p-1">
@@ -146,6 +152,7 @@ export function AgentWidgetCard() {
         </div>
       </div>
     </div>
+    </AiPanelGlow>
   );
 }
 
