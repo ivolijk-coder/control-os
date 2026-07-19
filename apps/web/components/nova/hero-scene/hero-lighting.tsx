@@ -28,27 +28,40 @@ interface HeroLightingProps {
  * inteiramente da luz/ambiente refletido, não de cor própria — ver
  * `hero-legendary-crystal.tsx`). Intensidades da luz lateral e dos
  * Lightformers praticamente dobradas.
+ *
+ * CONTROL OS — Etapa 17B (Hero Art Direction): "faces extremamente claras,
+ * faces extremamente escuras" não é uma propriedade só do material — é uma
+ * decisão de ILUMINAÇÃO. Um `Environment` com Lightformers grandes e
+ * espalhados (a v2) preenche o ambiente de forma quase uniforme: toda
+ * faceta recebe uma quantidade parecida de luz refletida, então mesmo com
+ * `metalness` alto o resultado lê "uniformemente dourado". A correção é a
+ * oposta de "mais luz": AMBIENTE quase zero (`ambientLight` cortado a
+ * quase nada) e Lightformers MENORES/mais concentrados — luz de estúdio de
+ * produto, não luz de dia nublado. Cada faceta só recebe luz forte se sua
+ * normal apontar quase exatamente pra uma dessas fontes pequenas; todas as
+ * outras caem no escuro. É esse recorte, não a intensidade total, que cria
+ * o contraste "extremo" pedido.
  */
 export function HeroLighting({ colorHex, colorDimHex }: HeroLightingProps) {
   return (
     <>
-      {/* Ambiente — preenchimento muito fraco, frio, nunca a fonte principal. */}
-      <ambientLight intensity={0.12} color="#0a0a14" />
+      {/* Ambiente — quase inexistente. Preenchimento uniforme é o inimigo do contraste extremo. */}
+      <ambientLight intensity={0.02} color="#0a0a14" />
 
       {/* Luz inferior — nasce do pedestal, mesma cor da persona. */}
-      <pointLight position={[0, -1.55, 0]} intensity={8} color={colorHex} distance={7} decay={2} />
+      <pointLight position={[0, -1.55, 0]} intensity={9} color={colorHex} distance={7} decay={2} />
 
-      {/* Luz lateral — direcional neutra, dá volume/Fresnel nas arestas. */}
-      <directionalLight position={[3.2, 2.2, 2.4]} intensity={1.7} color="#f5f5f0" />
+      {/* Luz-chave — dura, direcional, concentrada num só lado: desenha a fronteira clara/escura entre facetas vizinhas. */}
+      <directionalLight position={[3.2, 2.2, 2.4]} intensity={2.8} color="#f5f5f0" />
 
       {/* Luz traseira — rim light discreto, cor escura da mesma família da persona (nunca cinza puro). */}
-      <directionalLight position={[-2.4, 1.4, -3.2]} intensity={0.7} color={colorDimHex} />
+      <directionalLight position={[-2.4, 1.4, -3.2]} intensity={1} color={colorDimHex} />
 
-      {/* Ambiente HDRI sintético — só pra alimentar reflexos/Fresnel do material físico do Hero Object, nunca visível como fundo (`background={false}`, o padrão). */}
+      {/* Ambiente HDRI sintético — só pra alimentar reflexos/Fresnel do material físico do Hero Object, nunca visível como fundo (`background={false}`, o padrão). Painéis pequenos e intensos (luz de estúdio de produto) em vez de painéis grandes e fracos (luz de preenchimento) — reflexo concentrado, não brilho difuso. */}
       <Environment resolution={128}>
-        <Lightformer form="rect" intensity={2.4} color="#ffffff" scale={[4, 2, 1]} position={[0, 3, 2]} target={[0, 0, 0]} />
-        <Lightformer form="rect" intensity={1.1} color={colorHex} scale={[3, 1.5, 1]} position={[-3, 0.5, -1]} target={[0, 0, 0]} />
-        <Lightformer form="ring" intensity={1.4} color={colorHex} scale={[2, 2, 1]} position={[0, -1.4, 1.5]} target={[0, 0, 0]} />
+        <Lightformer form="rect" intensity={4.2} color="#ffffff" scale={[1.6, 0.9, 1]} position={[0, 3, 2]} target={[0, 0, 0]} />
+        <Lightformer form="rect" intensity={0.3} color={colorHex} scale={[3, 1.5, 1]} position={[-3, 0.5, -1]} target={[0, 0, 0]} />
+        <Lightformer form="ring" intensity={1.1} color={colorHex} scale={[2, 2, 1]} position={[0, -1.4, 1.5]} target={[0, 0, 0]} />
       </Environment>
     </>
   );

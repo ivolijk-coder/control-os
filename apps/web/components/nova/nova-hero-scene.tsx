@@ -58,6 +58,13 @@ interface HeroSceneContentProps {
  * deliberada pra entregar um v1 revisável rapidamente, não um descuido —
  * suavizar essa cor também (mesma técnica de `lerpRgb` por frame que
  * `nova-orb.tsx` já usa) é o refinamento natural de uma próxima etapa.
+ *
+ * CONTROL OS — Etapa 17B (Hero Art Direction): "20% Hero Object, 80%
+ * atmosfera — hoje ainda acontece o contrário." `<fogExp2>` entra AQUI (não
+ * dentro de `hero-background.tsx`) porque fog só tem efeito quando anexado
+ * à cena raiz do Canvas — este componente É essa raiz. Densidade baixa o
+ * bastante pra nunca esconder o Hero Object, alta o bastante pra fundir o
+ * fundo distante numa penumbra em vez de um corte seco pro preto.
  */
 function HeroSceneContent({ status, pulseSignal, persona }: HeroSceneContentProps) {
   const objectGroupRef = React.useRef<THREE.Group>(null);
@@ -121,6 +128,7 @@ function HeroSceneContent({ status, pulseSignal, persona }: HeroSceneContentProp
 
   return (
     <>
+      <fogExp2 attach="fog" args={['#040308', 0.05]} />
       <HeroLighting colorHex={colorHex} colorDimHex={colorDimHex} />
       <HeroBackground colorHex={colorHex} />
       <HeroPedestal colorHex={colorHex} colorBrightHex={colorBrightHex} />
@@ -157,6 +165,14 @@ function HeroSceneContent({ status, pulseSignal, persona }: HeroSceneContentProp
  * contínuo de renderização (a cena renderiza um frame e para de se
  * redesenhar sozinha), mesmo comportamento de acessibilidade que a
  * `NovaOrb` já tinha.
+ *
+ * CONTROL OS — Etapa 17B (Hero Art Direction): câmera afastada (`z: 5.4 →
+ * 6.6`) — a forma mais direta de fazer o Hero Object ocupar uma fatia menor
+ * do quadro sem tocar em nenhuma das constantes de escala/respiração que já
+ * governam o comportamento por status (`HERO_RADIUS_SCALE` etc. em
+ * `hero-scene-constants.ts`, intocadas). É uma decisão de enquadramento
+ * (onde a câmera está), não de tamanho do objeto em si — a diferença entre
+ * "meu objeto é pequeno" e "meu objeto está numa cena grande".
  */
 export function NovaHeroScene({ status = 'idle', pulseSignal, persona = 'nova', className }: NovaHeroSceneProps) {
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
@@ -166,7 +182,7 @@ export function NovaHeroScene({ status = 'idle', pulseSignal, persona = 'nova', 
       <Canvas
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
-        camera={{ fov: 38, position: [0, 0.35, 5.4], near: 0.1, far: 50 }}
+        camera={{ fov: 36, position: [0, 0.5, 6.6], near: 0.1, far: 50 }}
         frameloop={prefersReducedMotion ? 'demand' : 'always'}
         performance={{ min: 0.4 }}
         onCreated={({ gl }) => {

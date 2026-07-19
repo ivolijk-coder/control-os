@@ -1,53 +1,96 @@
 import * as THREE from 'three';
 
 /**
- * CONTROL OS — Etapa 17 (Hero Scene R3F): geometria do cristal da
- * LEGENDARY — uma bipirâmide octogonal simétrica (8 faces na coroa, 8 no
- * pavilhão, como um corte de gema), o mesmo princípio geométrico da versão
- * Canvas 2D (`nova-orb.tsx`, `buildCrystalGeometry`), agora como um sólido
- * REAL do Three.js em vez de triângulos pintados manualmente por frame.
+ * CONTROL OS — Etapa 17B (Hero Art Direction): geometria do cristal da
+ * LEGENDARY — evoluída de uma bipirâmide simples (Etapa 17) pra um corte de
+ * gema de 4 anéis (coroa / bezel superior / bezel inferior / pavilhão), o
+ * mesmo princípio construtivo de um lapidário real: "quase nenhuma face
+ * deve possuir a mesma iluminação." Uma bipirâmide lisa só tem DUAS
+ * inclinações de normal (coroa e pavilhão) — o suficiente pra ler como "um
+ * octaedro dourado", nunca como "um artefato tecnológico raro". Com 4 anéis
+ * e uma faixa "antiprisma" (cada anel girado meio-setor em relação ao
+ * vizinho, como um corte brilhante de diamante de verdade) o número de
+ * inclinações de normal distintas sobe de 2 pra dezenas — é ISSO que faz
+ * cada faceta pegar luz de um jeito diferente da vizinha, não um truque de
+ * shader.
  *
- * Geometria NÃO-indexada de propósito: cada triângulo recebe seus 3
- * vértices próprios (nunca compartilhados entre faces) — isso faz
- * `computeVertexNormals()` calcular uma normal genuinamente PLANA por face
- * (não uma média suavizada entre faces vizinhas), então cada faceta do
- * cristal responde à luz de forma independente e nítida — "cada face deve
- * responder à iluminação de forma diferente" — sem precisar de nenhuma
- * tabela de sombreamento manual: é o próprio motor de iluminação físico do
- * Three (`MeshPhysicalMaterial`) que resolve isso, lendo a normal real da
- * geometria.
+ * Geometria NÃO-indexada de propósito (mesmo princípio da Etapa 17): cada
+ * triângulo recebe seus 3 vértices próprios, então `computeVertexNormals()`
+ * calcula uma normal genuinamente PLANA por face — sem tabela de
+ * sombreamento manual, é o motor físico do Three (`MeshPhysicalMaterial`)
+ * que resolve o contraste lendo a normal real da geometria.
  */
 const CRYSTAL_SIDES = 8;
-const CRYSTAL_APEX_HEIGHT = 1.2;
-const CRYSTAL_GIRDLE_RADIUS = 0.95;
+const HALF_STEP = Math.PI / CRYSTAL_SIDES;
+
+const APEX_TOP_Y = 1.3;
+const APEX_BOTTOM_Y = -1.15;
+const CROWN_Y = 0.55;
+const CROWN_RADIUS = 0.72;
+const GIRDLE_Y = 0;
+const GIRDLE_RADIUS = 1.0;
+const PAVILION_Y = -0.62;
+const PAVILION_RADIUS = 0.5;
+
+type Point3 = readonly [number, number, number];
+
+function buildRing(radius: number, y: number, phase: number): Point3[] {
+  return Array.from({ length: CRYSTAL_SIDES }, (_, i) => {
+    const theta = phase + (i / CRYSTAL_SIDES) * Math.PI * 2;
+    return [Math.cos(theta) * radius, y, Math.sin(theta) * radius] as const;
+  });
+}
+
+/**
+ * Faixa "antiprisma" entre dois anéis girados meio-setor um em relação ao
+ * outro — cada `ringB[i]` fica angularmente ENTRE `ringA[i]` e
+ * `ringA[i+1]`, então a faixa fecha em `2 * CRYSTAL_SIDES` triângulos sem
+ * nenhum buraco, alternando a orientação da normal a cada triângulo (o
+ * "zigue-zague" que um corte de gema real usa pra multiplicar facetas).
+ * A ordem de enrolamento (winding) não precisa ser perfeita aqui: o
+ * material usa `side: THREE.DoubleSide` (ver `hero-legendary-crystal.tsx`)
+ * exatamente pra não depender de acertar a direção da normal fora pra
+ * dentro nesta construção geométrica — o próprio Three corrige o sinal da
+ * normal por fragmento conforme o lado visível.
+ */
+function pushAntiprismBand(positions: number[], ringA: Point3[], ringB: Point3[]): void {
+  for (let i = 0; i < CRYSTAL_SIDES; i += 1) {
+    const a0 = ringA[i] ?? [0, 0, 0];
+    const a1 = ringA[(i + 1) % CRYSTAL_SIDES] ?? [0, 0, 0];
+    const b0 = ringB[i] ?? [0, 0, 0];
+    const b1 = ringB[(i + 1) % CRYSTAL_SIDES] ?? [0, 0, 0];
+    positions.push(...a0, ...b0, ...a1);
+    positions.push(...a1, ...b0, ...b1);
+  }
+}
 
 export function createCrystalGeometry(): THREE.BufferGeometry {
   const positions: number[] = [];
 
-  const topApex: readonly [number, number, number] = [0, CRYSTAL_APEX_HEIGHT, 0];
-  const bottomApex: readonly [number, number, number] = [0, -CRYSTAL_APEX_HEIGHT, 0];
-  const girdle: Array<readonly [number, number, number]> = Array.from({ length: CRYSTAL_SIDES }, (_, i) => {
-    const theta = (i / CRYSTAL_SIDES) * Math.PI * 2;
-    return [Math.cos(theta) * CRYSTAL_GIRDLE_RADIUS, 0, Math.sin(theta) * CRYSTAL_GIRDLE_RADIUS] as const;
-  });
+  const topApex: Point3 = [0, APEX_TOP_Y, 0];
+  const bottomApex: Point3 = [0, APEX_BOTTOM_Y, 0];
+  const crownRing = buildRing(CROWN_RADIUS, CROWN_Y, 0);
+  const girdleRing = buildRing(GIRDLE_RADIUS, GIRDLE_Y, HALF_STEP);
+  const pavilionRing = buildRing(PAVILION_RADIUS, PAVILION_Y, 0);
 
-  const pushTriangle = (
-    a: readonly [number, number, number],
-    b: readonly [number, number, number],
-    c: readonly [number, number, number]
-  ) => {
-    positions.push(...a, ...b, ...c);
-  };
-
+  // Coroa — ápice de cima fechando no anel da coroa.
   for (let i = 0; i < CRYSTAL_SIDES; i += 1) {
-    const next = (i + 1) % CRYSTAL_SIDES;
-    const gi = girdle[i] ?? [0, 0, 0];
-    const gn = girdle[next] ?? [0, 0, 0];
-    // Coroa (topo) — ápice de cima + duas arestas consecutivas do anel.
-    pushTriangle(topApex, gi, gn);
-    // Pavilhão (base) — ápice de baixo, ordem invertida pra manter a
-    // normal (calculada por `computeVertexNormals`) apontando pra fora.
-    pushTriangle(bottomApex, gn, gi);
+    const a = crownRing[i] ?? [0, 0, 0];
+    const b = crownRing[(i + 1) % CRYSTAL_SIDES] ?? [0, 0, 0];
+    positions.push(...topApex, ...a, ...b);
+  }
+
+  // Bezel superior — coroa até a cintura (girada meio-setor: "torção" nº 1).
+  pushAntiprismBand(positions, crownRing, girdleRing);
+
+  // Bezel inferior — cintura até o pavilhão (torção nº 2, volta à fase da coroa).
+  pushAntiprismBand(positions, girdleRing, pavilionRing);
+
+  // Pavilhão — anel do pavilhão fechando no ápice de baixo.
+  for (let i = 0; i < CRYSTAL_SIDES; i += 1) {
+    const a = pavilionRing[i] ?? [0, 0, 0];
+    const b = pavilionRing[(i + 1) % CRYSTAL_SIDES] ?? [0, 0, 0];
+    positions.push(...bottomApex, ...b, ...a);
   }
 
   const geometry = new THREE.BufferGeometry();

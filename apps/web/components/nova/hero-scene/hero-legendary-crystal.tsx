@@ -44,31 +44,62 @@ interface HeroLegendaryCrystalProps {
  * à luz EXTERNA (`hero-lighting.tsx`). O núcleo continua existindo — "luz
  * atravessando as extremidades" ainda é real — mas menor e mais fraco, pra
  * ser um detalhe interno em vez de dominar a leitura da forma inteira.
+ *
+ * CONTROL OS — Etapa 17B (Hero Art Direction): "não pinte o cristal,
+ * construa um material." Quatro propriedades novas em relação ao v3, cada
+ * uma resolvendo um pedido literal do briefing: `attenuationColor` +
+ * `attenuationDistance` fazem a luz que atravessa a transmissão perder
+ * saturação/brilho conforme a espessura óptica real do sólido — "interior
+ * mais escuro, absorção interna" sem escurecer a superfície em si.
+ * `anisotropy` alonga o reflexo especular numa direção só (em vez de um
+ * ponto de brilho redondo) — a assinatura visual de metal escovado de
+ * precisão, não vidro genérico. `envMapIntensity` mais alto + `roughness`
+ * mais baixo concentram ainda mais o reflexo ("reflexos extremamente
+ * concentrados"). E `side: THREE.DoubleSide` é uma decisão técnica, não
+ * artística: com a geometria de 4 anéis (`hero-crystal-geometry.ts`) não há
+ * como confirmar visualmente a direção de cada normal dentro do sandbox
+ * (sem WebGL pra renderizar) — `DoubleSide` faz o Three corrigir o sinal da
+ * normal por fragmento não importa a ordem dos vértices, então nenhuma
+ * faceta pode nascer "invertida" (preta) por erro de winding.
+ *
+ * As arestas (`EdgesGeometry`) agora usam uma cor HDR (`multiplyScalar`
+ * empurra os canais acima de 1) — o Bloom lê cor linear ANTES do tone
+ * mapping, então uma aresta em HDR estoura o limiar de brilho de forma
+ * confiável mesmo com o material da coroa ficando mais escuro no geral,
+ * garantindo "bordas extremamente luminosas" mesmo quando a faceta ao lado
+ * está no escuro.
  */
 export function HeroLegendaryCrystal({ colorHex, colorBrightHex }: HeroLegendaryCrystalProps) {
   const geometry = React.useMemo(() => createCrystalGeometry(), []);
   const edgesGeometry = React.useMemo(() => new THREE.EdgesGeometry(geometry, 1), [geometry]);
+  const hdrEdgeColor = React.useMemo(() => new THREE.Color(colorBrightHex).multiplyScalar(2.2), [colorBrightHex]);
+  const attenuationColor = React.useMemo(() => new THREE.Color(colorHex).multiplyScalar(0.25), [colorHex]);
 
   return (
     <group>
       <mesh geometry={geometry}>
         <meshPhysicalMaterial
           color={colorHex}
-          metalness={0.82}
-          roughness={0.16}
-          transmission={0.12}
-          thickness={0.5}
+          side={THREE.DoubleSide}
+          metalness={0.9}
+          roughness={0.11}
+          transmission={0.16}
+          thickness={0.6}
           ior={1.5}
+          attenuationColor={attenuationColor}
+          attenuationDistance={0.35}
+          anisotropy={0.6}
+          anisotropyRotation={Math.PI / 4}
           clearcoat={1}
-          clearcoatRoughness={0.06}
+          clearcoatRoughness={0.04}
           emissive={colorHex}
-          emissiveIntensity={0.06}
-          envMapIntensity={2.6}
+          emissiveIntensity={0.05}
+          envMapIntensity={3.2}
         />
       </mesh>
 
       <lineSegments geometry={edgesGeometry}>
-        <lineBasicMaterial color={colorBrightHex} transparent opacity={0.5} toneMapped={false} />
+        <lineBasicMaterial color={hdrEdgeColor} transparent opacity={0.85} toneMapped={false} />
       </lineSegments>
 
       <mesh>
