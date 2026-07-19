@@ -148,25 +148,52 @@ const WAVE_INTERVAL_MS: Record<NovaOrbStatus, number> = {
  * exatamente os mesmos de antes, então a NOVA continua pixel-idêntica a
  * antes desta etapa.
  */
+/**
+ * CONTROL OS — Etapa 16J (Art Direction — material): a cor-base da NOVA
+ * mudou de roxo (`[139,92,246]`, o mesmo `accent-purple` usado no resto do
+ * produto) para azul/ciano/branco — decisão explícita do usuário ("jamais
+ * roxo sólido") depois de comparar a Orb com a referência visual. Escopo
+ * DELIBERADAMENTE restrito a este arquivo: `accent-purple` continua intacto
+ * em `tailwind.config.ts` e em todo o resto da interface (Sidebar, botões,
+ * badges, foco de input) — só a identidade PRÓPRIA da Orb/campo de energia
+ * muda; o "roxo de marca" do resto do produto não foi tocado nesta etapa.
+ */
 const PERSONA_BASE_GLOW_RGB: Record<NovaPersona, readonly [number, number, number]> = {
-  // Roxo é a cor de base da NOVA em todo o resto do produto (accent-purple).
-  nova: [139, 92, 246],
+  // Azul-ciano — "energia", nunca roxo sólido.
+  nova: [56, 189, 248],
   // Dourado/âmbar (accent-gold, `tailwind.config.ts`) — identidade própria
   // da LEGENDARY, nunca uma variação da paleta da NOVA.
   legendary: [217, 164, 85],
 };
 /** Só `'ouvindo'` usa esta variação — reforça "está escutando" sem introduzir uma terceira cor à identidade de cada persona. */
 const PERSONA_LISTENING_GLOW_RGB: Record<NovaPersona, readonly [number, number, number]> = {
-  // Tom azulado, ecoando os nós de destaque do `BackgroundNetwork`.
-  nova: [99, 141, 246],
+  // Ciano mais claro — "presença atenta", mesma família de cor da NOVA.
+  nova: [125, 211, 252],
   // Dourado mais claro e quente — "presença atenta" na mesma família de cor
   // da LEGENDARY, nunca azul (que pertence só à identidade da NOVA).
   legendary: [235, 199, 138],
 };
-/** Cor das partículas em si (pontos da esfera + partículas de execução) — mesma lógica de blend do glow, só mais clara/saturada. */
+/** Cor das partículas em si (pontos da esfera + partículas de execução) — mesma lógica de blend do glow, só mais clara/saturada (quase branca na NOVA — "branco, ciano" da referência). */
 const PERSONA_POINT_COLOR_RGB: Record<NovaPersona, readonly [number, number, number]> = {
-  nova: [196, 181, 253],
+  nova: [224, 242, 254],
   legendary: [240, 214, 168],
+};
+/**
+ * CONTROL OS — Etapa 16J: cor do "rim light" (aresta/borda muito clara,
+ * quase branca, concentrada — o efeito Fresnel de vidro/cristal real) e do
+ * ponto especular. Deliberadamente mais clara/mais branca que o glow
+ * principal acima — é essa diferença de temperatura entre o glow difuso e o
+ * rim/especular concentrado que faz o olho ler "material com espessura" em
+ * vez de "mancha de cor".
+ */
+const PERSONA_RIM_RGB: Record<NovaPersona, readonly [number, number, number]> = {
+  nova: [226, 250, 255],
+  legendary: [255, 246, 219],
+};
+/** Cor do campo de energia ao redor da Orb (CONTROL OS — Etapa 16K) — mesma família do glow principal, um pouco mais saturada. */
+const FIELD_COLOR_RGB: Record<NovaPersona, readonly [number, number, number]> = {
+  nova: [148, 226, 255],
+  legendary: [214, 168, 96],
 };
 
 function lerp(a: number, b: number, t: number): number {
@@ -242,6 +269,21 @@ const CRYSTAL_GEOMETRY: CrystalGeometry = buildCrystalGeometry();
 const CRYSTAL_LIGHT_DIR: readonly [number, number, number] = normalize3([-0.5, -0.8, 0.6]);
 const CRYSTAL_SHADE_DARK_RGB: readonly [number, number, number] = [52, 38, 18];
 const CRYSTAL_SHADE_BRIGHT_RGB: readonly [number, number, number] = [255, 226, 168];
+// CONTROL OS — Etapa 16J (Art Direction — material): direção da câmera fixa
+// (olhando direto pro cristal) — junto de `CRYSTAL_LIGHT_DIR`, dá o
+// "half-vector" de um Blinn-Phong simplificado. Como as duas direções nunca
+// mudam entre frames, o half-vector é calculado UMA VEZ aqui (não por
+// frame/face) — o especular concentrado ("um ponto de reflexo muito
+// concentrado", nunca difuso) sai praticamente de graça no orçamento de
+// performance.
+const CRYSTAL_VIEW_DIR: readonly [number, number, number] = [0, 0, 1];
+const CRYSTAL_HALF_VEC: readonly [number, number, number] = normalize3([
+  CRYSTAL_LIGHT_DIR[0] + CRYSTAL_VIEW_DIR[0],
+  CRYSTAL_LIGHT_DIR[1] + CRYSTAL_VIEW_DIR[1],
+  CRYSTAL_LIGHT_DIR[2] + CRYSTAL_VIEW_DIR[2],
+]);
+/** Expoente do termo especular — quanto maior, mais concentrado (menor) o hotspot. 28 dá um brilho pequeno e nítido, não uma mancha larga. */
+const CRYSTAL_SPECULAR_SHININESS = 28;
 
 /**
  * Multiplicadores da LEGENDARY sobre cada parâmetro de comportamento já
@@ -562,6 +604,29 @@ export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'no
       const legendaryGlowRgb = listeningNow ? PERSONA_LISTENING_GLOW_RGB.legendary : PERSONA_BASE_GLOW_RGB.legendary;
       const glowRgb = lerpRgb(novaGlowRgb, legendaryGlowRgb, personaBlend);
       const pointColorRgb = lerpRgb(PERSONA_POINT_COLOR_RGB.nova, PERSONA_POINT_COLOR_RGB.legendary, personaBlend);
+      // CONTROL OS — Etapa 16J (Art Direction — material): versões em TUPLA
+      // (não string) das mesmas cores acima — precisamos delas pra fazer uma
+      // SEGUNDA interpolação em cima (por profundidade do ponto, ou por luz
+      // de rebote no cristal) sem re-parsear string nenhuma a cada
+      // ponto/face. `lerpRgb` já aceita tuplas e devolve string — reusar o
+      // mesmo helper, nunca duplicar lógica de blend de cor.
+      const glowTuple: readonly [number, number, number] = [
+        lerp(novaGlowRgb[0], legendaryGlowRgb[0], personaBlend),
+        lerp(novaGlowRgb[1], legendaryGlowRgb[1], personaBlend),
+        lerp(novaGlowRgb[2], legendaryGlowRgb[2], personaBlend),
+      ];
+      const rimTuple: readonly [number, number, number] = [
+        lerp(PERSONA_RIM_RGB.nova[0], PERSONA_RIM_RGB.legendary[0], personaBlend),
+        lerp(PERSONA_RIM_RGB.nova[1], PERSONA_RIM_RGB.legendary[1], personaBlend),
+        lerp(PERSONA_RIM_RGB.nova[2], PERSONA_RIM_RGB.legendary[2], personaBlend),
+      ];
+      const pointColorTuple: readonly [number, number, number] = [
+        lerp(PERSONA_POINT_COLOR_RGB.nova[0], PERSONA_POINT_COLOR_RGB.legendary[0], personaBlend),
+        lerp(PERSONA_POINT_COLOR_RGB.nova[1], PERSONA_POINT_COLOR_RGB.legendary[1], personaBlend),
+        lerp(PERSONA_POINT_COLOR_RGB.nova[2], PERSONA_POINT_COLOR_RGB.legendary[2], personaBlend),
+      ];
+      const rimRgb = lerpRgb(PERSONA_RIM_RGB.nova, PERSONA_RIM_RGB.legendary, personaBlend);
+      const fieldColorRgb = lerpRgb(FIELD_COLOR_RGB.nova, FIELD_COLOR_RGB.legendary, personaBlend);
 
       // CONTROL OS — Etapa 11D: segunda camada de proteção contra o
       // "quadrado perceptível", além de conter cada gradiente ao seu
@@ -622,6 +687,26 @@ export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'no
       ctx.arc(cx, cy, radius * 1.3, 0, Math.PI * 2);
       ctx.fill();
 
+      // CONTROL OS — Etapa 16J (Art Direction — material): luz volumétrica
+      // vindo do pedestal — um facho vertical nascendo por baixo do objeto
+      // (mesmo princípio do `pedestal-glow-purple/gold` em CSS, Etapa 16A,
+      // agora dentro do próprio canvas, mais barato que um segundo elemento
+      // DOM) e subindo através dele. Composição ADITIVA ('lighter' — soma
+      // luz, nunca mistura cor por cima) — é essa luz "nascendo da física da
+      // cena" (uma fonte abaixo, não um brilho decorativo em volta) que
+      // ancora o objeto como pousado sobre algo, em vez de flutuando num
+      // vácuo sem direção.
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const pedestalShaft = ctx.createRadialGradient(cx, cy + radius * 0.75, 0, cx, cy + radius * 0.75, radius * 1.6);
+      pedestalShaft.addColorStop(0, `rgba(${glowRgb}, ${(0.1 + pulseGlowBoost * 0.3).toFixed(3)})`);
+      pedestalShaft.addColorStop(1, `rgba(${glowRgb}, 0)`);
+      ctx.fillStyle = pedestalShaft;
+      ctx.beginPath();
+      ctx.arc(cx, cy + radius * 0.75, radius * 1.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
       // Camada 2 — "material translúcido" (vidro líquido): preenchimento
       // com silhueta levemente deformada por ruído (nunca um círculo
       // geométrico perfeito — "como um organismo respirando") e um brilho
@@ -651,6 +736,20 @@ export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'no
       glass.addColorStop(1, 'rgba(255, 255, 255, 0)');
       ctx.fillStyle = glass;
       ctx.fill();
+      // CONTROL OS — Etapa 16J (Art Direction — material): rim light
+      // (Fresnel) — um traço fino e MUITO claro (quase branco/ciano),
+      // desenhado por cima do preenchimento com composição ADITIVA. Real
+      // vidro/energia concentra luz na borda, onde o ângulo de visão é mais
+      // raso ("dependente da orientação" — a borda inteira é a região de
+      // ângulo raso quando o objeto é visto de frente); é a diferença de
+      // temperatura entre este traço concentrado e o preenchimento difuso
+      // acima que faz o olho ler "material com espessura", não "círculo
+      // pintado". Reaproveita o MESMO path da silhueta (o Canvas mantém o
+      // path atual entre `fill()`/`stroke()` — só `beginPath()` o descarta).
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(${rimRgb}, ${(0.16 + pulseGlowBoost * 0.5).toFixed(3)})`;
+      ctx.lineWidth = Math.max(1, radius * 0.012);
+      ctx.stroke();
       ctx.restore();
 
       // Camada 3 — núcleo com pulso de batimento, muito suave ("quase
@@ -717,14 +816,34 @@ export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'no
           // Piso de 0.25 — mesmo em faces de sombra plena, o metal nunca
           // vira preto chapado ("iluminação de vitrine", nunca um recorte).
           const lambert = Math.max(0, dot3(normal, CRYSTAL_LIGHT_DIR)) * 0.75 + 0.25;
-          return { v0, v1, v2, depth: centroid[2], lambert };
+          // CONTROL OS — Etapa 16J (Art Direction — material): termo
+          // especular (Blinn-Phong simplificado, `CRYSTAL_HALF_VEC` já
+          // calculado uma única vez fora do loop de frames) — cada face
+          // responde à luz de forma DIFERENTE (não só mais clara/escura por
+          // lambert): só 1-2 faces quase alinhadas com a luz recebem um
+          // hotspot pequeno e concentrado — "um ponto de reflexo muito
+          // concentrado", nunca um brilho espalhado por igual.
+          const spec = Math.pow(Math.max(0, dot3(normal, CRYSTAL_HALF_VEC)), CRYSTAL_SPECULAR_SHININESS);
+          return { v0, v1, v2, centroidY: centroid[1], depth: centroid[2], lambert, spec };
         });
         facesWithDepth.sort((a, b) => a.depth - b.depth);
 
         ctx.save();
         ctx.globalAlpha = personaBlend;
         for (const face of facesWithDepth) {
-          const shade = lerpRgb(CRYSTAL_SHADE_DARK_RGB, CRYSTAL_SHADE_BRIGHT_RGB, Math.min(1, face.lambert));
+          // CONTROL OS — Etapa 16J (Art Direction — material): "luz de
+          // rebote" vinda do pedestal — faces na metade INFERIOR do cristal
+          // (mais perto da luz do pedestal, `centroidY > 0`) recebem uma
+          // mistura da cor de brilho da persona, mais forte quanto mais na
+          // sombra a face já está (`1 - lambert`). Sem isso, faces viradas
+          // pra baixo ficariam num cinza/marrom morto — luz real nunca some
+          // por completo perto de uma fonte forte, ela "quica" e preenche a
+          // sombra com a cor dessa fonte.
+          const shadeR = lerp(CRYSTAL_SHADE_DARK_RGB[0], CRYSTAL_SHADE_BRIGHT_RGB[0], Math.min(1, face.lambert));
+          const shadeG = lerp(CRYSTAL_SHADE_DARK_RGB[1], CRYSTAL_SHADE_BRIGHT_RGB[1], Math.min(1, face.lambert));
+          const shadeB = lerp(CRYSTAL_SHADE_DARK_RGB[2], CRYSTAL_SHADE_BRIGHT_RGB[2], Math.min(1, face.lambert));
+          const bounceMix = Math.min(1, Math.max(0, face.centroidY) / 0.3) * 0.4 * (1 - face.lambert);
+          const shade = lerpRgb([shadeR, shadeG, shadeB], glowTuple, bounceMix);
           const p0 = { x: cx + face.v0[0] * radius, y: cy + face.v0[1] * radius * DEPTH_SQUASH };
           const p1 = { x: cx + face.v1[0] * radius, y: cy + face.v1[1] * radius * DEPTH_SQUASH };
           const p2 = { x: cx + face.v2[0] * radius, y: cy + face.v2[1] * radius * DEPTH_SQUASH };
@@ -735,12 +854,44 @@ export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'no
           ctx.closePath();
           ctx.fillStyle = `rgba(${shade}, 0.92)`;
           ctx.fill();
+          // Especular concentrado — só as 1-2 faces quase alinhadas com a
+          // luz acendem (`spec` cai rapidamente pro resto), nunca um brilho
+          // uniforme por toda a peça. Reaproveita o MESMO path da face
+          // (ainda corrente — precisa vir ANTES de qualquer outro
+          // `beginPath()`, senão preenche o path errado).
+          if (face.spec > 0.015) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.fillStyle = `rgba(${rimRgb}, ${Math.min(0.85, face.spec).toFixed(3)})`;
+            ctx.fill();
+            ctx.restore();
+          }
           // Aresta com aceso dourado — "gold edge lighting" da referência —
           // mais forte nas faces já mais claras (reforça o volume, nunca
-          // um contorno uniforme tipo cartoon).
+          // um contorno uniforme tipo cartoon). Também precisa vir antes do
+          // path do reflexo interno abaixo, mesmo motivo.
           ctx.strokeStyle = `rgba(${glowRgb}, ${(0.22 + face.lambert * 0.28).toFixed(3)})`;
           ctx.lineWidth = 0.7;
           ctx.stroke();
+          // "Reflexo interno / espessura aparente": um triângulo menor,
+          // encolhido em direção ao centroide desta MESMA face, preenchido
+          // bem fraco e em ADITIVO — sugere uma segunda superfície logo
+          // abaixo da face externa, como luz entrando e batendo numa parede
+          // interna do cristal, em vez de uma casca infinitamente fina.
+          // Path próprio (não reaproveita o da face) — só usado aqui.
+          const cxFace = (p0.x + p1.x + p2.x) / 3;
+          const cyFace = (p0.y + p1.y + p2.y) / 3;
+          const inset = 0.62;
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.beginPath();
+          ctx.moveTo(cxFace + (p0.x - cxFace) * inset, cyFace + (p0.y - cyFace) * inset);
+          ctx.lineTo(cxFace + (p1.x - cxFace) * inset, cyFace + (p1.y - cyFace) * inset);
+          ctx.lineTo(cxFace + (p2.x - cxFace) * inset, cyFace + (p2.y - cyFace) * inset);
+          ctx.closePath();
+          ctx.fillStyle = `rgba(${rimRgb}, ${(0.05 + face.lambert * 0.05).toFixed(3)})`;
+          ctx.fill();
+          ctx.restore();
         }
         ctx.restore();
       }
@@ -813,8 +964,21 @@ export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'no
       projected.sort((a, b) => a.z - b.z);
       ctx.save();
       ctx.globalAlpha = 1 - personaBlend;
+      // CONTROL OS — Etapa 16J (Art Direction — material): composição
+      // ADITIVA — onde partículas se sobrepõem (mais denso perto do
+      // núcleo), a luz agora SOMA em vez de só empilhar transparência.
+      // Isso é o que faz a nuvem ler como "emissão de energia" (fótons se
+      // acumulando) em vez de "poeira" (grãos opacos por cima uns dos
+      // outros). Cor também varia por profundidade: pontos na frente
+      // (`z` perto de 1) puxam pro tom quase-branco do rim light, pontos no
+      // fundo ficam na cor base do glow — a mesma partícula muda de
+      // temperatura conforme "gira pra frente", não é uma nuvem
+      // uniformemente colorida.
+      ctx.globalCompositeOperation = 'lighter';
       for (const point of projected) {
-        ctx.fillStyle = `rgba(${pointColorRgb}, ${Math.min(1, point.opacity * brightness).toFixed(3)})`;
+        const depthTint = Math.max(0, Math.min(1, point.z));
+        const tint = lerpRgb(pointColorTuple, rimTuple, depthTint * 0.7);
+        ctx.fillStyle = `rgba(${tint}, ${Math.min(1, point.opacity * brightness).toFixed(3)})`;
         ctx.beginPath();
         ctx.arc(point.x, point.y, point.size, 0, Math.PI * 2);
         ctx.fill();
@@ -849,6 +1013,23 @@ export function NovaOrb({ status = 'idle', className, pulseSignal, persona = 'no
       ctx.beginPath();
       ctx.ellipse(cx, cy, radius * 1.05, radius * 1.05 * DEPTH_SQUASH, 0, 0, Math.PI * 2);
       ctx.fill();
+
+      // CONTROL OS — Etapa 16J (Art Direction — material): ponto especular
+      // CONCENTRADO — um segundo reflexo, bem menor e mais intenso, DENTRO
+      // do halo suave acima, em composição aditiva. É a diferença entre um
+      // brilho difuso espalhado (o que já existia) e um ponto de luz
+      // pequeno e forte (o que falta) que faz o olho ler "vidro/metal
+      // polido" em vez de "plástico fosco, iluminação uniforme".
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const specular = ctx.createRadialGradient(highlightX, highlightY, 0, highlightX, highlightY, radius * 0.16);
+      specular.addColorStop(0, `rgba(${rimRgb}, ${(0.4 + pulseGlowBoost).toFixed(3)})`);
+      specular.addColorStop(1, `rgba(${rimRgb}, 0)`);
+      ctx.fillStyle = specular;
+      ctx.beginPath();
+      ctx.arc(highlightX, highlightY, radius * 0.16, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
 
       ctx.restore(); // fecha o clip circular aberto no início da função
 
