@@ -47,7 +47,9 @@ export function LoginForm() {
     setIsSubmitting(true);
     try {
       await login(submittedEmail, submittedPassword);
-      router.push('/nova');
+      // CONTROL OS — Home/Dashboard (Design Lab → implementação oficial):
+      // Home passou de /nova (chat) para /dashboard (Visão geral).
+      router.push('/dashboard');
     } finally {
       setIsSubmitting(false);
     }

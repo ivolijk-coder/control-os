@@ -168,9 +168,10 @@ export function Sidebar() {
           isMobile ? 'fixed inset-y-0 left-0 z-50 shadow-e5' : 'relative'
         )}
       >
-        {/* Cabeçalho / marca — leva para a Home conversacional (/nova) */}
+        {/* Cabeçalho / marca — leva para a Home (Design Lab → implementação
+            oficial: /dashboard, "Visão geral", não mais /nova). */}
         <div className="flex h-16 items-center gap-3 px-5">
-          <Link href="/nova" className="group flex min-w-0 flex-1 items-center gap-3">
+          <Link href="/dashboard" className="group flex min-w-0 flex-1 items-center gap-3">
             {/* Etapa 16C: glow branco discreto e permanente atrás da marca —
                 "presença viva", nunca só no hover — reforçado no hover
                 (group-hover) sem depender só do scale existente. */}

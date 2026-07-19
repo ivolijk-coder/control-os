@@ -52,9 +52,18 @@ export const MOCK_SPACES: ControlSpace[] = [
  * item de menu quebrado desde a Fase 1) foram removidos daqui; cada módulo
  * novo só entra nesta lista no mesmo momento em que sua página é criada,
  * pra nunca existir um link morto no meio do caminho.
+ *
+ * CONTROL OS — Home/Dashboard (Design Lab → implementação oficial):
+ * `nav_nova` virou `nav_visao_geral`, apontando pra `/dashboard` em vez de
+ * `/nova` — a Home passou de "chat-first" pra "dashboard operacional
+ * primeiro" (ver HANDOFF-control-os-design.md: "o protagonista da Home é
+ * o SaaS, não a IA"). `/nova` continua existindo como rota do chat
+ * completo, só deixou de ser o destino padrão. "Missões" foi mantido aqui
+ * mesmo não aparecendo na grade nova do protótipo — nada foi pedido pra
+ * removê-lo, e ele já é uma página real e funcional.
  */
 export const MOCK_NAV_ITEMS_VIDA: NavItem[] = [
-  { id: 'nav_nova', label: 'Nova', href: '/nova', icon: 'Sparkles' },
+  { id: 'nav_visao_geral', label: 'Visão geral', href: '/dashboard', icon: 'LayoutGrid' },
   { id: 'nav_financeiro', label: 'Financeiro', href: '/financeiro', icon: 'Wallet' },
   { id: 'nav_agenda', label: 'Agenda', href: '/agenda', icon: 'CalendarClock' },
   { id: 'nav_metas', label: 'Metas', href: '/metas', icon: 'Trophy' },
@@ -66,8 +75,11 @@ export const MOCK_NAV_ITEMS_VIDA: NavItem[] = [
   { id: 'nav_missoes', label: 'Missões', href: '/missoes', icon: 'Target', badge: 5 },
 ];
 
+// `nav_dashboard` (Empresa → Dashboard) foi removido: apontava pra
+// `/dashboard`, a mesma rota que virou "Visão geral" em Minha Vida — dois
+// itens de menu pro mesmo destino ficaria confuso agora que o conteúdo da
+// página mudou de propósito.
 export const MOCK_NAV_ITEMS_EMPRESA: NavItem[] = [
-  { id: 'nav_dashboard', label: 'Dashboard', href: '/dashboard', icon: 'LayoutGrid' },
   { id: 'nav_timeline', label: 'Timeline', href: '/timeline', icon: 'Activity', badge: 3 },
 ];
 
