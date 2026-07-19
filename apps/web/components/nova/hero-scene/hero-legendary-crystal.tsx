@@ -2,11 +2,42 @@
 
 import * as React from 'react';
 import * as THREE from 'three';
+import { Billboard } from '@react-three/drei';
 import { createCrystalGeometry } from './hero-crystal-geometry';
 
 interface HeroLegendaryCrystalProps {
   colorHex: string;
   colorBrightHex: string;
+}
+
+const GLYPH_TEXTURE_SIZE = 256;
+
+/**
+ * Textura de glifo holográfico ("L") gerada por canvas 2D — mesmo princípio
+ * de `hero-nova-core.tsx` (duplicado aqui de propósito: cada arquivo da
+ * Hero Scene fica autocontido, sem um módulo compartilhado extra só pra
+ * uma função de ~15 linhas). Nenhuma fonte externa, nenhum asset de rede.
+ */
+function createGlyphTexture(letter: string, color: string): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = GLYPH_TEXTURE_SIZE;
+  canvas.height = GLYPH_TEXTURE_SIZE;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    const center = GLYPH_TEXTURE_SIZE / 2;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `700 ${GLYPH_TEXTURE_SIZE * 0.56}px system-ui, sans-serif`;
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = GLYPH_TEXTURE_SIZE * 0.16;
+    ctx.fillText(letter, center, center * 1.03);
+    ctx.shadowBlur = 0;
+    ctx.fillText(letter, center, center * 1.03);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
 }
 
 /**
@@ -92,12 +123,21 @@ interface HeroLegendaryCrystalProps {
  * direcionais/pontuais já presentes na cena (que não dependem de ângulo de
  * reflexão especular), então nunca mais fica pura preta — o `clearcoat`
  * continua garantindo o brilho especular concentrado por cima disso.
+ *
+ * CONTROL OS — Etapa 17C (identidade de marca): mesmo tratamento do
+ * núcleo da NOVA — um glifo holográfico ("L") em `<Billboard>` preso ao
+ * centro do cristal, a assinatura visual que faz reconhecer "isso é
+ * LEGENDARY" mesmo sem nenhum texto ao redor. Geometria/material do
+ * cristal em si NÃO foram tocados nesta rodada — depois de duas correções
+ * de renderização seguidas, a prioridade agora é não mexer no que já foi
+ * verificado como funcionando.
  */
 export function HeroLegendaryCrystal({ colorHex, colorBrightHex }: HeroLegendaryCrystalProps) {
   const geometry = React.useMemo(() => createCrystalGeometry(), []);
   const edgesGeometry = React.useMemo(() => new THREE.EdgesGeometry(geometry, 1), [geometry]);
   const hdrEdgeColor = React.useMemo(() => new THREE.Color(colorBrightHex).multiplyScalar(2.2), [colorBrightHex]);
   const attenuationColor = React.useMemo(() => new THREE.Color(colorHex).multiplyScalar(0.25), [colorHex]);
+  const glyphTexture = React.useMemo(() => createGlyphTexture('L', colorBrightHex), [colorBrightHex]);
 
   return (
     <group>
@@ -131,6 +171,21 @@ export function HeroLegendaryCrystal({ colorHex, colorBrightHex }: HeroLegendary
         <meshBasicMaterial color={colorBrightHex} toneMapped={false} />
       </mesh>
       <pointLight color={colorHex} intensity={1.3} distance={3} decay={2} />
+
+      {/* Glifo holográfico — a assinatura de marca, sempre de frente pra câmera. */}
+      <Billboard>
+        <mesh>
+          <planeGeometry args={[0.5, 0.5]} />
+          <meshBasicMaterial
+            map={glyphTexture}
+            transparent
+            opacity={0.8}
+            depthWrite={false}
+            toneMapped={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </mesh>
+      </Billboard>
     </group>
   );
 }

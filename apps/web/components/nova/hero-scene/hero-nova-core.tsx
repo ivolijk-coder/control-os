@@ -3,6 +3,7 @@
 import * as React from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
+import { Billboard } from '@react-three/drei';
 
 interface HeroNovaCoreProps {
   colorHex: string;
@@ -58,6 +59,40 @@ function createGlowTexture(): THREE.CanvasTexture {
   return texture;
 }
 
+const GLYPH_TEXTURE_SIZE = 256;
+
+/**
+ * Textura de glifo holográfico ("N") gerada por canvas 2D — nenhuma fonte
+ * externa, nenhum `TextGeometry`/arquivo `.json` de fonte carregado: só
+ * `ctx.fillText` com a fonte do sistema, desenhada duas vezes (uma com
+ * `shadowBlur` pro halo, outra sem, pra manter o traço nítido no centro)
+ * — o mesmo princípio de `createGlowTexture` acima, aplicado a texto em
+ * vez de um gradiente. Usado num `<Billboard>` (drei) pra girar sempre de
+ * frente pra câmera, como um HUD/holograma de verdade, nunca "colado" na
+ * superfície de um objeto que gira.
+ */
+function createGlyphTexture(letter: string, color: string): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = GLYPH_TEXTURE_SIZE;
+  canvas.height = GLYPH_TEXTURE_SIZE;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    const center = GLYPH_TEXTURE_SIZE / 2;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `700 ${GLYPH_TEXTURE_SIZE * 0.56}px system-ui, sans-serif`;
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = GLYPH_TEXTURE_SIZE * 0.16;
+    ctx.fillText(letter, center, center * 1.03);
+    ctx.shadowBlur = 0;
+    ctx.fillText(letter, center, center * 1.03);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
+
 /**
  * CONTROL OS — Etapa 17 (Hero Scene R3F): núcleo energético da NOVA —
  * "Não quero desenhar uma orb. Quero renderizar um núcleo energético."
@@ -95,6 +130,17 @@ function createGlowTexture(): THREE.CanvasTexture {
  * (gradiente gerado por canvas, sem asset externo) preso ao núcleo — o
  * "plasma" que a referência mostra como uma mancha de luz suave ao redor do
  * núcleo, não um degradê pintado na esfera em si.
+ *
+ * CONTROL OS — Etapa 17C (identidade de marca): "a esfera deve quase
+ * desaparecer... núcleo pequeno e extremamente brilhante... anéis muito
+ * mais finos... um símbolo 'N' holográfico." A casca de vidro encolhe mais
+ * uma vez (raio 0.52 → 0.34) e o núcleo também (0.24 → 0.18, mas com luz
+ * mais forte) — "pequeno" e "brilhante" não são a mesma coisa que "grande
+ * e brilhante". Os anéis perdem quase metade da espessura (0.014 → 0.008
+ * no principal) — "precisos", não "grossos". Novo: um `<Billboard>` com um
+ * glifo "N" holográfico (`createGlyphTexture`) preso ao núcleo — a
+ * assinatura visual que faz alguém reconhecer "isso é CONTROL OS" mesmo
+ * sem nenhum texto ao redor, o ponto central do feedback recebido.
  */
 export function HeroNovaCore({ colorHex, colorBrightHex }: HeroNovaCoreProps) {
   const ringGroupA = React.useRef<THREE.Group>(null);
@@ -104,6 +150,7 @@ export function HeroNovaCore({ colorHex, colorBrightHex }: HeroNovaCoreProps) {
 
   const particlePositions = React.useMemo(() => createParticlePositions(PARTICLE_COUNT, 1.0, 2.1), []);
   const glowTexture = React.useMemo(() => createGlowTexture(), []);
+  const glyphTexture = React.useMemo(() => createGlyphTexture('N', colorBrightHex), [colorBrightHex]);
 
   useFrame((_state, delta) => {
     if (ringGroupA.current) ringGroupA.current.rotation.z += delta * 0.35;
@@ -114,62 +161,77 @@ export function HeroNovaCore({ colorHex, colorBrightHex }: HeroNovaCoreProps) {
 
   return (
     <group>
-      {/* Glow aditivo — o "plasma" ao redor do núcleo, não um degradê na esfera. */}
-      <sprite scale={[2.4, 2.4, 1]}>
+      {/* Glow aditivo — o "plasma" ao redor do núcleo, mais forte que antes. */}
+      <sprite scale={[2.8, 2.8, 1]}>
         <spriteMaterial
           map={glowTexture}
           color={colorBrightHex}
           transparent
-          opacity={0.5}
+          opacity={0.62}
           depthWrite={false}
           toneMapped={false}
           blending={THREE.AdditiveBlending}
         />
       </sprite>
 
-      {/* Núcleo emissivo — a fonte de luz real da cena, não uma mancha pintada. */}
+      {/* Núcleo emissivo — pequeno e extremamente brilhante, nunca "grande e brilhante". */}
       <mesh>
-        <sphereGeometry args={[0.24, 32, 32]} />
+        <sphereGeometry args={[0.18, 32, 32]} />
         <meshBasicMaterial color={colorBrightHex} toneMapped={false} />
       </mesh>
-      <pointLight color={colorHex} intensity={4.5} distance={4} decay={2} />
+      <pointLight color={colorHex} intensity={5.5} distance={4} decay={2} />
 
-      {/* Casca de energia — reduzida de propósito, quase invisível: só um resquício de vidro, nunca "a bola". */}
+      {/* Glifo holográfico — a assinatura de marca, sempre de frente pra câmera. */}
+      <Billboard>
+        <mesh>
+          <planeGeometry args={[0.6, 0.6]} />
+          <meshBasicMaterial
+            map={glyphTexture}
+            transparent
+            opacity={0.85}
+            depthWrite={false}
+            toneMapped={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </mesh>
+      </Billboard>
+
+      {/* Casca de energia — quase invisível: só um resquício de vidro, nunca "a bola". */}
       <mesh>
-        <sphereGeometry args={[0.52, 64, 64]} />
+        <sphereGeometry args={[0.34, 64, 64]} />
         <meshPhysicalMaterial
           color={colorHex}
-          transmission={0.85}
-          roughness={0.22}
-          thickness={0.4}
+          transmission={0.92}
+          roughness={0.24}
+          thickness={0.3}
           ior={1.35}
           metalness={0}
-          clearcoat={0.6}
-          clearcoatRoughness={0.25}
+          clearcoat={0.3}
+          clearcoatRoughness={0.3}
           emissive={colorHex}
-          emissiveIntensity={0.14}
-          envMapIntensity={1.4}
+          emissiveIntensity={0.12}
+          envMapIntensity={1.2}
         />
       </mesh>
 
-      {/* Anel principal — o "halo" da referência: mais espesso, mais brilhante, a peça que domina a leitura da forma. */}
+      {/* Anel principal — fino e preciso, não mais o elemento mais grosso da cena. */}
       <group ref={ringGroupA} rotation={[Math.PI / 2.3, 0, 0]}>
         <mesh>
-          <torusGeometry args={[1.55, 0.014, 8, 96]} />
+          <torusGeometry args={[1.7, 0.008, 8, 96]} />
           <meshBasicMaterial color={colorBrightHex} toneMapped={false} transparent opacity={0.85} />
         </mesh>
       </group>
-      {/* Anéis secundários — mais finos e discretos, complementam sem competir com o anel principal. */}
+      {/* Anéis secundários — ainda mais finos, hierarquia clara em relação ao principal. */}
       <group ref={ringGroupB} rotation={[0, 0, Math.PI / 3.4]}>
         <mesh>
-          <torusGeometry args={[1.3, 0.005, 8, 96]} />
-          <meshBasicMaterial color={colorHex} toneMapped={false} transparent opacity={0.3} />
+          <torusGeometry args={[1.45, 0.003, 8, 96]} />
+          <meshBasicMaterial color={colorHex} toneMapped={false} transparent opacity={0.22} />
         </mesh>
       </group>
       <group ref={ringGroupC} rotation={[Math.PI / 5, Math.PI / 6, 0]}>
         <mesh>
-          <torusGeometry args={[0.85, 0.005, 8, 96]} />
-          <meshBasicMaterial color={colorHex} toneMapped={false} transparent opacity={0.35} />
+          <torusGeometry args={[1.05, 0.003, 8, 96]} />
+          <meshBasicMaterial color={colorHex} toneMapped={false} transparent opacity={0.25} />
         </mesh>
       </group>
 

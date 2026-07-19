@@ -176,6 +176,19 @@ function HeroSceneContent({ status, pulseSignal, persona }: HeroSceneContentProp
  * 6.6 pra 6.2 na correção seguinte — um objeto já pequeno na tela é a
  * pior combinação possível com qualquer problema de iluminação/geometria
  * residual: mais margem de segurança visual sem abrir mão do reenquadramento.)
+ *
+ * CONTROL OS — Etapa 17C (identidade de marca): "diminuiria a Hero Scene
+ * em uns 30%... muito espaço vazio faz tudo parecer mais premium" e "a
+ * câmera hoje está praticamente frontal — testaria um leve ângulo de
+ * cima." Câmera recuada mais uma vez (z: 6.2 → 9.0) e a lente fecha um
+ * pouco (fov: 36 → 33, menos distorção de perspectiva — mais "still de
+ * produto", menos "grande angular") — juntos, isso reduz a área que o
+ * Hero Object ocupa no quadro em ~25–30% sem tocar em nenhuma escala
+ * própria do objeto. `position.y` sobe (0.5 → 1.5): como nenhuma
+ * `rotation` é passada em `camera`, o R3F automaticamente aponta a câmera
+ * pra origem (`camera.lookAt(0,0,0)`, comportamento padrão quando
+ * `camera.rotation` não é definido) — então subir o Y sozinho já cria o
+ * "leve ângulo de cima" pedido, sem nenhuma matemática de rotação manual.
  */
 export function NovaHeroScene({ status = 'idle', pulseSignal, persona = 'nova', className }: NovaHeroSceneProps) {
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
@@ -185,7 +198,7 @@ export function NovaHeroScene({ status = 'idle', pulseSignal, persona = 'nova', 
       <Canvas
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
-        camera={{ fov: 36, position: [0, 0.5, 6.2], near: 0.1, far: 50 }}
+        camera={{ fov: 33, position: [0, 1.5, 9.0], near: 0.1, far: 50 }}
         frameloop={prefersReducedMotion ? 'demand' : 'always'}
         performance={{ min: 0.4 }}
         onCreated={({ gl }) => {

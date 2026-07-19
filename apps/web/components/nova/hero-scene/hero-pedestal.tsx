@@ -9,9 +9,12 @@ interface HeroPedestalProps {
   colorBrightHex: string;
 }
 
-const RING_COUNT = 4;
+const RING_COUNT = 6;
+const RING_HEIGHT = 0.14;
+const RING_BASE_RADIUS = 1.6;
+const RING_RADIUS_STEP = 0.16;
 const BASE_Y = -1.6;
-const CHANNEL_COUNT = 12;
+const CHANNEL_COUNT = 10;
 
 interface PedestalChannelsProps {
   radius: number;
@@ -91,36 +94,44 @@ function PedestalChannels({ radius, y, height, color }: PedestalChannelsProps) {
  * lia como cilindros pretos sólidos em vez de "metal escuro". `metalness`
  * desce pra 0.5 pelo mesmo motivo: ganhar resposta difusa real às luzes da
  * cena.
+ *
+ * CONTROL OS — Etapa 17C (identidade de marca): "hoje ele parece um
+ * pedestal. Na referência ele parece uma máquina... mais detalhes, mais
+ * níveis e emissões DISCRETAS." Dois ajustes: mais níveis (4 → 6, cada um
+ * mais baixo — `RING_HEIGHT` menor — pra caber sem esticar a base) leem
+ * como "peça usinada complexa" em vez de "3 degraus simples"; e as
+ * emissões (canaletas, anel de luz) ficam mais finas e com opacidade mais
+ * baixa — "discreto" é o oposto de "brilhante", mesmo princípio de "menos
+ * elementos, mais direção de arte" já aplicado no resto da cena.
  */
 export function HeroPedestal({ colorHex, colorBrightHex }: HeroPedestalProps) {
   return (
     <group position={[0, BASE_Y, 0]}>
       {Array.from({ length: RING_COUNT }, (_, i) => {
-        const radius = 1.9 - i * 0.32;
-        const height = 0.2;
-        const y = i * height;
+        const radius = RING_BASE_RADIUS - i * RING_RADIUS_STEP;
+        const y = i * RING_HEIGHT;
         const metalColor = i % 2 === 0 ? '#1c1c20' : '#151519';
         return (
           <group key={i}>
             <mesh position={[0, y, 0]}>
-              <cylinderGeometry args={[radius, radius * 1.08, height, 48]} />
+              <cylinderGeometry args={[radius, radius * 1.06, RING_HEIGHT, 48]} />
               <meshStandardMaterial color={metalColor} metalness={0.5} roughness={0.34} />
             </mesh>
-            <PedestalChannels radius={radius * 1.005} y={y} height={height * 0.72} color={colorBrightHex} />
+            <PedestalChannels radius={radius * 1.005} y={y} height={RING_HEIGHT * 0.6} color={colorBrightHex} />
             {/* Sulco — borda escura recuada, logo abaixo da tira emissiva. */}
-            <mesh position={[0, y + height / 2 - 0.01, 0]}>
-              <torusGeometry args={[radius * 0.965, 0.01, 8, 64]} />
+            <mesh position={[0, y + RING_HEIGHT / 2 - 0.008, 0]}>
+              <torusGeometry args={[radius * 0.97, 0.008, 8, 64]} />
               <meshStandardMaterial color="#050505" metalness={0.7} roughness={0.5} />
             </mesh>
-            {/* Anel emissivo — a tira de luz que corre no topo de cada nível. */}
-            <mesh position={[0, y + height / 2 + 0.006, 0]}>
-              <torusGeometry args={[radius * 0.98, 0.022, 8, 64]} />
-              <meshBasicMaterial color={colorBrightHex} toneMapped={false} />
+            {/* Anel emissivo — mais fino, mais discreto que a versão anterior. */}
+            <mesh position={[0, y + RING_HEIGHT / 2 + 0.005, 0]}>
+              <torusGeometry args={[radius * 0.985, 0.013, 8, 64]} />
+              <meshBasicMaterial color={colorBrightHex} toneMapped={false} transparent opacity={0.8} />
             </mesh>
           </group>
         );
       })}
-      <pointLight position={[0, RING_COUNT * 0.2 + 0.3, 0]} intensity={2} color={colorHex} distance={4} decay={2} />
+      <pointLight position={[0, RING_COUNT * RING_HEIGHT + 0.3, 0]} intensity={2} color={colorHex} distance={4} decay={2} />
       <pointLight position={[0, 0.04, 0]} intensity={1.1} color={colorHex} distance={2.6} decay={2} />
 
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]}>
