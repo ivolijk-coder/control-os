@@ -59,12 +59,29 @@ export interface RevenueIntent extends NovaIntentBase {
 export interface ReminderIntent extends NovaIntentBase {
   kind: 'criar_lembrete';
   title: string;
+  /**
+   * CONTROL OS — Etapa 14 (Execution Engine): antes deste campo, "Me lembra
+   * de pagar o IPVA amanhã às 9" perdia a data mencionada — o lembrete
+   * nascia sem nenhum vínculo de quando. Prazo em ISO (`YYYY-MM-DD`), quando
+   * o usuário menciona um (mesmo padrão de `GoalIntent.dueDate`).
+   */
+  dueDate?: string;
+  /** Horário no formato `HH:MM`, quando mencionado (ex.: "às 9h" → "09:00"). */
+  time?: string;
 }
 
 export interface AgendaIntent extends NovaIntentBase {
   kind: 'criar_agenda';
   title: string;
   time?: string;
+  /**
+   * CONTROL OS — Etapa 14 (Execution Engine): antes deste campo, todo
+   * compromisso criado por conversa nascia com a data de hoje, mesmo quando
+   * o usuário dizia "sexta" ou "semana que vem" — a data mencionada era
+   * descartada. Data em ISO (`YYYY-MM-DD`); quando ausente, o compromisso
+   * continua caindo em hoje (mesmo comportamento de antes).
+   */
+  date?: string;
 }
 
 export interface GoalIntent extends NovaIntentBase {
@@ -176,6 +193,13 @@ export type NovaActionKind =
   | 'criar_divida'
   | 'criar_habito'
   | 'criar_viagem'
+  // CONTROL OS — Etapa 14 (Execution Engine): sub-efeitos de `criar_viagem`
+  // quando a NOVA encadeia checklist/orçamento na mesma execução (ver
+  // `CreateTripAction`) — cada um vira seu próprio `NovaActionResult`, mesmo
+  // padrão já usado por `criar_evento_agenda`/`criar_missao` (que também
+  // não são "a ação inteira", só um efeito de uma execução maior).
+  | 'criar_checklist_viagem'
+  | 'sugerir_orcamento_viagem'
   | 'criar_documento'
   | 'criar_bem'
   | 'criar_nota'

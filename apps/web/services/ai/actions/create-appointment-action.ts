@@ -5,6 +5,8 @@ import type { Action } from './types';
 export interface CreateAppointmentInput {
   title: string;
   time?: string;
+  /** Ver `AgendaIntent.date` — data em ISO (`YYYY-MM-DD`), quando mencionada. */
+  date?: string;
 }
 
 /**
@@ -22,6 +24,7 @@ export class CreateAppointmentAction implements Action {
       raw: this.input.title,
       title: this.input.title,
       time: this.input.time,
+      date: this.input.date,
     });
   }
 }

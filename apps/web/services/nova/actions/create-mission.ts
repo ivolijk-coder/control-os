@@ -46,9 +46,23 @@ function createMissionFromBlueprint(
   };
 }
 
-/** "Lembrar de pagar o DAS" → Criar missão → Criar lembrete → Adicionar calendário. */
+/**
+ * "Lembrar de pagar o DAS" → Criar missão → Criar lembrete → Adicionar calendário.
+ *
+ * CONTROL OS — Etapa 14 (Execution Engine): `Mission` não tem campo de
+ * horário (só `dueDate`, uma data) — "Me lembra de pagar o IPVA amanhã às
+ * 9" incorpora o horário no próprio título (`"pagar o IPVA às 09:00"`) em
+ * vez de perder essa parte da frase, mesmo padrão de normalização já usado
+ * pra "só mês/ano" em `GoalIntent.dueDate`.
+ */
 export function createReminder(ctx: NovaContext, intent: ReminderIntent): NovaActionResult[] {
-  const { results } = createMissionFromBlueprint(ctx, { title: intent.title, status: 'planejamento', kind: 'lembrete' });
+  const title = intent.time ? `${intent.title} às ${intent.time}` : intent.title;
+  const { results } = createMissionFromBlueprint(ctx, {
+    title,
+    status: 'planejamento',
+    kind: 'lembrete',
+    dueDate: intent.dueDate,
+  });
   return results;
 }
 

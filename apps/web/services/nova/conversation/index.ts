@@ -26,9 +26,9 @@ export function buildReply(intent: NovaIntent, ok: boolean): string {
     case 'registrar_receita':
       return `Prontinho. Registrei a receita de R$ ${intent.amount.toFixed(2)} e já atualizei o caixa e os indicadores.`;
     case 'criar_lembrete':
-      return `Feito. Criei o lembrete "${intent.title}" em Missões.`;
+      return `Pronto. Já deixei programado${intent.dueDate ? ` para ${intent.dueDate}` : ''}${intent.time ? ` às ${intent.time}` : ''}.`;
     case 'criar_agenda':
-      return `Feito. Adicionei "${intent.title}"${intent.time ? ` às ${intent.time}` : ''} na agenda e criei um lembrete vinculado.`;
+      return `Feito. Adicionei "${intent.title}"${intent.date ? ` para ${intent.date}` : ''}${intent.time ? ` às ${intent.time}` : ''} na agenda e criei um lembrete vinculado.`;
     case 'criar_objetivo':
       return `Feito. Criei o objetivo "${intent.title}" em Missões.`;
     case 'criar_projeto':
@@ -38,7 +38,7 @@ export function buildReply(intent: NovaIntent, ok: boolean): string {
     case 'criar_habito':
       return `Feito. Criei o hábito "${intent.title}".`;
     case 'criar_viagem':
-      return `Feito. Criei a viagem para ${intent.destination}.`;
+      return `Perfeito. Sua viagem para ${intent.destination} já está organizada, com um checklist inicial de preparação pronto.`;
     case 'criar_documento':
       return `Feito. Adicionei o documento "${intent.title}".`;
     case 'criar_bem':

@@ -36,9 +36,9 @@ export class IntentResolver {
       case 'registrar_receita':
         return new CreateIncomeAction({ amount: intent.amount, description: intent.description });
       case 'criar_lembrete':
-        return new CreateReminderAction({ title: intent.title });
+        return new CreateReminderAction({ title: intent.title, dueDate: intent.dueDate, time: intent.time });
       case 'criar_agenda':
-        return new CreateAppointmentAction({ title: intent.title, time: intent.time });
+        return new CreateAppointmentAction({ title: intent.title, time: intent.time, date: intent.date });
       case 'criar_objetivo':
         return new CreateGoalAction({ title: intent.title, dueDate: intent.dueDate });
       case 'criar_habito':

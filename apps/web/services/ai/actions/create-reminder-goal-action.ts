@@ -4,6 +4,10 @@ import type { Action } from './types';
 
 export interface CreateReminderInput {
   title: string;
+  /** Ver `ReminderIntent.dueDate` — prazo em ISO (`YYYY-MM-DD`), quando mencionado. */
+  dueDate?: string;
+  /** Ver `ReminderIntent.time` — horário `HH:MM`, quando mencionado. */
+  time?: string;
 }
 
 export interface CreateGoalInput {
@@ -22,7 +26,13 @@ export class CreateReminderAction implements Action {
   constructor(private readonly input: CreateReminderInput) {}
 
   execute(ctx: NovaContext): NovaActionResult[] {
-    return createReminder(ctx, { kind: 'criar_lembrete', raw: this.input.title, title: this.input.title });
+    return createReminder(ctx, {
+      kind: 'criar_lembrete',
+      raw: this.input.title,
+      title: this.input.title,
+      dueDate: this.input.dueDate,
+      time: this.input.time,
+    });
   }
 }
 

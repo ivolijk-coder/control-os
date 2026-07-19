@@ -69,6 +69,12 @@ export const INTENT_TOOL_SCHEMAS: ToolSchema[] = [
       type: 'object',
       properties: {
         title: { type: 'string', description: 'O que o usuário quer ser lembrado de fazer.' },
+        dueDate: {
+          type: 'string',
+          description:
+            'Data do lembrete, formato AAAA-MM-DD, se o usuário mencionar uma referência de tempo (ex.: "amanhã", "sexta", "dia 20"). Resolva a referência usando a data de hoje informada no contexto. Se não houver nenhuma referência de tempo, omita este campo.',
+        },
+        time: { type: 'string', description: 'Horário no formato HH:MM, se mencionado (ex.: "às 9h" → "09:00").' },
       },
       required: ['title'],
     },
@@ -80,6 +86,11 @@ export const INTENT_TOOL_SCHEMAS: ToolSchema[] = [
       type: 'object',
       properties: {
         title: { type: 'string', description: 'Título do compromisso.' },
+        date: {
+          type: 'string',
+          description:
+            'Data do compromisso, formato AAAA-MM-DD, se o usuário mencionar uma referência de tempo (ex.: "sexta", "amanhã", "semana que vem", "dia 20"). Resolva a referência usando a data de hoje informada no contexto. Se não houver nenhuma referência de tempo, omita este campo (o compromisso cai em hoje).',
+        },
         time: { type: 'string', description: 'Horário no formato HH:MM, se mencionado.' },
       },
       required: ['title'],
@@ -140,13 +151,21 @@ export const INTENT_TOOL_SCHEMAS: ToolSchema[] = [
   {
     name: 'criar_viagem',
     description:
-      'Criar uma viagem planejada pelo usuário. Só chamar quando destino E as duas datas (ida e volta) forem conhecidos — se faltar alguma, pergunte antes de chamar esta ferramenta.',
+      'Criar uma viagem planejada pelo usuário. Só chamar quando destino E pelo menos uma referência de período forem conhecidos (datas exatas OU só o mês, ex.: "em outubro") — se não houver NENHUMA referência de tempo, pergunte antes de chamar esta ferramenta.',
     parameters: {
       type: 'object',
       properties: {
         destination: { type: 'string', description: 'Cidade ou país de destino.' },
-        startDate: { type: 'string', description: 'Data de ida, formato AAAA-MM-DD.' },
-        endDate: { type: 'string', description: 'Data de volta, formato AAAA-MM-DD.' },
+        startDate: {
+          type: 'string',
+          description:
+            'Data de ida, formato AAAA-MM-DD. Se o usuário mencionar datas exatas, use-as. Se mencionar só o mês (ex.: "em outubro", sem dia exato), use o primeiro dia desse mês — resolva o ano usando a data de hoje informada no contexto.',
+        },
+        endDate: {
+          type: 'string',
+          description:
+            'Data de volta, formato AAAA-MM-DD. Se o usuário mencionar datas exatas, use-as. Se mencionar só o mês (sem dia exato), use o último dia desse mesmo mês.',
+        },
         budget: { type: 'number', description: 'Orçamento estimado da viagem, em reais, se mencionado.' },
       },
       required: ['destination', 'startDate', 'endDate'],

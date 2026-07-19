@@ -220,12 +220,12 @@ function mapToolCallToIntent(toolCall: NovaAIToolCall, raw: string): NovaIntent 
     case 'criar_lembrete': {
       const title = requireString(args, 'title');
       if (title === undefined) break;
-      return { kind: 'criar_lembrete', raw, title };
+      return { kind: 'criar_lembrete', raw, title, dueDate: requireString(args, 'dueDate'), time: requireString(args, 'time') };
     }
     case 'criar_agenda': {
       const title = requireString(args, 'title');
       if (title === undefined) break;
-      return { kind: 'criar_agenda', raw, title, time: requireString(args, 'time') };
+      return { kind: 'criar_agenda', raw, title, time: requireString(args, 'time'), date: requireString(args, 'date') };
     }
     case 'criar_objetivo': {
       const title = requireString(args, 'title');

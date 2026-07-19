@@ -49,6 +49,7 @@ function topExpenseCategoriesThisMonth(ctx: AIConversationContext, monthPrefix: 
 export function buildModelContextSummary(ctx: AIConversationContext): string {
   const today = new Date().toISOString().slice(0, 10);
   const monthPrefix = today.slice(0, 7);
+  const todayWeekday = new Intl.DateTimeFormat('pt-BR', { weekday: 'long' }).format(new Date());
 
   const eventosHoje = ctx.agendaEvents.filter((event) => event.date === today);
   const despesasHoje = ctx.financeEntries.filter((entry) => entry.type === 'despesa' && entry.date.slice(0, 10) === today);
@@ -71,6 +72,11 @@ export function buildModelContextSummary(ctx: AIConversationContext): string {
   const proximaViagem = [...ctx.trips].sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
 
   const lines: string[] = [
+    // CONTROL OS — Etapa 14 (Execution Engine): sem esta linha, o modelo não
+    // tinha como resolver "amanhã", "sexta", "semana que vem" — a NOVA tinha
+    // que perguntar a data exata, ou (pior) executava com a data errada.
+    // Data real do relógio do sistema, nunca inventada.
+    `Hoje é ${today} (${todayWeekday}). Use esta data como referência para resolver qualquer data relativa mencionada pelo usuário (ex.: "amanhã", "sexta", "semana que vem", "mês que vem").`,
     `Usuário: ${ctx.userName}`,
     `Compromissos hoje: ${eventosHoje.length}`,
     `Despesas hoje: ${despesasHoje.length} lançamento(s)`,
