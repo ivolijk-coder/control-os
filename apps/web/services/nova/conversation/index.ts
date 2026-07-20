@@ -72,24 +72,24 @@ export async function processNovaTurn(text: string, ctx: NovaContext): Promise<N
   const checklist = buildPlan(intent).map((step) => step.label);
 
   if (intent.kind === 'desconhecido') {
-    rememberTurn(text);
+    await rememberTurn(text);
     return { status: 'concluido', reply: FALLBACK_REPLY, checklist: [], results: [] };
   }
 
   if (intent.kind === 'consultar_dividas') {
-    rememberTurn(text);
+    await rememberTurn(text);
     return { status: 'concluido', reply: buildDebtsSummary(ctx.debts), checklist: [], results: [] };
   }
 
   if (intent.kind === 'consultar_dia') {
-    rememberTurn(text);
+    await rememberTurn(text);
     const reply = buildDailyCheckIn(ctx.missions, ctx.agendaEvents, ctx.financeEntries, ctx.habits, ctx.userName);
     return { status: 'concluido', reply, checklist: [], results: [] };
   }
 
   const results = runIntent(ctx, intent);
   const ok = results.length > 0 && results.every((result) => result.ok);
-  rememberTurn(text);
+  await rememberTurn(text);
 
   return {
     status: ok ? 'concluido' : 'erro',

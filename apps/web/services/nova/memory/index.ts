@@ -1,21 +1,35 @@
 /**
- * Memória da Nova (CONTROL OS 3.0) — arquitetura mínima, sem IA real ainda.
+ * Memória da Nova (CONTROL OS 3.0) — vocabulário de domínio.
  *
- * Guarda um resumo curto de cada turno de conversa em `sessionStorage`,
- * para que a Nova eventualmente possa consultar rotina/preferências/metas
- * recentes ao formular respostas. Fase atual: apenas grava e permite
- * recuperar os últimos turnos — nenhum resumo automático ou embedding
- * ainda. Guardado por `sessionStorage` (não `localStorage`) porque memória
- * de curto prazo por sessão é suficiente nesta fase; migrar para
- * persistência de longo prazo é uma decisão de fase futura.
+ * CONTROL HUB — Fase 3 (Memory Layer): este arquivo NÃO toca mais
+ * `sessionStorage`/`localStorage` diretamente — isso foi removido daqui e
+ * agora vive exclusivamente em `services/memory/browser-memory-provider.ts`
+ * ("nenhum outro módulo poderá acessar sessionStorage", regra explícita
+ * do pedido). O que continua aqui é só o VOCABULÁRIO da NOVA
+ * (`NovaMemoryEntry`/`NovaFact`/`NovaFactCategory`, as mesmas 4 funções
+ * públicas de sempre) traduzido para o `MemoryService` genérico
+ * (`services/memory`) por baixo — mesma API pública (à exceção de agora
+ * ser assíncrona, ver abaixo), mesmo comportamento observável, storage
+ * idêntico (mesmas chaves, mesmos limites, mesmos fatos-semente — ver
+ * `browser-memory-provider.ts`), só a implementação mudou de lugar.
  *
- * CONTROL OS — "separação completa entre NOVA e LEGENDARY": esta memória de
- * turnos é "contexto próprio" de conversa (diferente de `NovaFact` abaixo,
- * que é dado durável do usuário, não da conversa) — por isso agora é
- * guardada numa chave por persona (`STORAGE_KEY_nova` / `STORAGE_KEY_
- * legendary`), nunca uma única lista compartilhada pelas duas.
+ * "Não alterar comportamento, apenas mover a responsabilidade da
+ * persistência": as 4 funções públicas viram `async` (antes eram
+ * síncronas, porque liam Web Storage diretamente) — consequência
+ * inevitável de dependerem agora de uma interface (`MemoryService`)
+ * pensada para suportar backends reais no futuro (Postgres/Redis), que
+ * são sempre assíncronos. Todos os chamadores já foram (ou estão sendo)
+ * atualizados para `await` essas chamadas.
+ *
+ * `rememberTurn`/`recallRecent` continuam sendo memória de CURTO prazo
+ * (uma conversa, uma persona) — agora endereçada como
+ * `{ scope: 'short_term', namespace: persona }`. `rememberFact`/
+ * `recallFacts` continuam sendo memória de LONGO prazo (durável, por
+ * categoria) — `{ scope: 'long_term', namespace: category }`.
  */
 
+import { memoryService } from '@/services/memory';
+import type { MemoryEntry } from '@/services/memory';
 import type { NovaPersona } from '../interfaces';
 
 export interface NovaMemoryEntry {
@@ -24,80 +38,46 @@ export interface NovaMemoryEntry {
   timestamp: string;
 }
 
-const STORAGE_KEY = 'control-os-nova-memory';
-const MAX_ENTRIES = 20;
 const DEFAULT_PERSONA: NovaPersona = 'nova';
 
-function storageKeyFor(persona: NovaPersona): string {
-  return `${STORAGE_KEY}_${persona}`;
+function toNovaMemoryEntry(entry: MemoryEntry): NovaMemoryEntry {
+  return { id: entry.id, turnSummary: entry.content, timestamp: entry.createdAt };
 }
 
-function isNovaMemoryEntry(value: unknown): value is NovaMemoryEntry {
-  if (typeof value !== 'object' || value === null) return false;
-  if (!('id' in value) || !('turnSummary' in value) || !('timestamp' in value)) return false;
-  return (
-    typeof value.id === 'string' &&
-    typeof value.turnSummary === 'string' &&
-    typeof value.timestamp === 'string'
-  );
+export async function rememberTurn(turnSummary: string, persona: NovaPersona = DEFAULT_PERSONA): Promise<void> {
+  await memoryService.remember({ scope: 'short_term', namespace: persona }, turnSummary);
 }
 
-function readAll(persona: NovaPersona): NovaMemoryEntry[] {
-  if (typeof window === 'undefined') return [];
-  const raw = window.sessionStorage.getItem(storageKeyFor(persona));
-  if (!raw) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isNovaMemoryEntry);
-  } catch {
-    return [];
-  }
-}
-
-function writeAll(persona: NovaPersona, entries: NovaMemoryEntry[]): void {
-  if (typeof window === 'undefined') return;
-  window.sessionStorage.setItem(storageKeyFor(persona), JSON.stringify(entries.slice(-MAX_ENTRIES)));
-}
-
-export function rememberTurn(turnSummary: string, persona: NovaPersona = DEFAULT_PERSONA): void {
-  const entries = readAll(persona);
-  const entry: NovaMemoryEntry = {
-    id: `mem_${Date.now().toString(36)}`,
-    turnSummary,
-    timestamp: new Date().toISOString(),
-  };
-  writeAll(persona, [...entries, entry]);
-}
-
-export function recallRecent(persona: NovaPersona = DEFAULT_PERSONA, limit = 5): NovaMemoryEntry[] {
-  return readAll(persona).slice(-limit);
+export async function recallRecent(persona: NovaPersona = DEFAULT_PERSONA, limit = 5): Promise<NovaMemoryEntry[]> {
+  const entries = await memoryService.recall({ scope: 'short_term', namespace: persona }, limit);
+  return entries.map(toNovaMemoryEntry);
 }
 
 /**
  * Memória estruturada (CONTROL OS — Sistema Operacional Pessoal):
  * preferências, família e rotina — diferente de `NovaMemoryEntry` (resumo
- * bruto de cada turno, curto prazo, `sessionStorage`), um `NovaFact` é uma
- * informação durável sobre o usuário ("prefere ser chamado de Ivoli",
- * "tem uma filha, a Ana", "malha às terças e quintas"). Guardado em
- * `localStorage` (não `sessionStorage`) porque, diferente do resumo de
- * conversa, isso precisa sobreviver entre sessões — é o que torna a Nova
- * "com memória própria", não só um parser sem estado.
+ * bruto de cada turno, curto prazo), um `NovaFact` é uma informação
+ * durável sobre o usuário ("prefere ser chamado de Ivoli", "tem uma
+ * filha, a Ana", "malha às terças e quintas"). Sobrevive entre sessões —
+ * é o que torna a Nova "com memória própria", não só um parser sem
+ * estado.
  *
- * Nesta fase ainda não há extração automática de fatos a partir da
- * conversa (isso depende de IA real, fora do escopo) — a API já existe e
- * funciona (`rememberFact`/`recallFacts`), pronta para um LLM real chamar
- * no futuro; por enquanto os fatos vêm de um seed inicial (ver
- * `SEED_FACTS`), demonstrando o formato.
- *
- * Categorias estendidas (CONTROL OS — Etapa 7: IA-Native — Memory Engine):
- * `objetivo_principal`, `prioridade` e `estilo_resposta` cobrem os campos
- * que o Memory Engine (`services/ai/memory`, `buildUserMemoryProfile`)
- * precisa e que as 3 categorias antigas não modelavam — extensão aditiva
- * (só cresce o union), nenhum fato existente muda de categoria, nenhum
- * comportamento de `rememberFact`/`recallFacts` muda.
+ * Categorias estendidas (CONTROL OS — Etapa 7: IA-Native — Memory
+ * Engine): `objetivo_principal`, `prioridade` e `estilo_resposta` cobrem
+ * os campos que o Memory Engine (`services/ai/memory`,
+ * `buildUserMemoryProfile`) precisa.
  */
 export type NovaFactCategory = 'preferencia' | 'familia' | 'rotina' | 'objetivo_principal' | 'prioridade' | 'estilo_resposta';
+
+/** Todas as categorias conhecidas — usada só por `recallFacts()` sem argumento (ver abaixo), pra reunir fatos de toda categoria sem o `MemoryService` genérico precisar conhecer este vocabulário de domínio. */
+const ALL_FACT_CATEGORIES: readonly NovaFactCategory[] = [
+  'preferencia',
+  'familia',
+  'rotina',
+  'objetivo_principal',
+  'prioridade',
+  'estilo_resposta',
+];
 
 export interface NovaFact {
   id: string;
@@ -106,80 +86,32 @@ export interface NovaFact {
   createdAt: string;
 }
 
-const FACTS_STORAGE_KEY = 'control-os-nova-facts';
-const MAX_FACTS = 100;
+function toNovaFact(category: NovaFactCategory, entry: MemoryEntry): NovaFact {
+  return { id: entry.id, category, text: entry.content, createdAt: entry.createdAt };
+}
 
-const SEED_FACTS: readonly Omit<NovaFact, 'id' | 'createdAt'>[] = [
-  { category: 'preferencia', text: 'Prefere respostas diretas, sem enrolação.' },
-  { category: 'rotina', text: 'Costuma revisar o Financeiro toda segunda de manhã.' },
-];
+export async function rememberFact(category: NovaFactCategory, text: string): Promise<NovaFact> {
+  const entry = await memoryService.remember({ scope: 'long_term', namespace: category }, text);
+  return toNovaFact(category, entry);
+}
 
-function isNovaFactCategory(value: unknown): value is NovaFactCategory {
-  return (
-    value === 'preferencia' ||
-    value === 'familia' ||
-    value === 'rotina' ||
-    value === 'objetivo_principal' ||
-    value === 'prioridade' ||
-    value === 'estilo_resposta'
+/**
+ * Sem `category`: reúne fatos de TODAS as categorias — feito aqui (que
+ * conhece `NovaFactCategory`), não dentro do `MemoryService` genérico (que
+ * propositalmente não conhece vocabulário de domínio nenhum, só
+ * `scope`/`namespace` string). Cada categoria é uma partição própria
+ * (`recall`), lidas em paralelo e depois achatadas em uma única lista —
+ * mesmo resultado que a versão antiga (`readAllFacts()` sem filtro),
+ * apenas remontado a partir de N leituras genéricas em vez de uma leitura
+ * única de uma chave só.
+ */
+export async function recallFacts(category?: NovaFactCategory): Promise<NovaFact[]> {
+  const categories = category ? [category] : ALL_FACT_CATEGORIES;
+  const perCategory = await Promise.all(
+    categories.map(async (cat) => {
+      const entries = await memoryService.recall({ scope: 'long_term', namespace: cat });
+      return entries.map((entry) => toNovaFact(cat, entry));
+    })
   );
-}
-
-function isNovaFact(value: unknown): value is NovaFact {
-  if (typeof value !== 'object' || value === null) return false;
-  if (!('id' in value) || !('category' in value) || !('text' in value) || !('createdAt' in value)) {
-    return false;
-  }
-  return (
-    typeof value.id === 'string' &&
-    isNovaFactCategory(value.category) &&
-    typeof value.text === 'string' &&
-    typeof value.createdAt === 'string'
-  );
-}
-
-function readAllFacts(): NovaFact[] {
-  if (typeof window === 'undefined') return [];
-  const raw = window.localStorage.getItem(FACTS_STORAGE_KEY);
-  if (!raw) {
-    // Primeira carga: semeia com os fatos de exemplo, pra `recallFacts` não
-    // começar vazio — mesma ideia dos outros módulos desta etapa (dados
-    // mockados realistas, nunca uma tela em branco).
-    const seeded = SEED_FACTS.map((fact, index) => ({
-      ...fact,
-      id: `fact_seed_${index}`,
-      createdAt: new Date().toISOString(),
-    }));
-    writeAllFacts(seeded);
-    return seeded;
-  }
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isNovaFact);
-  } catch {
-    return [];
-  }
-}
-
-function writeAllFacts(facts: NovaFact[]): void {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(FACTS_STORAGE_KEY, JSON.stringify(facts.slice(-MAX_FACTS)));
-}
-
-export function rememberFact(category: NovaFactCategory, text: string): NovaFact {
-  const facts = readAllFacts();
-  const fact: NovaFact = {
-    id: `fact_${Date.now().toString(36)}`,
-    category,
-    text,
-    createdAt: new Date().toISOString(),
-  };
-  writeAllFacts([...facts, fact]);
-  return fact;
-}
-
-export function recallFacts(category?: NovaFactCategory): NovaFact[] {
-  const facts = readAllFacts();
-  return category ? facts.filter((fact) => fact.category === category) : facts;
+  return perCategory.flat();
 }

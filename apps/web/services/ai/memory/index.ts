@@ -75,14 +75,29 @@ export interface UserMemoryProfile {
   currentContext: string | undefined;
 }
 
-export function buildUserMemoryProfile(): UserMemoryProfile {
-  const [mainGoal] = recallFacts('objetivo_principal').map((fact) => fact.text);
-  const [responseStyle] = recallFacts('estilo_resposta').map((fact) => fact.text);
-  const [routineSummary] = recallFacts('rotina').map((fact) => fact.text);
+/**
+ * CONTROL HUB — Fase 3 (Memory Layer): `recallFacts` (de `services/nova`)
+ * agora é assíncrona — deixou de ler `localStorage` diretamente e passou a
+ * falar com o `MemoryService` genérico por baixo (ver
+ * `services/nova/memory`). Este é o único ajuste necessário aqui: as 4
+ * leituras viram `await`, em paralelo (`Promise.all`), já que são
+ * independentes entre si — nenhuma lógica de composição do perfil mudou.
+ */
+export async function buildUserMemoryProfile(): Promise<UserMemoryProfile> {
+  const [mainGoalFacts, responseStyleFacts, routineSummaryFacts, preferenceFacts, priorityFacts] = await Promise.all([
+    recallFacts('objetivo_principal'),
+    recallFacts('estilo_resposta'),
+    recallFacts('rotina'),
+    recallFacts('preferencia'),
+    recallFacts('prioridade'),
+  ]);
+  const [mainGoal] = mainGoalFacts.map((fact) => fact.text);
+  const [responseStyle] = responseStyleFacts.map((fact) => fact.text);
+  const [routineSummary] = routineSummaryFacts.map((fact) => fact.text);
   return {
     mainGoal,
-    preferences: recallFacts('preferencia').map((fact) => fact.text),
-    priorities: recallFacts('prioridade').map((fact) => fact.text),
+    preferences: preferenceFacts.map((fact) => fact.text),
+    priorities: priorityFacts.map((fact) => fact.text),
     responseStyle,
     routineSummary,
     currentContext: getNovaState().lastEventSummary,

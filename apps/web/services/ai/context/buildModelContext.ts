@@ -45,8 +45,15 @@ function topExpenseCategoriesThisMonth(ctx: AIConversationContext, monthPrefix: 
  * `NovaObserver`, não só quando alguém pergunta). Todos os campos são
  * opcionais e só entram no texto quando preenchidos — nenhum "objetivo
  * principal: nenhum" forçado, pra não sujar o prompt com ausência de dado.
+ *
+ * CONTROL HUB — Fase 3 (Memory Layer): `buildUserMemoryProfile` deixou de
+ * ser síncrona (agora fala com o `MemoryService` genérico, que é assíncrono
+ * por design, pra suportar backends reais como Postgres/Redis no futuro) —
+ * por isso esta função também precisou virar `async`. Todos os chamadores
+ * (em `OpenAIProvider.ts`) já estão dentro de métodos `async` e passaram a
+ * usar `await` aqui; nenhum comportamento observável mudou.
  */
-export function buildModelContextSummary(ctx: AIConversationContext): string {
+export async function buildModelContextSummary(ctx: AIConversationContext): Promise<string> {
   const now = new Date();
   // Bugfix: `today` usava `new Date().toISOString().slice(0, 10)` — sempre
   // UTC, então à noite no fuso do usuário a NOVA já achava que era o dia
@@ -115,7 +122,7 @@ export function buildModelContextSummary(ctx: AIConversationContext): string {
     lines.push(`Preferências conhecidas: ${ctx.preferences.join('; ')}`);
   }
 
-  const memoryProfile = buildUserMemoryProfile();
+  const memoryProfile = await buildUserMemoryProfile();
   if (memoryProfile.mainGoal) {
     lines.push(`Objetivo principal do usuário: ${memoryProfile.mainGoal}`);
   }

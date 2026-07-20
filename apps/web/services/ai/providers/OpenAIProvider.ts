@@ -40,7 +40,7 @@ export class OpenAIProvider implements AIProvider, ReasoningProvider {
     const response = await this.callRoute({
       mode: 'chat',
       messages,
-      contextSummary: buildModelContextSummary(context),
+      contextSummary: await buildModelContextSummary(context),
     });
     return response.content;
   }
@@ -49,7 +49,7 @@ export class OpenAIProvider implements AIProvider, ReasoningProvider {
     const response = await this.callRoute({
       mode: 'generate',
       prompt,
-      contextSummary: buildModelContextSummary(context),
+      contextSummary: await buildModelContextSummary(context),
     });
     return response.content;
   }
@@ -58,7 +58,7 @@ export class OpenAIProvider implements AIProvider, ReasoningProvider {
     const response = await this.callRoute({
       mode: 'classify',
       prompt: text,
-      contextSummary: buildModelContextSummary(context),
+      contextSummary: await buildModelContextSummary(context),
     });
     const [firstCall] = response.toolCalls;
     if (!firstCall) {
@@ -80,7 +80,7 @@ export class OpenAIProvider implements AIProvider, ReasoningProvider {
   async generateSuggestions(context: AIConversationContext): Promise<string[]> {
     const response = await this.callRoute({
       mode: 'suggest',
-      contextSummary: buildModelContextSummary(context),
+      contextSummary: await buildModelContextSummary(context),
     });
     return response.content
       .split('\n')
@@ -100,7 +100,7 @@ export class OpenAIProvider implements AIProvider, ReasoningProvider {
     const response = await this.callRoute({
       mode: 'reason',
       prompt: text,
-      contextSummary: buildModelContextSummary(context),
+      contextSummary: await buildModelContextSummary(context),
       persona,
     });
     return toReasoningTurn(response, text);
@@ -123,7 +123,7 @@ export class OpenAIProvider implements AIProvider, ReasoningProvider {
       mode: 'reason',
       previousResponseId: continuationToken,
       toolOutputs: outputs.map((output) => ({ callId: output.callId, output: output.output })),
-      contextSummary: buildModelContextSummary(context),
+      contextSummary: await buildModelContextSummary(context),
       persona,
     });
     // Sem `text` de usuário nesta chamada — só usado se a OpenAI, contra o
