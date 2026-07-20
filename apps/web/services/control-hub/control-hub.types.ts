@@ -1,3 +1,5 @@
+import type { ActionResult } from './action-engine.types';
+
 /**
  * CONTROL HUB — modelo universal de mensagem.
  *
@@ -92,4 +94,13 @@ export interface HubPipelineResult {
   reply?: string;
   /** Presente só quando a validação falhou — motivo, para log/observabilidade do adapter. */
   error?: string;
+  /**
+   * CONTROL HUB — Fase 4 (Action Engine real): resultado de cada
+   * `ActionRequest` que o Decision Engine pediu, na mesma ordem de
+   * `DecisionResult.actions`. Ausente quando nenhuma ação foi proposta neste
+   * turno (a maioria das mensagens só vira `reply`) — nunca um array vazio,
+   * para diferenciar "não houve ação" de "houve ação, mas a lista está
+   * vazia por algum motivo" (que nunca deveria acontecer).
+   */
+  actionResults?: ActionResult[];
 }

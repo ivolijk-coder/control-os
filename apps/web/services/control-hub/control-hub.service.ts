@@ -3,6 +3,7 @@ import { normalizeHubMessage } from './normalize-message';
 import { contextManager as defaultContextManager } from './context-manager';
 import { decisionEngine as defaultDecisionEngine } from './decision-engine';
 import { novaGateway as defaultNovaGateway } from './nova-gateway';
+import { actionRegistry as defaultActionEngine } from '@/services/action-engine';
 import type {
   ActionEngine,
   ContextManager,
@@ -51,16 +52,14 @@ export class ControlHubService implements ControlHub {
     private readonly decisionEngine: DecisionEngine = defaultDecisionEngine,
     private readonly novaGateway: NovaGateway = defaultNovaGateway,
     /**
-     * Opcional e sem default nesta fase de propósito: o Action Engine
-     * ainda só tem interface (`control-hub.interfaces.ts` +
-     * `action-engine.types.ts`), nenhuma implementação — "Nesta etapa
-     * criar apenas as interfaces", pedido explícito. `MockDecisionEngine`
-     * nunca produz `actions` não vazias, então `receive` abaixo nunca
-     * precisa chamar isto na prática hoje; o parâmetro existe só para o
-     * pipeline já ter o formato certo quando uma implementação real
-     * chegar.
+     * CONTROL HUB — Fase 4: "o Action Engine passa a ser o executor oficial
+     * do CONTROL OS." Até a Fase 3 este parâmetro não tinha default (só
+     * interface existia); agora tem — `actionRegistry`
+     * (`services/action-engine`), a primeira implementação real. Continua
+     * injetável por construtor (trocar por outra implementação, ou por um
+     * stub em teste, não muda uma linha deste arquivo).
      */
-    private readonly actionEngine?: ActionEngine
+    private readonly actionEngine: ActionEngine = defaultActionEngine
   ) {}
 
   async receive(message: HubMessage): Promise<HubPipelineResult> {
@@ -82,21 +81,27 @@ export class ControlHubService implements ControlHub {
     const novaResult = await this.novaGateway.send(normalized, context);
     const decision = await this.decisionEngine.decide(normalized, context);
 
-    // Etapa "Action Engine" — só executa quando o Decision Engine de fato
-    // pedir ações (`decision.actions` não vazio) E uma implementação real
-    // estiver injetada. Com `MockDecisionEngine`, `decision.actions` é
-    // sempre `[]`, então este bloco nunca roda na prática hoje — o
-    // encanamento já existe pronto para quando o Decision Engine real
-    // chegar; `HubPipelineResult` ganha um campo de resultados de ação
-    // nesse momento (nenhum consumidor depende disso ainda).
-    if (decision.actions.length > 0 && this.actionEngine) {
-      await this.actionEngine.execute(decision.actions);
-    }
+    // Etapa "Action Engine" — CONTROL HUB Fase 4: agora roda de verdade
+    // quando o Decision Engine pede ações (`decision.actions` não vazio).
+    // "A NOVA nunca deverá modificar diretamente Agenda/Financeiro/
+    // Hábitos/Metas/Notas/Documentos. Ela apenas decide. Quem executa
+    // sempre será o Action Engine." — é este `execute` que dispara os
+    // Module Services (`services/modules/*`), nunca o Decision Engine nem
+    // o Nova Gateway diretamente.
+    const actionResults = decision.actions.length > 0 ? await this.actionEngine.execute(decision.actions) : [];
+
+    // Sem resposta explícita do Decision Engine (`kind: 'execute_actions'`
+    // nunca carrega `reply`, ver `decision-engine.types.ts`): a resposta ao
+    // usuário nasce das mensagens que cada `ActionResult` já devolveu — "o
+    // Action Engine é quem realmente movimenta o sistema", inclusive a
+    // resposta final quando a mensagem virou uma ação de verdade.
+    const actionReply = actionResults.length > 0 ? actionResults.map((result) => result.message).join(' ') : undefined;
 
     return {
       status: 'ok',
       message: normalized,
-      reply: decision.reply ?? novaResult.reply,
+      reply: decision.reply ?? actionReply ?? novaResult.reply,
+      actionResults: actionResults.length > 0 ? actionResults : undefined,
     };
   }
 }
