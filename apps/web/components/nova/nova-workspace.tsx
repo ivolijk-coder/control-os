@@ -569,10 +569,20 @@ export function NovaWorkspace({
   return (
     <div className="flex w-full flex-col gap-6">
       {/* Mesmo seletor do `variant="docked"` (ver comentário lá) — o painel
-          flutuante (`NovaFloatingPanel`) usa este `variant="inline"`. */}
-      <div className="flex justify-center">
-        <NovaPersonaSwitch persona={activePersona} onChange={setActivePersona} />
-      </div>
+          flutuante (`NovaFloatingPanel`) usa este `variant="inline"`.
+          CONTROL OS — "o modal deve detectar automaticamente a rota atual
+          (/nova ou /legendary) e iniciar já na IA correspondente": quando
+          `NovaFloatingPanel` passa `lockedPersona` (porque foi aberto de
+          dentro de /nova ou /legendary), o seletor também some aqui — mesma
+          regra do `variant="docked"` (ver `!lockedPersona` acima). Sem
+          isto, o usuário conseguiria trocar de persona por dentro do modal
+          sem navegar, quebrando a mesma separação completa da Etapa desta
+          sessão. */}
+      {!lockedPersona && (
+        <div className="flex justify-center">
+          <NovaPersonaSwitch persona={activePersona} onChange={setActivePersona} />
+        </div>
+      )}
       {inputRow}
       {conversationArea}
     </div>

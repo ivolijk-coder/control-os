@@ -2,10 +2,12 @@
 
 import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { usePathname } from 'next/navigation';
 import { X } from 'lucide-react';
 import { FloatingPanel } from '@/components/ui/floating-panel';
 import { NovaWorkspace } from '@/components/nova/nova-workspace';
 import { useAppStore } from '@/lib/store';
+import type { NovaPersona } from '@/services/nova';
 
 /**
  * NovaFloatingPanel — painel flutuante da Nova (CONTROL OS — Etapa 3).
@@ -21,21 +23,36 @@ export function NovaFloatingPanel() {
   const open = useAppStore((s) => s.novaPanelOpen);
   const setOpen = useAppStore((s) => s.setNovaPanelOpen);
 
-  // CONTROL OS — "separação completa entre NOVA e LEGENDARY": este painel
-  // usa `NovaWorkspace variant="inline"` (seletor de persona in-place, sem
-  // `lockedPersona`) — a persona "de verdade" aqui é sempre o que está no
-  // store. `activePersona` decide tanto QUAL balde de mensagens observar
-  // pra rolar a tela (abaixo) quanto o título/identidade do cabeçalho —
-  // antes ambos ficavam fixos em "Nova" mesmo com a LEGENDARY selecionada.
+  // CONTROL OS — "o modal deve detectar automaticamente a rota atual (/nova
+  // ou /legendary) e iniciar já na IA correspondente. Não quero que a NOVA
+  // seja sempre o padrão." Antes este painel confiava só em `activePersona`
+  // do store — na prática quase sempre correto (a página /nova ou
+  // /legendary já sincroniza `activePersona` ao montar), mas indireto:
+  // dependia da ordem de efeitos em vez de olhar pra própria URL. Ler a
+  // rota diretamente aqui é a fonte de verdade mais forte possível — "o
+  // modal detecta a rota atual", literalmente, sem depender de nenhum outro
+  // componente ter rodado antes.
+  const pathname = usePathname();
+  const routePersona: NovaPersona | undefined = pathname?.startsWith('/legendary')
+    ? 'legendary'
+    : pathname?.startsWith('/nova')
+      ? 'nova'
+      : undefined;
+
+  // Fora de /nova e /legendary (ex.: painel aberto do Dashboard, via
+  // `AgentWidgetCard`), não há rota "dona" da persona — comportamento
+  // antigo permanece: segue `activePersona` do store, com seletor visível
+  // dentro do painel (ver `NovaWorkspace`, `!lockedPersona`).
   const activePersona = useAppStore((s) => s.activePersona);
-  const isLegendary = activePersona === 'legendary';
+  const effectivePersona = routePersona ?? activePersona;
+  const isLegendary = effectivePersona === 'legendary';
 
   // Mesmo tratamento do `variant="docked"` em `NovaWorkspace` (teste de uso
   // real: resposta nova nascia escondida, exigia rolagem manual) — aqui
   // quem é dono do container de rolagem é este painel, não o `NovaWorkspace`
   // (`variant="inline"`), então a assinatura do balde de mensagens da
-  // persona ativa roda aqui.
-  const messages = useAppStore((s) => s.novaMessagesByPersona[activePersona]);
+  // persona efetiva roda aqui.
+  const messages = useAppStore((s) => s.novaMessagesByPersona[effectivePersona]);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
     if (!open) return;
@@ -62,7 +79,7 @@ export function NovaFloatingPanel() {
         </DialogPrimitive.Close>
       </div>
       <div ref={scrollRef} className="max-h-[70vh] overflow-y-auto p-4">
-        <NovaWorkspace showIntelligentPanel={false} />
+        <NovaWorkspace showIntelligentPanel={false} lockedPersona={routePersona} />
       </div>
     </FloatingPanel>
   );
