@@ -9,7 +9,13 @@ import { PrismaFinanceRepository } from './prisma-finance.repository';
 
 export type { FinanceRepository } from './finance-repository.interfaces';
 export type {
+  CreateFinanceAccountInput,
+  CreateFinanceCategoryInput,
+  CreateFinanceInstallmentInput,
   CreateFinanceTransactionInput,
+  CreateFinanceTransferInput,
+  FinanceAccountBalance,
+  FinanceCategoryBreakdownItem,
   FinanceSummary,
   FinanceTransactionFilter,
   UpdateFinanceTransactionInput,

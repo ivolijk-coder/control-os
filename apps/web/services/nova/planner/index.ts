@@ -22,6 +22,13 @@ export function buildPlan(intent: NovaIntent): NovaAction[] {
         { kind: 'criar_receita', label: 'Registrar receita' },
         { kind: 'registrar_timeline', label: 'Atualizar caixa e indicadores' },
       ];
+    case 'transferir_conta':
+      // CONTROL OS — Fase 7: um único passo — `CreateTransferAction` não
+      // escreve `addTimelineEvent` (só persiste via `finance-bridge`, ver
+      // doc da classe), então não há passo de "Atualizar histórico" aqui.
+      return [{ kind: 'criar_transferencia', label: 'Transferir entre contas' }];
+    case 'parcelar_despesa':
+      return [{ kind: 'criar_parcelamento', label: 'Parcelar despesa' }];
     case 'criar_lembrete':
       return [
         { kind: 'criar_missao', label: 'Criar missão de lembrete' },

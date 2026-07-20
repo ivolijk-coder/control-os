@@ -25,6 +25,11 @@
  * significado ("registrar uma despesa"), não em tipo — ver
  * `services/action-engine/actions/` para a implementação real, que fala com
  * `services/modules/*` (Module Services), nunca com `NovaContext`/Zustand.
+ *
+ * Fase 7 (Financeiro completo) adiciona `transfer.create`/`installment.create`/
+ * `recurring.create`/`account.create`/`category.create` — o catálogo pedido
+ * explicitamente ("Expandir as Actions existentes... transfer.create,
+ * installment.create, recurring.create, account.create, category.create").
  */
 export type ActionKind =
   | 'calendar.create'
@@ -36,6 +41,11 @@ export type ActionKind =
   | 'income.create'
   | 'income.update'
   | 'income.delete'
+  | 'transfer.create'
+  | 'installment.create'
+  | 'recurring.create'
+  | 'account.create'
+  | 'category.create'
   | 'task.create'
   | 'note.create'
   | 'habit.update'

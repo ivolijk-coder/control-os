@@ -63,6 +63,37 @@ export const INTENT_TOOL_SCHEMAS: ToolSchema[] = [
     },
   },
   {
+    name: 'transferir_conta',
+    description:
+      'Transferir dinheiro entre duas contas do usuário (ex.: "transferi 500 para o Nubank"). Não altera o patrimônio total — só move saldo de uma conta para outra.',
+    parameters: {
+      type: 'object',
+      properties: {
+        amount: { type: 'number', description: 'Valor transferido, em reais.' },
+        toAccountName: { type: 'string', description: 'Conta de destino (ex.: "Nubank", "Poupança").' },
+        fromAccountName: {
+          type: 'string',
+          description: 'Conta de origem, se mencionada. Se ausente, usa a conta padrão do usuário ("Carteira").',
+        },
+      },
+      required: ['amount', 'toAccountName'],
+    },
+  },
+  {
+    name: 'parcelar_despesa',
+    description:
+      'Parcelar uma despesa em N lançamentos mensais ligados (ex.: "parcela esse notebook em 12x"). Só chamar quando o valor total E o número de parcelas forem conhecidos.',
+    parameters: {
+      type: 'object',
+      properties: {
+        totalAmount: { type: 'number', description: 'Valor total da compra, em reais.' },
+        installments: { type: 'number', description: 'Número de parcelas.' },
+        description: { type: 'string', description: 'Descrição curta da compra (ex.: "Notebook").' },
+      },
+      required: ['totalAmount', 'installments', 'description'],
+    },
+  },
+  {
     name: 'criar_lembrete',
     description: 'Criar um lembrete simples para o usuário.',
     parameters: {

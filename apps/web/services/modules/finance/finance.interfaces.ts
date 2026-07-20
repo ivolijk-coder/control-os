@@ -1,10 +1,19 @@
-import type { FinanceEntry } from '@control-os/types';
+import type { FinanceAccount, FinanceCategory, FinanceEntry } from '@control-os/types';
 import type { ActionResult } from '@/services/action-result.types';
 import type {
   CreateExpenseInput,
+  CreateFinanceAccountServiceInput,
+  CreateFinanceCategoryServiceInput,
   CreateIncomeInput,
+  CreateInstallmentInput,
+  CreateRecurringInput,
+  CreateTransferInput,
   DeleteExpenseInput,
   DeleteIncomeInput,
+  FinanceAccountBalance,
+  FinanceCashFlowPoint,
+  FinanceCategoryBreakdownItem,
+  FinanceDashboard,
   FinanceSummary,
   UpdateExpenseInput,
   UpdateIncomeInput,
@@ -15,14 +24,12 @@ import type {
  * interfaces". As Actions (`services/action-engine/actions/finance/`)
  * dependem só disto, nunca de `PersistentFinanceService` diretamente.
  *
- * Fase 6 (Persistência real): ganha Receitas (`*Income`) e Consultas
- * (`getBalance`/`getMonthlyExpenses`/`getMonthlyIncome`/`getSummary`) —
- * "Substituir completamente o MockFinanceService... Implementar: Receitas,
- * Despesas, Consultas." `create*`/`update*`/`delete*` continuam devolvendo
- * `ActionResult` (formato de execução, usado pelas Actions); as consultas
- * devolvem dado de domínio puro (`FinanceEntry[]`/`FinanceSummary`) — não
- * são Actions, são leitura, "Ainda NÃO implementar: Dashboard/Relatórios"
- * não impede o dado existir para quando esse consumidor chegar.
+ * Fase 7 (Financeiro completo): ganha Transferências, Parcelamentos,
+ * Recorrências, Contas, Categorias e o Dashboard (métodos de leitura —
+ * "ainda não criar interface gráfica, apenas Services"). Mesmo padrão das
+ * fases anteriores: `create*` continua devolvendo `ActionResult` (formato
+ * de execução, usado pelas Actions); consultas devolvem dado de domínio
+ * puro.
  */
 export interface FinanceService {
   // Despesas
@@ -37,9 +44,34 @@ export interface FinanceService {
   deleteIncome(input: DeleteIncomeInput): Promise<ActionResult>;
   listIncome(): Promise<FinanceEntry[]>;
 
+  // Transferências (CONTROL OS — Fase 7)
+  createTransfer(input: CreateTransferInput): Promise<ActionResult>;
+
+  // Parcelamentos (CONTROL OS — Fase 7)
+  createInstallment(input: CreateInstallmentInput): Promise<ActionResult>;
+
+  // Recorrências (CONTROL OS — Fase 7)
+  createRecurring(input: CreateRecurringInput): Promise<ActionResult>;
+
+  // Contas (CONTROL OS — Fase 7)
+  createAccount(input: CreateFinanceAccountServiceInput): Promise<ActionResult>;
+  listAccounts(): Promise<FinanceAccount[]>;
+
+  // Categorias (CONTROL OS — Fase 7)
+  createCategory(input: CreateFinanceCategoryServiceInput): Promise<ActionResult>;
+  listCategories(): Promise<FinanceCategory[]>;
+
   // Consultas
   getBalance(): Promise<number>;
+  getAccountBalance(accountId: string): Promise<number>;
+  listAccountBalances(): Promise<FinanceAccountBalance[]>;
   getMonthlyExpenses(reference?: Date): Promise<FinanceEntry[]>;
   getMonthlyIncome(reference?: Date): Promise<FinanceEntry[]>;
+  getExpensesByCategory(reference?: Date): Promise<FinanceCategoryBreakdownItem[]>;
+  getIncomeByCategory(reference?: Date): Promise<FinanceCategoryBreakdownItem[]>;
+  getCashFlow(monthsBack?: number): Promise<FinanceCashFlowPoint[]>;
   getSummary(reference?: Date): Promise<FinanceSummary>;
+
+  // Dashboard (CONTROL OS — Fase 7: "apenas Services", sem UI ainda)
+  getDashboard(): Promise<FinanceDashboard>;
 }

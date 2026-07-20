@@ -37,9 +37,22 @@ import type {
  */
 export type NovaPersona = 'nova' | 'legendary';
 
+/**
+ * CONTROL OS — Fase 7 (Financeiro completo): `transferir_conta`/
+ * `parcelar_despesa` adicionados. Diferente de `registrar_divida`
+ * (`Debt` — ciclo de vida próprio, saldo que diminui a cada parcela paga,
+ * `services/nova/actions/create-debt.ts` — inalterado, "parcelei"/"tenho
+ * uma dívida"), `parcelar_despesa` é um parcelamento de FINANÇAS
+ * (`FinanceEntry`, N lançamentos ligados por `installmentGroupId`, ver
+ * `services/modules/finance`) — "parcela"/"parcelar" (imperativo/infinitivo),
+ * nunca a mesma forma verbal de `registrar_divida` ("parcelei", passado),
+ * então os dois padrões de regex nunca colidem (`parser.ts`).
+ */
 export type NovaIntentKind =
   | 'registrar_despesa'
   | 'registrar_receita'
+  | 'transferir_conta'
+  | 'parcelar_despesa'
   | 'criar_lembrete'
   | 'criar_agenda'
   | 'criar_objetivo'
@@ -67,6 +80,22 @@ export interface ExpenseIntent extends NovaIntentBase {
 export interface RevenueIntent extends NovaIntentBase {
   kind: 'registrar_receita';
   amount: number;
+  description: string;
+}
+
+/** "Transferi R$ 1.000 para o Nubank" (CONTROL OS — Fase 7). `fromAccountName` quase nunca é dito — a conta de origem, quando ausente, cai na conta padrão do usuário (`FinanceService.createTransfer`). */
+export interface TransferIntent extends NovaIntentBase {
+  kind: 'transferir_conta';
+  amount: number;
+  toAccountName: string;
+  fromAccountName?: string;
+}
+
+/** "Parcela esse notebook em 12x" (CONTROL OS — Fase 7) — parcelamento de FINANÇAS (`FinanceEntry`), não confundir com `DebtIntent`/`registrar_divida` (dívida com ciclo de vida próprio). */
+export interface InstallmentIntent extends NovaIntentBase {
+  kind: 'parcelar_despesa';
+  totalAmount: number;
+  installments: number;
   description: string;
 }
 
@@ -185,6 +214,8 @@ export interface UnknownIntent extends NovaIntentBase {
 export type NovaIntent =
   | ExpenseIntent
   | RevenueIntent
+  | TransferIntent
+  | InstallmentIntent
   | ReminderIntent
   | AgendaIntent
   | GoalIntent
@@ -202,6 +233,12 @@ export type NovaIntent =
 export type NovaActionKind =
   | 'criar_despesa'
   | 'criar_receita'
+  // CONTROL OS — Fase 7 (Financeiro completo): transferência e parcelamento
+  // do chat real não escrevem em `useDataStore` (só persistem via
+  // `services/ai/finance-bridge.ts` -> `app/api/finance/actions` -> Prisma)
+  // — ver `CreateTransferAction`/`CreateInstallmentAction` em `services/ai/actions`.
+  | 'criar_transferencia'
+  | 'criar_parcelamento'
   | 'criar_missao'
   | 'criar_evento_agenda'
   | 'criar_divida'

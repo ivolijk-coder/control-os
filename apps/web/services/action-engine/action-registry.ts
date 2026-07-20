@@ -10,6 +10,11 @@ import { DeleteExpenseAction } from './actions/finance/delete-expense.action';
 import { CreateIncomeAction } from './actions/finance/create-income.action';
 import { UpdateIncomeAction } from './actions/finance/update-income.action';
 import { DeleteIncomeAction } from './actions/finance/delete-income.action';
+import { CreateTransferAction } from './actions/finance/create-transfer.action';
+import { CreateInstallmentAction } from './actions/finance/create-installment.action';
+import { CreateRecurringAction } from './actions/finance/create-recurring.action';
+import { CreateAccountAction } from './actions/finance/create-account.action';
+import { CreateCategoryAction } from './actions/finance/create-category.action';
 import { CreateTaskAction } from './actions/tasks/create-task.action';
 import { CreateNoteAction } from './actions/notes/create-note.action';
 import { UpdateHabitAction } from './actions/habits/update-habit.action';
@@ -42,6 +47,11 @@ export const DEFAULT_ACTION_HANDLERS: ActionHandler[] = [
   new CreateIncomeAction(),
   new UpdateIncomeAction(),
   new DeleteIncomeAction(),
+  new CreateTransferAction(),
+  new CreateInstallmentAction(),
+  new CreateRecurringAction(),
+  new CreateAccountAction(),
+  new CreateCategoryAction(),
   new CreateTaskAction(),
   new CreateNoteAction(),
   new UpdateHabitAction(),

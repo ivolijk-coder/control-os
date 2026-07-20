@@ -1,24 +1,30 @@
-import type { FinanceEntry } from '@control-os/types';
+import type { FinanceAccount, FinanceCategory, FinanceEntry } from '@control-os/types';
 import type {
+  CreateFinanceAccountInput,
+  CreateFinanceCategoryInput,
   CreateFinanceTransactionInput,
+  FinanceAccountBalance,
+  FinanceCategoryBreakdownItem,
   FinanceSummary,
   FinanceTransactionFilter,
   UpdateFinanceTransactionInput,
 } from './finance-repository.types';
 
 /**
- * `FinanceRepository` — CONTROL OS Fase 6 (Persistência real). Contrato que
- * `FinanceService` (`services/modules/finance`) depende — nunca de
- * `PrismaFinanceRepository` diretamente. "O Module Service nunca deverá
- * conversar diretamente com Prisma."
+ * `FinanceRepository` — CONTROL OS Fase 6 (Persistência real); Fase 7
+ * (Financeiro completo) adiciona Contas, Categorias e as consultas
+ * agregadas do Dashboard. Contrato que `FinanceService`
+ * (`services/modules/finance`) depende — nunca de `PrismaFinanceRepository`
+ * diretamente. "O Module Service nunca deverá conversar diretamente com
+ * Prisma."
  *
- * Genérico sobre `type` ('receita'/'despesa') em vez de dois conjuntos de
- * métodos (`createIncome`/`createExpense` no REPOSITÓRIO) — "criar uma
- * entidade única... Income, Expense" já é o `FinanceEntry`/`Transaction`
- * unificados; a distinção receita/despesa é só um campo, não dois
- * contratos. É `FinanceService`, uma camada acima, que expõe a API
- * receita/despesa separada que o pedido original pede
- * (`createIncome`/`createExpense`...), traduzindo pra este método único.
+ * Genérico sobre `type` ('receita'/'despesa'/'transferencia') em vez de um
+ * método por tipo — "criar uma entidade única" (`Transaction`/`FinanceEntry`)
+ * continua valendo mesmo com o terceiro tipo; a distinção é só um campo,
+ * nunca um contrato à parte. Transferências e parcelamentos NÃO ganham
+ * métodos próprios aqui — são só `createMany` com pernas já montadas pelo
+ * `FinanceService` (regra de negócio de como montar as pernas mora no
+ * Service, nunca no Repository — "o Repository só persiste").
  *
  * Implementações previstas (nenhuma exige mudar `FinanceService` nem as
  * Actions): `PrismaFinanceRepository` (produção, `@prisma/client`),
@@ -26,7 +32,16 @@ import type {
  * `SupabaseFinanceRepository`/`SQLiteFinanceRepository`.
  */
 export interface FinanceRepository {
+  // --- Transações -----------------------------------------------------------
   create(userId: string, input: CreateFinanceTransactionInput): Promise<FinanceEntry>;
+  /**
+   * CONTROL OS — Fase 7: cria várias transações de uma vez, atomicamente
+   * (todas ou nenhuma) — usado por transferências (2 pernas) e
+   * parcelamentos (N parcelas). `PrismaFinanceRepository` embrulha isto num
+   * `prisma.$transaction`; `InMemoryFinanceRepository` não precisa (já é
+   * atômico, single-threaded).
+   */
+  createMany(userId: string, inputs: CreateFinanceTransactionInput[]): Promise<FinanceEntry[]>;
   update(userId: string, input: UpdateFinanceTransactionInput): Promise<FinanceEntry | undefined>;
   delete(userId: string, id: string): Promise<FinanceEntry | undefined>;
   /**
@@ -39,6 +54,8 @@ export interface FinanceRepository {
    */
   findById(userId: string, id: string): Promise<FinanceEntry | undefined>;
   list(userId: string, filter?: FinanceTransactionFilter): Promise<FinanceEntry[]>;
+  /** "Últimas movimentações" (Dashboard) — mais recentes primeiro, limitadas a `limit`. */
+  getRecent(userId: string, limit: number): Promise<FinanceEntry[]>;
   /**
    * Agregado no lado do Repository (não "buscar tudo e somar no
    * Service") — "Performance: evitar consultas desnecessárias." Em
@@ -46,4 +63,32 @@ export interface FinanceRepository {
    * `InMemoryFinanceRepository` soma em memória, mesma semântica.
    */
   getSummary(userId: string, filter?: FinanceTransactionFilter): Promise<FinanceSummary>;
+  /** "Categorias que mais gastam" (Dashboard) — soma por categoria, ordenado do maior para o menor. `type` filtra despesa OU receita (nunca transferência). */
+  getCategoryBreakdown(
+    userId: string,
+    type: 'despesa' | 'receita',
+    filter?: FinanceTransactionFilter
+  ): Promise<FinanceCategoryBreakdownItem[]>;
+
+  // --- Contas (CONTROL OS — Fase 7) ------------------------------------------
+  createAccount(userId: string, input: CreateFinanceAccountInput): Promise<FinanceAccount>;
+  listAccounts(userId: string): Promise<FinanceAccount[]>;
+  findAccountById(userId: string, id: string): Promise<FinanceAccount | undefined>;
+  /** Busca case-insensitive por nome (ex.: resolver "nubank" dito em conversa para a conta "Nubank" já existente). */
+  findAccountByName(userId: string, name: string): Promise<FinanceAccount | undefined>;
+  /**
+   * Saldo de UMA conta — soma com sinal: `despesa` → `-amount`, `receita` →
+   * `+amount`, `transferencia` com `transferDirection: 'saida'` →
+   * `-amount`, `'entrada'` → `+amount`. Diferente de `getSummary` (que
+   * ignora transferências de propósito): aqui elas PRECISAM entrar, porque
+   * uma transferência move dinheiro de fato entre contas.
+   */
+  getAccountBalance(userId: string, accountId: string): Promise<number>;
+  /** Saldo de TODAS as contas do usuário numa única consulta agregada (nunca N+1 — uma `groupBy` por `[accountId, type, transferDirection]`, combinado em memória). */
+  listAccountBalances(userId: string): Promise<FinanceAccountBalance[]>;
+
+  // --- Categorias (CONTROL OS — Fase 7) --------------------------------------
+  /** Categorias personalizadas do usuário (persistidas) — as categorias PADRÃO do sistema não são linhas desta tabela, ver `DEFAULT_FINANCE_CATEGORIES` em `services/modules/finance`. */
+  createCategory(userId: string, input: CreateFinanceCategoryInput): Promise<FinanceCategory>;
+  listCategories(userId: string): Promise<FinanceCategory[]>;
 }

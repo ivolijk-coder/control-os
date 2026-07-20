@@ -170,6 +170,176 @@ async function main(): Promise<void> {
     assert(monthlyIncome.length === 1, `esperava 1 receita no mês corrente, recebeu ${monthlyIncome.length}`);
   });
 
+  // --- CONTROL OS — Fase 7: Contas ---------------------------------------
+
+  await test('createAccount/listAccounts — cria e lista contas do usuário', async () => {
+    const service = buildService();
+    const created = await service.createAccount({ name: 'Nubank', kind: 'conta_corrente' });
+    assert(created.success === true, `esperava sucesso, recebeu: ${created.message}`);
+
+    const accounts = await service.listAccounts();
+    assert(accounts.length === 1, `esperava 1 conta, recebeu ${accounts.length}`);
+    assert(accounts[0]?.name === 'Nubank', `esperava conta "Nubank", recebeu "${accounts[0]?.name}"`);
+  });
+
+  await test('createAccount — rejeita nome duplicado (case-insensitive)', async () => {
+    const service = buildService();
+    await service.createAccount({ name: 'Nubank' });
+    const result = await service.createAccount({ name: 'nubank' });
+    assert(result.success === false, 'esperava falha ao criar conta com nome já existente (case-insensitive)');
+  });
+
+  await test('createExpense sem conta — cria automaticamente a conta padrão "Carteira"', async () => {
+    const service = buildService();
+    await service.createExpense({ amount: 50, description: 'Café' });
+    const accounts = await service.listAccounts();
+    assert(accounts.length === 1, `esperava 1 conta criada automaticamente, recebeu ${accounts.length}`);
+    assert(accounts[0]?.name === 'Carteira', `esperava conta padrão "Carteira", recebeu "${accounts[0]?.name}"`);
+  });
+
+  // --- CONTROL OS — Fase 7: Categorias ------------------------------------
+
+  await test('listCategories — inclui as 13 categorias padrão mesmo sem nenhuma criada', async () => {
+    const service = buildService();
+    const categories = await service.listCategories();
+    assert(categories.length === 13, `esperava 13 categorias padrão, recebeu ${categories.length}`);
+    assert(
+      categories.every((category) => category.isDefault === true),
+      'todas as categorias padrão devem vir com isDefault: true'
+    );
+    assert(
+      categories.some((category) => category.name === 'Mercado'),
+      'esperava "Mercado" entre as categorias padrão'
+    );
+  });
+
+  await test('createCategory — soma ao catálogo padrão (nunca substitui)', async () => {
+    const service = buildService();
+    const created = await service.createCategory({ name: 'Pet' });
+    assert(created.success === true, `esperava sucesso, recebeu: ${created.message}`);
+    const categories = await service.listCategories();
+    assert(categories.length === 14, `esperava 13 padrão + 1 personalizada = 14, recebeu ${categories.length}`);
+  });
+
+  await test('createCategory — rejeita nome que colide com uma categoria padrão', async () => {
+    const service = buildService();
+    const result = await service.createCategory({ name: 'mercado' });
+    assert(result.success === false, 'esperava falha ao criar categoria com nome de categoria padrão (case-insensitive)');
+  });
+
+  // --- CONTROL OS — Fase 7: Transferências ---------------------------------
+
+  await test('createTransfer — move saldo entre contas sem alterar o patrimônio total', async () => {
+    const service = buildService();
+    await service.createIncome({ amount: 1000, description: 'Salário', accountName: 'Carteira' });
+    const balanceBefore = await service.getBalance();
+
+    const result = await service.createTransfer({ amount: 400, toAccountName: 'Nubank', fromAccountName: 'Carteira' });
+    assert(result.success === true, `esperava sucesso, recebeu: ${result.message}`);
+
+    const balanceAfter = await service.getBalance();
+    assert(balanceAfter === balanceBefore, `patrimônio total não devia mudar: antes ${balanceBefore}, depois ${balanceAfter}`);
+
+    const balances = await service.listAccountBalances();
+    const carteira = balances.find((b) => b.accountName === 'Carteira');
+    const nubank = balances.find((b) => b.accountName === 'Nubank');
+    assert(carteira?.balance === 600, `esperava saldo 600 na Carteira, recebeu ${carteira?.balance}`);
+    assert(nubank?.balance === 400, `esperava saldo 400 no Nubank, recebeu ${nubank?.balance}`);
+  });
+
+  await test('createTransfer — rejeita valor zero/negativo e conta de origem igual à de destino', async () => {
+    const service = buildService();
+    const zero = await service.createTransfer({ amount: 0, toAccountName: 'Nubank' });
+    assert(zero.success === false, 'esperava falha para valor zero');
+
+    const sameAccount = await service.createTransfer({ amount: 100, toAccountName: 'Carteira', fromAccountName: 'Carteira' });
+    assert(sameAccount.success === false, 'esperava falha quando origem e destino são a mesma conta');
+  });
+
+  // --- CONTROL OS — Fase 7: Parcelamentos ----------------------------------
+
+  await test('createInstallment — divide em N parcelas ligadas, sem deriva de ponto flutuante', async () => {
+    const service = buildService();
+    const result = await service.createInstallment({ totalAmount: 100, installments: 3, description: 'Notebook' });
+    assert(result.success === true, `esperava sucesso, recebeu: ${result.message}`);
+
+    const expenses = await service.listExpenses();
+    assert(expenses.length === 3, `esperava 3 parcelas, recebeu ${expenses.length}`);
+
+    const amounts = expenses.map((entry) => entry.amount).sort((a, b) => a - b);
+    assert(amounts[0] === 33.33 && amounts[1] === 33.33 && amounts[2] === 33.34, `esperava 33.33/33.33/33.34, recebeu ${amounts.join('/')}`);
+
+    const total = expenses.reduce((sum, entry) => sum + entry.amount, 0);
+    assert(Math.round(total * 100) === 10000, `soma das parcelas devia bater com o total (100.00), recebeu ${total}`);
+
+    const groupIds = new Set(expenses.map((entry) => entry.installmentGroupId));
+    assert(groupIds.size === 1, 'todas as parcelas devem compartilhar o mesmo installmentGroupId');
+    const numbers = expenses.map((entry) => entry.installmentNumber).sort();
+    assert(numbers.join(',') === '1,2,3', `esperava installmentNumber 1,2,3, recebeu ${numbers.join(',')}`);
+  });
+
+  await test('createInstallment — rejeita menos de 2 parcelas e valor zero/negativo', async () => {
+    const service = buildService();
+    const oneInstallment = await service.createInstallment({ totalAmount: 100, installments: 1, description: 'X' });
+    assert(oneInstallment.success === false, 'esperava falha com só 1 parcela');
+
+    const zeroAmount = await service.createInstallment({ totalAmount: 0, installments: 3, description: 'X' });
+    assert(zeroAmount.success === false, 'esperava falha com valor total zero');
+  });
+
+  // --- CONTROL OS — Fase 7: Recorrências -----------------------------------
+
+  await test('createRecurring — cria só a primeira ocorrência, marcada com a frequência', async () => {
+    const service = buildService();
+    const result = await service.createRecurring({ amount: 89.9, description: 'Internet', frequency: 'mensal' });
+    assert(result.success === true, `esperava sucesso, recebeu: ${result.message}`);
+
+    const expenses = await service.listExpenses();
+    assert(expenses.length === 1, `esperava 1 lançamento (só a primeira ocorrência), recebeu ${expenses.length}`);
+    assert(expenses[0]?.recurrenceFrequency === 'mensal', `esperava recurrenceFrequency "mensal", recebeu "${expenses[0]?.recurrenceFrequency}"`);
+  });
+
+  // --- CONTROL OS — Fase 7: Consultas agregadas ----------------------------
+
+  await test('getExpensesByCategory/getIncomeByCategory — agrupa e ordena por total', async () => {
+    const service = buildService();
+    await service.createExpense({ amount: 300, description: 'A', category: 'Mercado' });
+    await service.createExpense({ amount: 100, description: 'B', category: 'Mercado' });
+    await service.createExpense({ amount: 200, description: 'C', category: 'Combustível' });
+
+    const breakdown = await service.getExpensesByCategory();
+    assert(breakdown.length === 2, `esperava 2 categorias, recebeu ${breakdown.length}`);
+    assert(breakdown[0]?.category === 'Mercado' && breakdown[0]?.total === 400, `esperava Mercado=400 em primeiro, recebeu ${JSON.stringify(breakdown[0])}`);
+  });
+
+  await test('getCashFlow — devolve um ponto por mês, mais recente por último', async () => {
+    const service = buildService();
+    await service.createIncome({ amount: 1000, description: 'Salário' });
+    await service.createExpense({ amount: 200, description: 'Mercado' });
+
+    const cashFlow = await service.getCashFlow(3);
+    assert(cashFlow.length === 3, `esperava 3 pontos de fluxo de caixa, recebeu ${cashFlow.length}`);
+    const now = new Date();
+    const lastPoint = cashFlow[cashFlow.length - 1];
+    assert(lastPoint?.year === now.getFullYear() && lastPoint?.month === now.getMonth() + 1, 'o último ponto do fluxo de caixa devia ser o mês corrente');
+    assert(lastPoint?.balance === 800, `esperava saldo 800 no mês corrente, recebeu ${lastPoint?.balance}`);
+  });
+
+  await test('getDashboard — compõe saldo, resumo do mês, categorias, recentes e evolução', async () => {
+    const service = buildService();
+    await service.createIncome({ amount: 5000, description: 'Salário', category: 'Salário' });
+    await service.createExpense({ amount: 250, description: 'Mercado', category: 'Mercado' });
+
+    const dashboard = await service.getDashboard();
+    assert(dashboard.currentBalance === 4750, `esperava saldo atual 4750, recebeu ${dashboard.currentBalance}`);
+    assert(dashboard.monthIncome === 5000, `esperava receita do mês 5000, recebeu ${dashboard.monthIncome}`);
+    assert(dashboard.monthExpenses === 250, `esperava despesa do mês 250, recebeu ${dashboard.monthExpenses}`);
+    assert(dashboard.savings === 4750, `esperava economia 4750, recebeu ${dashboard.savings}`);
+    assert(dashboard.recentTransactions.length === 2, `esperava 2 lançamentos recentes, recebeu ${dashboard.recentTransactions.length}`);
+    assert(dashboard.monthlyEvolution.length === 6, `esperava 6 pontos de evolução mensal, recebeu ${dashboard.monthlyEvolution.length}`);
+    assert(dashboard.topExpenseCategories.length === 1, `esperava 1 categoria de despesa, recebeu ${dashboard.topExpenseCategories.length}`);
+  });
+
   // eslint-disable-next-line no-console -- script de teste standalone, não roda em produção.
   console.log(`\n${passed} passaram, ${failed} falharam.`);
   if (failed > 0) {

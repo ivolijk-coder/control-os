@@ -25,6 +25,10 @@ export function buildReply(intent: NovaIntent, ok: boolean): string {
       return `Prontinho. Registrei a despesa de R$ ${intent.amount.toFixed(2)} e já atualizei o Financeiro, o Dashboard e o Histórico.`;
     case 'registrar_receita':
       return `Prontinho. Registrei a receita de R$ ${intent.amount.toFixed(2)} e já atualizei o caixa e os indicadores.`;
+    case 'transferir_conta':
+      return `Prontinho. Transferi R$ ${intent.amount.toFixed(2)} para ${intent.toAccountName} — seu patrimônio total não muda, só o saldo entre as contas.`;
+    case 'parcelar_despesa':
+      return `Prontinho. Parcelei "${intent.description}" em ${intent.installments}x de R$ ${(intent.totalAmount / intent.installments).toFixed(2)}.`;
     case 'criar_lembrete':
       return `Pronto. Já deixei programado${intent.dueDate ? ` para ${intent.dueDate}` : ''}${intent.time ? ` às ${intent.time}` : ''}.`;
     case 'criar_agenda':

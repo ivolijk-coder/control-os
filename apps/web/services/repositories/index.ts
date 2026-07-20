@@ -13,7 +13,13 @@
 export { financeRepository, PrismaFinanceRepository, InMemoryFinanceRepository } from './finance';
 export type {
   FinanceRepository,
+  CreateFinanceAccountInput,
+  CreateFinanceCategoryInput,
+  CreateFinanceInstallmentInput,
   CreateFinanceTransactionInput,
+  CreateFinanceTransferInput,
+  FinanceAccountBalance,
+  FinanceCategoryBreakdownItem,
   FinanceSummary,
   FinanceTransactionFilter,
   UpdateFinanceTransactionInput,

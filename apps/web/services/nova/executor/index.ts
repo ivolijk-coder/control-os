@@ -36,9 +36,11 @@ export function runIntent(ctx: NovaContext, intent: NovaIntent): NovaActionResul
     case 'criar_documento':
     case 'criar_bem':
     case 'criar_nota':
+    case 'transferir_conta':
+    case 'parcelar_despesa':
       // Nunca alcançado em runtime — `IntentResolver` (services/ai) sempre
-      // resolve uma Action dedicada pra esses 5 kinds (CONTROL OS — Etapa
-      // 5), então `ActionExecutor` nunca cai neste fallback legado pra
+      // resolve uma Action dedicada pra esses kinds (CONTROL OS — Etapa 5 /
+      // Fase 7), então `ActionExecutor` nunca cai neste fallback legado pra
       // eles. Caso aqui só pra satisfazer o `switch` exaustivo.
       return [];
     case 'consultar_dividas':

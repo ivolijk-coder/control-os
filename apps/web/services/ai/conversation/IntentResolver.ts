@@ -7,8 +7,10 @@ import {
   CreateGoalAction,
   CreateHabitAction,
   CreateIncomeAction,
+  CreateInstallmentAction,
   CreateNoteAction,
   CreateReminderAction,
+  CreateTransferAction,
   CreateTripAction,
   type Action,
 } from '../actions';
@@ -27,6 +29,13 @@ import {
  * `desconhecido`) continuam sem Action dedicada — o `ActionExecutor` cai de
  * volta pro executor legado (`runIntent`, já testado) nesses casos,
  * preservando 100% do comportamento atual.
+ *
+ * `transferir_conta`/`parcelar_despesa` conectados na Fase 7 (Financeiro
+ * completo): diferente de `CreateExpenseAction`/`CreateIncomeAction` (que só
+ * gravam em `useDataStore`), `CreateTransferAction`/`CreateInstallmentAction`
+ * NÃO tocam `useDataStore` — persistem só via `services/ai/finance-bridge.ts`
+ * (fire-and-forget) contra o MESMO Action Engine do CONTROL HUB, ver doc de
+ * cada classe em `services/ai/actions/`.
  */
 export class IntentResolver {
   resolve(intent: NovaIntent): Action | undefined {
@@ -35,6 +44,18 @@ export class IntentResolver {
         return new CreateExpenseAction({ amount: intent.amount, description: intent.description });
       case 'registrar_receita':
         return new CreateIncomeAction({ amount: intent.amount, description: intent.description });
+      case 'transferir_conta':
+        return new CreateTransferAction({
+          amount: intent.amount,
+          toAccountName: intent.toAccountName,
+          fromAccountName: intent.fromAccountName,
+        });
+      case 'parcelar_despesa':
+        return new CreateInstallmentAction({
+          totalAmount: intent.totalAmount,
+          installments: intent.installments,
+          description: intent.description,
+        });
       case 'criar_lembrete':
         return new CreateReminderAction({ title: intent.title, dueDate: intent.dueDate, time: intent.time });
       case 'criar_agenda':

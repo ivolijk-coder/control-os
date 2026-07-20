@@ -77,13 +77,35 @@ export interface Mission {
   kind?: MissionKind;
 }
 
-export type FinanceEntryType = 'receita' | 'despesa';
+/**
+ * CONTROL OS — Fase 7 (Financeiro completo): `'transferencia'` adicionada
+ * ao union original (`'receita' | 'despesa'`) — extensão aditiva, todo
+ * `switch`/comparação existente que já tratava só os dois primeiros valores
+ * continua compilando (nenhum deles é `never`-exaustivo sobre este tipo
+ * hoje), e todos foram auditados e atualizados nesta fase para o terceiro
+ * caso. Uma transferência entre contas usa este terceiro `type` (nunca
+ * `'receita'`/`'despesa`) de propósito: mantém `getSummary`/`getBalance`
+ * (que somam só receita/despesa) automaticamente corretos sem nenhum
+ * filtro extra — "transferência não deve alterar o patrimônio total" sai
+ * de graça, sem código especial, porque a soma nunca inclui `transferencia`.
+ */
+export type FinanceEntryType = 'receita' | 'despesa' | 'transferencia';
+
+/** Direção de uma perna de transferência — só preenchido quando `FinanceEntry.type === 'transferencia'`. Cada transferência gera DUAS `FinanceEntry` (uma por conta), ligadas por `transferGroupId`, uma com `'saida'` (débito na conta de origem) e outra com `'entrada'` (crédito na conta de destino). */
+export type FinanceTransferDirection = 'entrada' | 'saida';
+
+/** Frequência de uma recorrência (CONTROL OS — Fase 7). "Preparar arquitetura para geração automática futura. Ainda não criar scheduler" — só o rótulo é gravado (`FinanceEntry.recurrenceFrequency`); nenhum gerador roda ainda. */
+export type FinanceRecurrenceFrequency = 'mensal' | 'semanal' | 'anual';
 
 /**
  * Lançamento financeiro (CONTROL OS 3.0 / NOVA). Cobre tanto registros
  * criados via navegação manual (módulo Financeiro) quanto os criados pela
  * Nova em conversa (ex.: "Gastei R$ 35 no almoço") — mesma fonte de dados,
  * sem duplicação de tipo entre os dois modos.
+ *
+ * CONTROL OS — Fase 7: campos novos abaixo são TODOS opcionais — nenhum
+ * `FinanceEntry` já existente em qualquer mock/teste/consumidor precisa
+ * mudar para continuar compilando ("preservar compatibilidade").
  */
 export interface FinanceEntry {
   id: string;
@@ -93,6 +115,52 @@ export interface FinanceEntry {
   category: string;
   date: string;
   spaceId?: string;
+  /** Conta à qual este lançamento pertence (`FinanceAccount.id`). "Cada transação deverá pertencer a uma conta" — resolvida (get-or-create) pelo `FinanceService` quando o chamador não informa uma. */
+  accountId?: string;
+  /** Liga as DUAS pernas de uma mesma transferência (`type === 'transferencia'`). */
+  transferGroupId?: string;
+  /** Só preenchido quando `type === 'transferencia'` — ver `FinanceTransferDirection`. */
+  transferDirection?: FinanceTransferDirection;
+  /** Liga todos os lançamentos de um mesmo parcelamento (ex.: as 12 parcelas de um notebook). */
+  installmentGroupId?: string;
+  /** Número desta parcela dentro do grupo (1-based). */
+  installmentNumber?: number;
+  /** Total de parcelas do grupo. */
+  installmentTotal?: number;
+  /** Presente quando este lançamento é a origem de uma recorrência (mensal/semanal/anual) — só o rótulo, sem geração automática ainda. */
+  recurrenceFrequency?: FinanceRecurrenceFrequency;
+}
+
+/**
+ * Conta financeira (CONTROL OS — Fase 7). "Criar suporte para múltiplas
+ * contas... Carteira, Conta Corrente, Poupança, Nubank, Inter, Caixa,
+ * Cartão de Crédito" — `name` é o rótulo livre do exemplo ("Nubank"),
+ * `kind` é uma classificação opcional pra agrupamento futuro (Dashboard) —
+ * nenhuma tela ainda lê `kind` para decidir comportamento.
+ */
+export type FinanceAccountKind = 'carteira' | 'conta_corrente' | 'poupanca' | 'cartao_credito' | 'outro';
+
+export interface FinanceAccount {
+  id: string;
+  name: string;
+  kind: FinanceAccountKind;
+  createdAt: string;
+}
+
+/**
+ * Categoria financeira (CONTROL OS — Fase 7). "Permitir categorias
+ * personalizadas" — `FinanceEntry.category` continua sendo uma `string`
+ * livre (nenhuma FK obrigatória criada nesta fase); `FinanceCategory` é só
+ * o catálogo (padrão do sistema + personalizado do usuário) usado para
+ * sugerir/validar nomes, não uma restrição.
+ */
+export interface FinanceCategory {
+  id: string;
+  name: string;
+  kind?: FinanceEntryType;
+  createdAt: string;
+  /** `true` para as categorias padrão do sistema (não persistidas — id sintético `default:<nome>`), `false`/ausente para categorias personalizadas do usuário (persistidas de verdade). */
+  isDefault?: boolean;
 }
 
 /**

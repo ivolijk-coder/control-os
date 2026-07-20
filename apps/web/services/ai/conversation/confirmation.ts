@@ -58,6 +58,10 @@ function describeIntentForBatch(intent: NovaIntent): string {
       return `registrar uma despesa de R$ ${intent.amount.toFixed(2)} (${intent.description})`;
     case 'registrar_receita':
       return `registrar uma receita de R$ ${intent.amount.toFixed(2)} (${intent.description})`;
+    case 'transferir_conta':
+      return `transferir R$ ${intent.amount.toFixed(2)} para ${intent.toAccountName}`;
+    case 'parcelar_despesa':
+      return `parcelar "${intent.description}" em ${intent.installments}x`;
     case 'criar_lembrete':
       return `criar o lembrete "${intent.title}"`;
     case 'criar_agenda':

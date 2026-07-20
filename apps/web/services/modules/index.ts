@@ -43,9 +43,16 @@ export const financeService: FinanceService = new PersistentFinanceService(finan
 export type { FinanceService };
 export type {
   CreateExpenseInput,
+  CreateFinanceAccountServiceInput,
+  CreateFinanceCategoryServiceInput,
   CreateIncomeInput,
+  CreateInstallmentInput,
+  CreateRecurringInput,
+  CreateTransferInput,
   DeleteExpenseInput,
   DeleteIncomeInput,
+  FinanceCashFlowPoint,
+  FinanceDashboard,
   FinanceSummary,
   UpdateExpenseInput,
   UpdateIncomeInput,

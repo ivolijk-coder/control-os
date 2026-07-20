@@ -33,11 +33,44 @@ datasource db {
 /// pedido original: em vez de duas tabelas (`incomes`/`expenses`), uma
 /// entidade única (`Transaction`) discriminada por este enum. Mesma
 /// unificação que `FinanceEntry` (`@control-os/types`, `type: 'receita' |
-/// 'despesa'`) já usa no domínio — este enum é só o espelho, em
-/// PostgreSQL, do mesmo conceito (nunca um terceiro vocabulário).
+/// 'despesa' | 'transferencia'`) já usa no domínio — este enum é só o
+/// espelho, em PostgreSQL, do mesmo conceito (nunca um terceiro
+/// vocabulário).
+///
+/// CONTROL OS — Fase 7 (Financeiro completo): `TRANSFER` adicionado —
+/// "Transferência entre contas... sem alterar patrimônio total". Uma
+/// transferência gera DUAS `Transaction` (uma por conta), ambas
+/// `type: TRANSFER` (nunca `INCOME`/`EXPENSE`) — assim `getSummary`
+/// (`groupBy type`) já ignora as duas pernas automaticamente, sem nenhum
+/// filtro extra: soma só `INCOME`/`EXPENSE`, exatamente o que "não altera
+/// o patrimônio total" pede.
 enum TransactionType {
   INCOME
   EXPENSE
+  TRANSFER
+}
+
+/// Direção de uma perna de transferência (`Transaction.transferDirection`)
+/// — só preenchido quando `type == TRANSFER`. `OUT`: débito na conta de
+/// origem; `IN`: crédito na conta de destino. Usado só para calcular saldo
+/// POR CONTA (`getAccountBalance`) — o saldo TOTAL nunca precisa disto,
+/// porque ignora `TRANSFER` inteiramente (ver acima).
+enum TransferDirection {
+  IN
+  OUT
+}
+
+/// Classificação opcional de uma `Account` (CONTROL OS — Fase 7) — "Carteira,
+/// Conta Corrente, Poupança, Nubank, Inter, Caixa, Cartão de Crédito": os
+/// nomes de banco (`Account.name`) continuam livres; `kind` é só para
+/// agrupamento futuro (Dashboard), nunca usado para decidir comportamento
+/// nesta fase.
+enum AccountKind {
+  CARTEIRA
+  CONTA_CORRENTE
+  POUPANCA
+  CARTAO_CREDITO
+  OUTRO
 }
 
 /// Entidade única de lançamento financeiro — cobre tanto receitas quanto
@@ -67,11 +100,28 @@ model Transaction {
   accountId String?  @map("account_id") @db.Uuid
   account   Account? @relation(fields: [accountId], references: [id])
 
-  /// Preparado para recorrência futura (ex.: uma RRULE ou um enum de
-  /// frequência) — "preparar para... recorrência, mesmo que ainda não
-  /// implementada". Nenhuma Action/Service desta fase lê ou escreve este
-  /// campo ainda.
+  /// CONTROL OS — Fase 7: guardava só a intenção ("preparado para
+  /// recorrência futura"); agora `FinanceService.createRecurring` de fato
+  /// escreve aqui o rótulo de frequência (`FinanceRecurrenceFrequency` —
+  /// "mensal"/"semanal"/"anual"). Ainda "sem scheduler": nenhum job lê este
+  /// campo para gerar novas `Transaction` automaticamente — só a primeira
+  /// ocorrência é criada nesta fase.
   recurrenceRule String? @map("recurrence_rule")
+
+  /// CONTROL OS — Fase 7: liga as DUAS pernas de uma mesma transferência
+  /// (uma por conta). `transferDirection` diferencia qual perna é qual —
+  /// ver doc do enum `TransferDirection` acima.
+  transferGroupId   String?            @map("transfer_group_id") @db.Uuid
+  transferDirection TransferDirection? @map("transfer_direction")
+
+  /// CONTROL OS — Fase 7: liga todos os lançamentos de um mesmo
+  /// parcelamento (ex.: as 12 parcelas de um notebook) — `installmentNumber`
+  /// é 1-based, `installmentTotal` é o mesmo valor em todas as parcelas do
+  /// grupo (redundante de propósito: evita um `COUNT` a mais só para saber
+  /// "3 de quantas?").
+  installmentGroupId String? @map("installment_group_id") @db.Uuid
+  installmentNumber  Int?    @map("installment_number")
+  installmentTotal   Int?    @map("installment_total")
 
   attachments Attachment[]
 
@@ -79,15 +129,21 @@ model Transaction {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([userId, type, date])
+  @@index([userId, accountId])
+  @@index([transferGroupId])
+  @@index([installmentGroupId])
   @@map("finance_transactions")
 }
 
-/// Categoria de lançamento (ex.: "Mercado", "Salário") — "preparar para
-/// categorias, mesmo que ainda não implementadas": o model já existe e
-/// `Transaction.categoryId` já pode apontar pra cá, mas nenhum Repository
-/// método desta fase cria/lê `Category` — `FinanceEntry.category`
-/// continua sendo só uma `String` livre nesta fase (ver
-/// `PrismaFinanceRepository`, que não usa esta relação ainda).
+/// Categoria de lançamento (ex.: "Mercado", "Salário"). CONTROL OS — Fase 7:
+/// `FinanceRepository.createCategory`/`listCategories` usam este model de
+/// verdade agora (catálogo de categorias personalizadas do usuário,
+/// somado às categorias padrão do sistema — que não são linhas desta
+/// tabela, ver `DEFAULT_FINANCE_CATEGORIES`). `Transaction.categoryId`/
+/// `categoryRef` continuam SEM uso nesta fase — `FinanceEntry.category`
+/// continua sendo uma `String` livre (nenhuma FK obrigatória entre uma
+/// transação e seu catálogo de categoria), "expand-and-contract" adiado
+/// pra uma fase futura.
 model Category {
   id           String            @id @default(uuid()) @db.Uuid
   userId       String            @map("user_id") @db.Uuid
@@ -100,16 +156,22 @@ model Category {
   @@map("finance_categories")
 }
 
-/// Conta financeira (ex.: "Carteira", "Banco X") — "preparar para contas,
-/// mesmo que ainda não implementadas". Mesmo status que `Category` acima:
-/// model existe, relação existe, nenhum Repository método desta fase usa.
+/// Conta financeira (ex.: "Carteira", "Nubank", "Cartão de Crédito").
+/// CONTROL OS — Fase 7: sai do status de stub ("preparado, não usado") —
+/// `FinanceRepository.createAccount`/`listAccounts`/`getOrCreateDefaultAccount`
+/// usam este model de verdade agora. `@@unique([userId, name])`: evita duas
+/// contas com o mesmo nome pro mesmo usuário (ex.: duas "Nubank" por engano
+/// numa criação repetida via conversa) — seguro adicionar agora porque
+/// nenhuma linha real existia antes desta fase (nada grava aqui ainda).
 model Account {
   id           String        @id @default(uuid()) @db.Uuid
   userId       String        @map("user_id") @db.Uuid
   name         String
+  kind         AccountKind   @default(OUTRO)
   transactions Transaction[]
   createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
 
+  @@unique([userId, name])
   @@map("finance_accounts")
 }
 

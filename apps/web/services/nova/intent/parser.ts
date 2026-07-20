@@ -11,8 +11,19 @@ import type { NovaIntent } from '../interfaces';
 const AMOUNT_PATTERN = /(\d{1,3}(?:\.\d{3})*(?:,\d{2})?|\d+(?:\.\d{1,2})?)/;
 const TIME_PATTERN = /(\d{1,2})[h:](\d{2})?/;
 
-const EXPENSE_PATTERN = /\b(gastei|paguei|comprei)\b/;
+// "passei" adicionado na Fase 7 — "Passei R$ 80 no posto." é um dos
+// resultados esperados explicitamente listados para o módulo Financeiro.
+const EXPENSE_PATTERN = /\b(gastei|paguei|comprei|passei)\b/;
 const REVENUE_PATTERN = /\b(recebi|faturei|caiu|entrou)\b/;
+// Fase 7 (Financeiro completo). "Transferi", "transferir", "transfira" —
+// nunca colide com EXPENSE/REVENUE_PATTERN (nenhum verbo em comum).
+const TRANSFER_PATTERN = /\b(transferi|transferir|transfira|fa[çc]o uma transfer[êe]ncia)\b/;
+// Captura o destino depois de "para (o/a) <conta>" — ex.: "para o Nubank",
+// "para a Poupança". Ancorado no fim da frase (só remove pontuação final).
+const TRANSFER_TARGET_PATTERN = /\bpara\s+(?:o|a|os|as)?\s*([a-zà-ÿA-ZÀ-Ÿ0-9][a-zà-ÿA-ZÀ-Ÿ0-9\s]*?)\s*[.!?]*$/i;
+// Fase 7. Formas de comando/infinitivo ("parcela", "parcelar") — deliberadamente
+// distinto de DEBT_PATTERN ("parcelei", passado), sem colisão de regex.
+const INSTALLMENT_COMMAND_PATTERN = /\b(parcela|parcelar|quero parcelar)\b/;
 const REMINDER_PATTERN = /\b(lembrar de|lembra de|n[ãa]o esquecer de)\b/;
 const AGENDA_PATTERN = /\b(reuni[ãa]o|compromisso|agendar|consulta|dentista|m[ée]dico)\b/;
 const GOAL_PATTERN = /\b(quero faturar|minha meta [ée]|meu objetivo [ée]|quero alcan[çc]ar|quero economizar|quero emagrecer|quero perder)\b/;
@@ -81,6 +92,17 @@ function describeEntry(raw: string): string {
   return firstChar ? firstChar.toUpperCase() + trimmed.slice(1) : trimmed;
 }
 
+/**
+ * Extrai o nome da conta de destino de uma transferência ("transferi 500
+ * para o Nubank" -> "Nubank"). Retorna `undefined` quando a frase não traz
+ * um destino claro — `FinanceService.resolveAccountId` decide o fallback.
+ */
+function extractTransferTarget(raw: string): string | undefined {
+  const match = TRANSFER_TARGET_PATTERN.exec(raw);
+  const captured = match?.[1]?.trim();
+  return captured ? describeEntry(captured) : undefined;
+}
+
 export function parseIntent(text: string): NovaIntent {
   const raw = text.trim();
   const lower = raw.toLowerCase();
@@ -100,6 +122,32 @@ export function parseIntent(text: string): NovaIntent {
     const amount = parseAmount(raw);
     if (amount !== null) {
       return { kind: 'registrar_receita', raw, amount, description: describeEntry(raw) };
+    }
+  }
+
+  if (TRANSFER_PATTERN.test(lower)) {
+    const amount = parseAmount(raw);
+    const toAccountName = extractTransferTarget(raw);
+    if (amount !== null && toAccountName) {
+      return { kind: 'transferir_conta', raw, amount, toAccountName };
+    }
+  }
+
+  if (INSTALLMENT_COMMAND_PATTERN.test(lower)) {
+    // Remove o trecho "10x"/"12 vezes" ANTES de procurar o valor — senão
+    // `parseAmount` capturaria o "10" de "10x" como se fosse o preço.
+    // Consequência assumida: "Parcela esse notebook em 10x." (sem preço
+    // explícito) não tem valor pra extrair e cai em 'desconhecido' — a
+    // NOVA precisa que o preço apareça na frase (ex.: "...de 1200 em 10x.").
+    const totalAmount = parseAmount(raw.replace(INSTALLMENTS_PATTERN, ''));
+    if (totalAmount !== null) {
+      return {
+        kind: 'parcelar_despesa',
+        raw,
+        totalAmount,
+        installments: parseInstallments(raw),
+        description: describeEntry(raw),
+      };
     }
   }
 
