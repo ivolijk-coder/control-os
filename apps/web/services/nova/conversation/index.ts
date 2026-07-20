@@ -59,9 +59,13 @@ export function buildReply(intent: NovaIntent, ok: boolean): string {
  * memória → resposta. "Primeiro faz. Depois responde." — a execução sempre
  * roda antes da resposta em texto ser formulada.
  *
- * Usado pelo `NovaWorkspace` (UI) e, futuramente, pelo adapter de WhatsApp
- * (`services/channels/whatsapp`) — mesma orquestração, independente do
- * canal de entrada.
+ * Usado pelo `NovaWorkspace` (UI). CONTROL HUB (`services/control-hub`):
+ * canais externos (WhatsApp — `channels/whatsapp` — e futuros) não chamam
+ * isto diretamente nem nunca chamarão — passam sempre por
+ * `controlHub.receive`, que fala com a NOVA através do `NovaGateway`
+ * (`services/control-hub/nova-gateway.ts`), mock nesta fase. Mesma
+ * orquestração de sempre, agora com um único ponto de entrada
+ * independente do canal.
  */
 export async function processNovaTurn(text: string, ctx: NovaContext): Promise<NovaTurnResult> {
   const intent = parseIntent(text);
