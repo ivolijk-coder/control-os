@@ -171,6 +171,16 @@ function formatResultForModel(results: NovaActionResult[]): string {
  * tool calls propostas no mesmo turno pausa se QUALQUER uma for sensível —
  * o usuário confirma ou cancela o lote inteiro, nunca uma ação sensível
  * escondida atrás de outras não sensíveis.
+ *
+ * CONTROL HUB — Fase 2 (auditoria de acoplamento com o navegador): este
+ * serviço ainda depende do navegador em dois pontos — `ctx.actions`
+ * (parâmetro `NovaContext`, vinculado ao `useDataStore`/Zustand) e as
+ * chamadas diretas a `recallFacts`/`rememberTurn` acima (`services/nova/
+ * memory`, que lê/escreve em `window.sessionStorage`). Nenhum canal
+ * server-side do CONTROL HUB (`services/control-hub`) consegue chamar
+ * `processTurn` hoje por causa disso — ver a análise completa em
+ * `services/control-hub/nova-gateway.ts`, que documenta os dois pontos e
+ * o caminho para resolvê-los numa fase futura.
  */
 export class ConversationService {
   private pendingBySession = new Map<string, PendingTurn>();

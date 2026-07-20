@@ -1,7 +1,8 @@
 import type { ActionRequest, ActionResult } from './action-engine.types';
 import type { DecisionResult } from './decision-engine.types';
 import type { NovaGatewayResult } from './nova-gateway.types';
-import type { HubContext, HubMessage, HubPipelineResult } from './control-hub.types';
+import type { HubMessage, HubPipelineResult } from './control-hub.types';
+import type { UserContext } from '@/services/context-provider';
 
 /**
  * Contratos do CONTROL HUB — cada interface aqui é a fronteira de uma
@@ -9,9 +10,15 @@ import type { HubContext, HubMessage, HubPipelineResult } from './control-hub.ty
  * Receive → Validate → Normalize → Load Context → Send to NOVA → Decision
  * Engine → Action Engine → Return Result). `control-hub.service.ts`
  * depende só destas interfaces, nunca das implementações concretas
- * diretamente — baixo acoplamento: trocar `StubContextManager` por um
- * Context Manager real (Etapa futura, com banco de dados) não muda uma
- * linha de `ControlHubService`.
+ * diretamente — baixo acoplamento: trocar `ContextManagerImpl` por outra
+ * implementação não muda uma linha de `ControlHubService`.
+ *
+ * CONTROL HUB — Fase 2: o contexto que passeia por `ContextManager`,
+ * `DecisionEngine` e `NovaGateway` agora é `UserContext`
+ * (`services/context-provider`), não mais um `HubContext` próprio deste
+ * módulo (removido). "A NOVA nunca mais deverá acessar Zustand, React ou
+ * qualquer estado do frontend" — `UserContext` é o único objeto de
+ * contexto que atravessa essa fronteira.
  */
 
 /**
@@ -40,22 +47,23 @@ export interface ControlHub {
 
 /**
  * Monta o contexto que a NOVA (e, futuramente, o Decision Engine) recebe
- * antes de processar a mensagem. Nunca responde ao usuário — só lê e
- * agrega. Implementação real (com fonte de dados de verdade) é trabalho
- * de uma fase futura; ver `context-manager.ts` para o porquê.
+ * antes de processar a mensagem. Nunca responde ao usuário — só pede o
+ * contexto pronto ao Context Provider e devolve. Ver `context-manager.ts`
+ * — desde a Fase 2, esta é sua ÚNICA responsabilidade (deixou de montar
+ * contexto sozinho).
  */
 export interface ContextManager {
-  loadContext(message: HubMessage): Promise<HubContext>;
+  loadContext(message: HubMessage): Promise<UserContext>;
 }
 
 /**
  * Decide o que fazer com uma mensagem já normalizada e com contexto
  * carregado. Ainda sem IA nesta fase (ver `decision-engine.ts`) — recebe
- * exatamente `HubMessage` + `HubContext`, como especificado no pedido
+ * exatamente `HubMessage` + `UserContext`, como especificado no pedido
  * original, e devolve um `DecisionResult`.
  */
 export interface DecisionEngine {
-  decide(message: HubMessage, context: HubContext): Promise<DecisionResult>;
+  decide(message: HubMessage, context: UserContext): Promise<DecisionResult>;
 }
 
 /** Executa as ações que o Decision Engine pediu. Nesta fase só a interface existe — ver `action-engine.ts`. */
@@ -67,11 +75,11 @@ export interface ActionEngine {
  * Ponte entre o CONTROL HUB e a NOVA (`services/nova`/`services/ai`).
  * Interface própria, deliberadamente DESACOPLADA dos tipos internos da
  * NOVA (`NovaContext`, `NovaTurnResult`) — ver doc de `nova-gateway.ts`
- * para a justificativa completa (hoje `NovaContext` exige `actions`
- * vinculadas a um `useDataStore` vivo no navegador, algo que só existe
- * para o canal `web`; um canal server-side como WhatsApp ainda não tem de
- * onde tirar isso).
+ * para a justificativa completa e para o achado confirmado na Fase 2: a
+ * NOVA depende do navegador em DOIS pontos, não só um (`NovaContext.actions`
+ * vinculadas ao `useDataStore`, E a memória de conversa da
+ * `ConversationService` lendo/escrevendo em `sessionStorage` diretamente).
  */
 export interface NovaGateway {
-  send(message: HubMessage, context: HubContext): Promise<NovaGatewayResult>;
+  send(message: HubMessage, context: UserContext): Promise<NovaGatewayResult>;
 }

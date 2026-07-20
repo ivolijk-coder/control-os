@@ -1,14 +1,3 @@
-import type {
-  AgendaEvent,
-  Asset,
-  FinanceEntry,
-  Habit,
-  Mission,
-  Note,
-  NovaMessage,
-  PersonalDocument,
-} from '@control-os/types';
-
 /**
  * CONTROL HUB — modelo universal de mensagem.
  *
@@ -85,39 +74,15 @@ export interface HubValidationResult {
 }
 
 /**
- * Contexto agregado pelo Context Manager antes da NOVA processar a
- * mensagem — nunca contém superfície de escrita (nenhum `actions`/setter),
- * só leitura, mesmo princípio já usado por `NovaReadOnlyContext` em
- * `services/nova/interfaces`. Reaproveita os tipos de domínio existentes
- * (`@control-os/types`) em vez de inventar formas novas para os mesmos
- * dados.
+ * CONTROL HUB — Fase 2: o contexto que flui pelo pipeline agora é o
+ * `UserContext` de `services/context-provider` (não mais um `HubContext`
+ * próprio deste módulo — removido nesta fase). Ver
+ * `services/context-provider/user-context.types.ts` para o tipo e o porquê
+ * dele viver num módulo à parte: `UserContext` é o contrato entre o
+ * CONTROL HUB e a NOVA, não algo específico de transporte/canal como
+ * `HubMessage` acima — merece sua própria camada, testável e portável
+ * independente do Hub.
  */
-export interface HubContext {
-  userId: string;
-  agenda: AgendaEvent[];
-  financeiro: FinanceEntry[];
-  metas: Mission[];
-  habitos: Habit[];
-  patrimonio: Asset[];
-  notas: Note[];
-  documentos: PersonalDocument[];
-  conversasRecentes: NovaMessage[];
-}
-
-/** `HubContext` "vazio" — usado pelo `StubContextManager` (ver `context-manager.ts`) enquanto não existe uma fonte de dados real por trás do Hub. */
-export function createEmptyHubContext(userId: string): HubContext {
-  return {
-    userId,
-    agenda: [],
-    financeiro: [],
-    metas: [],
-    habitos: [],
-    patrimonio: [],
-    notas: [],
-    documentos: [],
-    conversasRecentes: [],
-  };
-}
 
 /** Resultado final do pipeline (etapa "Return Result") — o que `ControlHub.receive` devolve para o adapter de canal que chamou. */
 export interface HubPipelineResult {

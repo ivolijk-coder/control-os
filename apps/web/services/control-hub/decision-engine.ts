@@ -1,6 +1,7 @@
 import type { DecisionEngine } from './control-hub.interfaces';
-import type { HubContext, HubMessage } from './control-hub.types';
+import type { HubMessage } from './control-hub.types';
 import type { DecisionResult } from './decision-engine.types';
+import type { UserContext } from '@/services/context-provider';
 
 /**
  * Decision Engine — "ainda NÃO implementar IA. Criar apenas a estrutura...
@@ -15,7 +16,7 @@ import type { DecisionResult } from './decision-engine.types';
  * informação do usuário" vai morar.
  */
 export class MockDecisionEngine implements DecisionEngine {
-  async decide(message: HubMessage, _context: HubContext): Promise<DecisionResult> {
+  async decide(message: HubMessage, _context: UserContext): Promise<DecisionResult> {
     return {
       kind: 'reply',
       reply: `[Control Hub · mock] mensagem recebida do canal "${message.channel}": "${message.content}"`,

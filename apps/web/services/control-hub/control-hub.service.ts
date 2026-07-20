@@ -40,9 +40,9 @@ import type { HubMessage, HubPipelineResult } from './control-hub.types';
  * `services/nova/index.ts`.
  *
  * Injeção via construtor (com defaults para as implementações desta fase)
- * é o que garante baixo acoplamento: trocar `StubContextManager` por um
- * Context Manager real, ou `MockDecisionEngine` por um de verdade, é
- * passar outra implementação no construtor — nenhuma linha deste arquivo
+ * é o que garante baixo acoplamento: trocar `ContextManagerImpl` por um
+ * Context Manager com outra fonte, ou `MockDecisionEngine` por um de
+ * verdade, é passar outra implementação no construtor — nenhuma linha deste arquivo
  * muda.
  */
 export class ControlHubService implements ControlHub {
