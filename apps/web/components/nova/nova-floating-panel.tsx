@@ -2,12 +2,11 @@
 
 import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { usePathname } from 'next/navigation';
 import { X } from 'lucide-react';
 import { FloatingPanel } from '@/components/ui/floating-panel';
 import { NovaWorkspace } from '@/components/nova/nova-workspace';
 import { useAppStore } from '@/lib/store';
-import type { NovaPersona } from '@/services/nova';
+import { useRoutePersona } from '@/lib/use-route-persona';
 
 /**
  * NovaFloatingPanel — painel flutuante da Nova (CONTROL OS — Etapa 3).
@@ -25,26 +24,15 @@ export function NovaFloatingPanel() {
 
   // CONTROL OS — "o modal deve detectar automaticamente a rota atual (/nova
   // ou /legendary) e iniciar já na IA correspondente. Não quero que a NOVA
-  // seja sempre o padrão." Antes este painel confiava só em `activePersona`
-  // do store — na prática quase sempre correto (a página /nova ou
-  // /legendary já sincroniza `activePersona` ao montar), mas indireto:
-  // dependia da ordem de efeitos em vez de olhar pra própria URL. Ler a
-  // rota diretamente aqui é a fonte de verdade mais forte possível — "o
-  // modal detecta a rota atual", literalmente, sem depender de nenhum outro
-  // componente ter rodado antes.
-  const pathname = usePathname();
-  const routePersona: NovaPersona | undefined = pathname?.startsWith('/legendary')
-    ? 'legendary'
-    : pathname?.startsWith('/nova')
-      ? 'nova'
-      : undefined;
-
-  // Fora de /nova e /legendary (ex.: painel aberto do Dashboard, via
-  // `AgentWidgetCard`), não há rota "dona" da persona — comportamento
-  // antigo permanece: segue `activePersona` do store, com seletor visível
-  // dentro do painel (ver `NovaWorkspace`, `!lockedPersona`).
-  const activePersona = useAppStore((s) => s.activePersona);
-  const effectivePersona = routePersona ?? activePersona;
+  // seja sempre o padrão." `useRoutePersona` lê a rota diretamente
+  // (`usePathname`), a fonte de verdade mais forte possível — nunca
+  // depende de `activePersona` já ter sido sincronizado por outro
+  // componente. Fora de /nova e /legendary (ex.: painel aberto do
+  // Dashboard, via `AgentWidgetCard`), `routePersona` é `undefined` e
+  // `effectivePersona` cai pra `activePersona` do store — comportamento
+  // antigo, com seletor visível dentro do painel (ver `NovaWorkspace`,
+  // `!lockedPersona`).
+  const { routePersona, effectivePersona } = useRoutePersona();
   const isLegendary = effectivePersona === 'legendary';
 
   // Mesmo tratamento do `variant="docked"` em `NovaWorkspace` (teste de uso

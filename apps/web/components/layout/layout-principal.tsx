@@ -8,8 +8,8 @@ import { CommandCenter } from '@/components/command/command-center';
 import { NovaFloatingLauncher } from '@/components/nova/nova-floating-launcher';
 import { NovaFloatingPanel } from '@/components/nova/nova-floating-panel';
 import { NovaVoiceOverlay } from '@/components/nova/nova-voice-overlay';
-import { useAppStore } from '@/lib/store';
-import { cn } from '@/lib/utils';
+import { PersonaAmbientGlow, PersonaTransitionStage } from '@/components/layout/persona-transition';
+import { useRoutePersona } from '@/lib/use-route-persona';
 
 // Canvas + randomização de posição são inerentemente client-only. `ssr:
 // false` evita mismatch de hidratação e mantém o SSR/streaming do restante
@@ -40,27 +40,32 @@ const BackgroundNetwork = dynamic(
  * — mesmo com a LEGENDARY conduzindo a conversa em `/nova`. Isso quebrava a
  * própria ideia de "a Orb é o coração do sistema, o resto da interface
  * parece iluminado por ela": a identidade da persona ativa parava na Orb e
- * no seletor, nunca chegava ao ambiente. Lê `activePersona` do mesmo
- * `useAppStore` que a Orb/seletor já leem (nenhum estado novo) e troca a
- * classe do glow de fundo + a cor das partículas juntas, em qualquer tela
- * do produto — não só `/nova`.
+ * no seletor, nunca chegava ao ambiente. Lê `effectivePersona`
+ * (`useRoutePersona`) e troca a cor do glow de fundo + das partículas
+ * juntas, em qualquer tela do produto — não só `/nova`.
+ *
+ * CONTROL OS — "transição cinematográfica entre NOVA e LEGENDARY": o glow
+ * de fundo agora é `PersonaAmbientGlow` (cross-fade animado, não mais uma
+ * className trocada na hora) e `{children}` é envolvido por
+ * `PersonaTransitionStage` — juntos fazem a troca de rota entre /nova e
+ * /legendary parecer "a interface se transformando", não um corte seco.
+ * Fora dessas duas rotas, `PersonaTransitionStage` é um passthrough
+ * (`routePersona` indefinido) — nenhuma outra tela do produto muda de
+ * comportamento.
  */
 export function LayoutPrincipal({ children }: { children: React.ReactNode }) {
-  const activePersona = useAppStore((state) => state.activePersona);
-  const isLegendary = activePersona === 'legendary';
+  const { effectivePersona } = useRoutePersona();
 
   return (
-    <div
-      className={cn(
-        'relative flex h-screen w-full overflow-hidden bg-bg bg-fixed motion-safe:animate-ambient-drift',
-        isLegendary ? 'bg-ambient-glow-gold' : 'bg-ambient-glow'
-      )}
-    >
-      <BackgroundNetwork persona={activePersona} />
+    <div className="relative flex h-screen w-full overflow-hidden bg-bg">
+      <PersonaAmbientGlow persona={effectivePersona} />
+      <BackgroundNetwork persona={effectivePersona} />
       <Sidebar />
       <div className="relative flex min-w-0 flex-1 flex-col">
         <Topbar />
-        <main className="flex-1 overflow-y-auto pb-24">{children}</main>
+        <main className="flex-1 overflow-y-auto pb-24">
+          <PersonaTransitionStage>{children}</PersonaTransitionStage>
+        </main>
       </div>
       <CommandCenter />
       <NovaFloatingLauncher />
