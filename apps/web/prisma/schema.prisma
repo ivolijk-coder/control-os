@@ -1,0 +1,127 @@
+// CONTROL OS — Fase 6: Persistência real (Prisma + PostgreSQL).
+//
+// "O Module Service nunca deverá conversar diretamente com Prisma." — este
+// schema só é importado por `services/repositories/finance/prisma-finance.repository.ts`
+// (a ÚNICA classe de todo o CONTROL OS que conhece `@prisma/client`).
+//
+// Banco compartilhado com `apps/api` (mesmo Postgres já provisionado por
+// `database/docker-compose.yml`, banco `control_os`) — NÃO um banco novo.
+// `apps/api` (SQLAlchemy + Alembic) já é dono da tabela `users`; todo model
+// deste schema usa `@@map`/`@map` com prefixo `finance_` para nunca colidir
+// com nada que o Alembic gerencie, mesmo os dois convivendo no mesmo banco
+// físico. `userId` aqui é só um UUID solto (sem FK cross-schema — Prisma e
+// Alembic são sistemas de migration independentes; uma FK de verdade exigiria
+// os dois lados compartilharem um migration tool só, fora de escopo desta
+// fase) — mesmo formato (`Uuid`) que `users.id` em `apps/api`, por
+// consistência, não por integridade referencial garantida pelo banco.
+//
+// Convenção de nomes: colunas em snake_case (`@map`), tabelas em snake_case
+// prefixadas (`@@map`) — mesmo estilo de `database/init.sql` (`created_at`,
+// `hashed_password`...), para o schema inteiro do banco `control_os` seguir
+// uma convenção só, não duas, mesmo vindo de dois ORMs diferentes.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Tipo de uma transação financeira — "Transaction... Income, Expense" do
+/// pedido original: em vez de duas tabelas (`incomes`/`expenses`), uma
+/// entidade única (`Transaction`) discriminada por este enum. Mesma
+/// unificação que `FinanceEntry` (`@control-os/types`, `type: 'receita' |
+/// 'despesa'`) já usa no domínio — este enum é só o espelho, em
+/// PostgreSQL, do mesmo conceito (nunca um terceiro vocabulário).
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+/// Entidade única de lançamento financeiro — cobre tanto receitas quanto
+/// despesas (`type`). Mapeia para `FinanceEntry` (`@control-os/types`) na
+/// borda do repositório (`PrismaFinanceRepository`) — nenhum tipo TS novo
+/// duplicando `FinanceEntry` é criado por causa deste model.
+model Transaction {
+  id          String          @id @default(uuid()) @db.Uuid
+  userId      String          @map("user_id") @db.Uuid
+  type        TransactionType
+  /// `Decimal`, não `Float` — dinheiro nunca deveria acumular erro de
+  /// ponto flutuante binário. Convertido para `number` (formato de
+  /// `FinanceEntry.amount`) na borda do repositório via `.toNumber()`.
+  amount      Decimal         @db.Decimal(12, 2)
+  description String?
+  /// Rótulo livre (mesmo formato de `FinanceEntry.category`, `@control-os/types`)
+  /// — o que esta fase de fato usa. Coexiste com `categoryId`/`categoryRef`
+  /// abaixo de propósito: "expand-and-contract" — quando `Category` ganhar
+  /// CRUD real (fase futura), a migração vira só passar a preencher
+  /// `categoryId` também, sem quebrar nada que já lê `category` (string).
+  category    String?
+  date        DateTime        @default(now()) @db.Timestamptz(3)
+
+  categoryId  String?   @map("category_id") @db.Uuid
+  categoryRef Category? @relation(fields: [categoryId], references: [id])
+
+  accountId String?  @map("account_id") @db.Uuid
+  account   Account? @relation(fields: [accountId], references: [id])
+
+  /// Preparado para recorrência futura (ex.: uma RRULE ou um enum de
+  /// frequência) — "preparar para... recorrência, mesmo que ainda não
+  /// implementada". Nenhuma Action/Service desta fase lê ou escreve este
+  /// campo ainda.
+  recurrenceRule String? @map("recurrence_rule")
+
+  attachments Attachment[]
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([userId, type, date])
+  @@map("finance_transactions")
+}
+
+/// Categoria de lançamento (ex.: "Mercado", "Salário") — "preparar para
+/// categorias, mesmo que ainda não implementadas": o model já existe e
+/// `Transaction.categoryId` já pode apontar pra cá, mas nenhum Repository
+/// método desta fase cria/lê `Category` — `FinanceEntry.category`
+/// continua sendo só uma `String` livre nesta fase (ver
+/// `PrismaFinanceRepository`, que não usa esta relação ainda).
+model Category {
+  id           String            @id @default(uuid()) @db.Uuid
+  userId       String            @map("user_id") @db.Uuid
+  name         String
+  kind         TransactionType?
+  transactions Transaction[]
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([userId, name])
+  @@map("finance_categories")
+}
+
+/// Conta financeira (ex.: "Carteira", "Banco X") — "preparar para contas,
+/// mesmo que ainda não implementadas". Mesmo status que `Category` acima:
+/// model existe, relação existe, nenhum Repository método desta fase usa.
+model Account {
+  id           String        @id @default(uuid()) @db.Uuid
+  userId       String        @map("user_id") @db.Uuid
+  name         String
+  transactions Transaction[]
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("finance_accounts")
+}
+
+/// Anexo de uma transação (ex.: foto de um recibo) — "preparar para
+/// anexos, mesmo que ainda não implementados". `onDelete: Cascade`: um
+/// anexo nunca deveria sobreviver à transação que ele documenta.
+model Attachment {
+  id            String      @id @default(uuid()) @db.Uuid
+  transactionId String      @map("transaction_id") @db.Uuid
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  url           String
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("finance_attachments")
+}

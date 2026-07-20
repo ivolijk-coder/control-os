@@ -7,6 +7,9 @@ import { DeleteEventAction } from './actions/calendar/delete-event.action';
 import { CreateExpenseAction } from './actions/finance/create-expense.action';
 import { UpdateExpenseAction } from './actions/finance/update-expense.action';
 import { DeleteExpenseAction } from './actions/finance/delete-expense.action';
+import { CreateIncomeAction } from './actions/finance/create-income.action';
+import { UpdateIncomeAction } from './actions/finance/update-income.action';
+import { DeleteIncomeAction } from './actions/finance/delete-income.action';
 import { CreateTaskAction } from './actions/tasks/create-task.action';
 import { CreateNoteAction } from './actions/notes/create-note.action';
 import { UpdateHabitAction } from './actions/habits/update-habit.action';
@@ -36,6 +39,9 @@ export const DEFAULT_ACTION_HANDLERS: ActionHandler[] = [
   new CreateExpenseAction(),
   new UpdateExpenseAction(),
   new DeleteExpenseAction(),
+  new CreateIncomeAction(),
+  new UpdateIncomeAction(),
+  new DeleteIncomeAction(),
   new CreateTaskAction(),
   new CreateNoteAction(),
   new UpdateHabitAction(),

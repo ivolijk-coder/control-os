@@ -37,6 +37,17 @@ function toActionRequest(intent: NovaIntent): ActionRequest | undefined {
         payload: { amount: intent.amount, description: intent.description },
         confidence: DETERMINISTIC_MATCH_CONFIDENCE,
       };
+    case 'registrar_receita':
+      // CONTROL OS — Fase 6: `registrar_receita` já era reconhecida por
+      // `parseIntent` desde antes desta fase (mesma regex de
+      // `registrar_despesa`), mas não tinha nenhuma Action real pra virar
+      // até `income.create` existir (`services/action-engine/actions/finance/
+      // create-income.action.ts`).
+      return {
+        kind: 'income.create',
+        payload: { amount: intent.amount, description: intent.description },
+        confidence: DETERMINISTIC_MATCH_CONFIDENCE,
+      };
     case 'criar_agenda':
       return {
         kind: 'calendar.create',

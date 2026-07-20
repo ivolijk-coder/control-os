@@ -19,9 +19,37 @@ export { MockCalendarService, calendarService } from './calendar/calendar.servic
 export type { CalendarService } from './calendar/calendar.interfaces';
 export type { CreateEventInput, DeleteEventInput, UpdateEventInput } from './calendar/calendar.types';
 
-export { MockFinanceService, financeService } from './finance/finance.service';
-export type { FinanceService } from './finance/finance.interfaces';
-export type { CreateExpenseInput, DeleteExpenseInput, UpdateExpenseInput } from './finance/finance.types';
+/**
+ * CONTROL OS — Fase 6: Persistência real. `PersistentFinanceService`
+ * substitui completamente o antigo `MockFinanceService` (array em
+ * memória) — depende de `FinanceRepository`/`PrismaFinanceRepository`
+ * (`services/repositories`), nunca de `@prisma/client` diretamente.
+ *
+ * O singleton de produção (`financeService`) é montado AQUI, não dentro de
+ * `finance.service.ts` — esta é a única linha de todo o módulo Finance que
+ * importa o valor concreto `financeRepository` (`@/services/repositories`,
+ * que é quem de fato instancia `PrismaFinanceRepository`). Separar "a
+ * classe" de "qual repositório concreto ela usa em produção" é o que
+ * permite testar `PersistentFinanceService` importando-a direto de
+ * `finance.service.ts` (com `InMemoryFinanceRepository` injetado) sem
+ * nunca tocar `@prisma/client` — ver `__tests__/finance.service.test.ts`.
+ */
+import { financeRepository } from '@/services/repositories';
+import { PersistentFinanceService } from './finance/finance.service';
+import type { FinanceService } from './finance/finance.interfaces';
+
+export { PersistentFinanceService } from './finance/finance.service';
+export const financeService: FinanceService = new PersistentFinanceService(financeRepository);
+export type { FinanceService };
+export type {
+  CreateExpenseInput,
+  CreateIncomeInput,
+  DeleteExpenseInput,
+  DeleteIncomeInput,
+  FinanceSummary,
+  UpdateExpenseInput,
+  UpdateIncomeInput,
+} from './finance/finance.types';
 
 export { MockGoalsService, goalsService } from './goals/goals.service';
 export type { GoalsService } from './goals/goals.interfaces';

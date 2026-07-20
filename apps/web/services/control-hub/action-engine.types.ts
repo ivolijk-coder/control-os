@@ -5,20 +5,26 @@
  * Fase 1 tinha só 7 valores (um verbo por domínio); Fase 4 adiciona
  * `calendar.update`/`calendar.delete`/`expense.update`/`expense.delete` —
  * exatamente o catálogo de 11 ações do pedido original. Deliberadamente NÃO
- * adicionamos `habit.create`/`goal.create`/`expense.create` para receita
- * (só despesa) nem `asset.*` nesta fase: o pedido original não os lista, e
- * "não criar abstrações desnecessárias" vale tanto para código quanto para
- * o catálogo de ações — cada Action nova nasce quando um caso de uso real
- * pedir, nunca especulativamente.
+ * adicionamos `habit.create`/`goal.create`/`asset.*` nesta fase: o pedido
+ * original não os lista, e "não criar abstrações desnecessárias" vale tanto
+ * para código quanto para o catálogo de ações — cada Action nova nasce
+ * quando um caso de uso real pedir, nunca especulativamente.
+ *
+ * Fase 6 (Persistência real) adiciona `income.*` — "Implementar: Receitas
+ * (createIncome/updateIncome/deleteIncome/listIncome)". Mesmo padrão de
+ * `expense.*` (a mesma entidade `Transaction`/`FinanceEntry`, só o `type`
+ * muda); `registrar_receita` (`NovaIntent`, já reconhecida por `parseIntent`
+ * desde antes desta fase) agora tem uma Action real de verdade pra virar
+ * (`MockDecisionProvider` já mapeava isso — ver `decision-engine`/
+ * `services/decision-engine/mock-decision-provider.ts`).
  *
  * Mesmo espírito do `NovaActionKind` já usado em `services/nova/interfaces`
  * (nunca duplicar): aquele é o vocabulário interno de execução contra
  * `useDataStore` (acoplado ao navegador); este é o vocabulário do Action
- * Engine (server-side, contra Module Services mockados nesta fase). Os
- * dois convergem em significado ("registrar uma despesa"), não em tipo —
- * ver `services/action-engine/actions/` para a implementação real desta
- * fase, que fala com `services/modules/*` (Module Services), nunca com
- * `NovaContext`/Zustand.
+ * Engine (server-side, contra Module Services). Os dois convergem em
+ * significado ("registrar uma despesa"), não em tipo — ver
+ * `services/action-engine/actions/` para a implementação real, que fala com
+ * `services/modules/*` (Module Services), nunca com `NovaContext`/Zustand.
  */
 export type ActionKind =
   | 'calendar.create'
@@ -27,6 +33,9 @@ export type ActionKind =
   | 'expense.create'
   | 'expense.update'
   | 'expense.delete'
+  | 'income.create'
+  | 'income.update'
+  | 'income.delete'
   | 'task.create'
   | 'note.create'
   | 'habit.update'
