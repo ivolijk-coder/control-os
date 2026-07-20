@@ -77,7 +77,16 @@ export function NovaFloatingLauncher() {
   }
 
   return (
-    <div ref={containerRef} className="fixed bottom-6 right-6 z-30 flex flex-col items-end gap-3">
+    // CONTROL OS — "otimização completa da experiência mobile": abaixo de
+    // `md` este botão redondo somava com a nova `MobileBottomNav` (barra
+    // inferior de largura cheia, ver `mobile-bottom-nav.tsx`) — dois alvos
+    // de toque flutuantes disputando o mesmo canto do polegar. A aba "IA"
+    // da barra inferior já cobre exatamente este atalho (abre o ambiente da
+    // persona ativa); trocar de NOVA para LEGENDARY (ou vice-versa) no
+    // mobile continua possível pelo drawer da Sidebar (`nav_nova`/
+    // `nav_legendary` já existem lá — nenhuma capacidade perdida). Desktop/
+    // tablet (`md:flex`) continuam exatamente como sempre foram.
+    <div ref={containerRef} className="fixed bottom-6 right-6 z-30 hidden flex-col items-end gap-3 md:flex">
       <AnimatePresence>
         {open && (
           <motion.div

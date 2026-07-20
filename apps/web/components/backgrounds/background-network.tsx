@@ -25,6 +25,16 @@ const GLOW_GOLD_SOFT = 'rgba(235, 199, 138, 0.55)';
 
 const MAX_NODES = 46;
 const MIN_NODES = 18;
+// CONTROL OS — "otimização completa da experiência mobile" (Performance):
+// abaixo de `md`, o loop de `requestAnimationFrame` inteiro (deriva dos nós +
+// laço O(n²) de distância entre pares pra desenhar as linhas, a cada ~33ms,
+// pra sempre, enquanto QUALQUER página estiver aberta) é puro custo de
+// bateria/CPU sem ganho perceptível numa tela pequena — mesma justificativa
+// de `prefers-reduced-motion` abaixo, só que por tamanho de viewport em vez
+// de preferência do usuário. O visual não some: ainda desenha os nós e as
+// linhas de conexão, só como um frame estático (mesmo comportamento que já
+// existia pra `prefers-reduced-motion`), preservando a identidade visual.
+const MOBILE_BREAKPOINT_QUERY = '(max-width: 767px)';
 const LINK_DISTANCE = 140;
 // CONTROL OS — Etapa 10A: "partículas lentas... sensação de ambiente" —
 // reduzida de 0.12 (mais nervosa) pra uma deriva quase parada, mais perto de
@@ -57,6 +67,14 @@ function createNodes(width: number, height: number): NetworkNode[] {
  * sem loop de animação. Pausa via `visibilitychange` quando a aba não está
  * ativa, para não gastar CPU/bateria à toa.
  *
+ * CONTROL OS — "otimização completa da experiência mobile" (Performance):
+ * abaixo de `md` o mesmo tratamento de `prefers-reduced-motion` se aplica —
+ * um frame estático, sem `requestAnimationFrame` contínuo. O laço O(n²) de
+ * distância entre nós (pra desenhar as linhas de conexão) rodando pra
+ * sempre a ~30fps era custo puro de CPU/bateria numa tela onde o efeito
+ * praticamente não é percebido; a identidade visual (nós + linhas + glow)
+ * continua idêntica, só parou de se mover sozinha.
+ *
  * CONTROL OS — Etapa 16F (Art Direction — Orb como coração do sistema): os
  * "nós de destaque" (poeira com glow, ~1 a cada 7) trocam de roxo/azul pra
  * dourado/âmbar quando `persona === 'legendary'`. Antes eram sempre
@@ -68,7 +86,11 @@ function createNodes(width: number, height: number): NetworkNode[] {
 export function BackgroundNetwork({ className, persona = 'nova' }: { className?: string; persona?: NovaPersona }) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+  const isMobile = useMediaQuery(MOBILE_BREAKPOINT_QUERY);
   const isLegendary = persona === 'legendary';
+  // Loop contínuo só roda quando faz sentido pagar o custo: nem preferência
+  // de movimento reduzido, nem viewport mobile.
+  const shouldAnimate = !prefersReducedMotion && !isMobile;
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
@@ -168,7 +190,7 @@ export function BackgroundNetwork({ className, persona = 'nova' }: { className?:
     const handleVisibility = () => {
       if (document.hidden) {
         window.cancelAnimationFrame(frameId);
-      } else if (!prefersReducedMotion) {
+      } else if (shouldAnimate) {
         lastFrameTime = 0;
         frameId = window.requestAnimationFrame(step);
       }
@@ -177,7 +199,7 @@ export function BackgroundNetwork({ className, persona = 'nova' }: { className?:
     resize();
     drawFrame();
 
-    if (!prefersReducedMotion) {
+    if (shouldAnimate) {
       frameId = window.requestAnimationFrame(step);
     }
 
@@ -193,8 +215,11 @@ export function BackgroundNetwork({ className, persona = 'nova' }: { className?:
     // assim que a persona muda — o efeito inteiro reexecuta (recria `nodes`
     // via `resize()`), mesmo custo/comportamento que já acontecia a cada
     // resize de janela; a troca de persona é uma ação rara do usuário, nunca
-    // um valor que muda em loop.
-  }, [prefersReducedMotion, isLegendary]);
+    // um valor que muda em loop. `shouldAnimate` já carrega `isMobile` (e
+    // `prefersReducedMotion`) — cruzar o breakpoint mobile (ex.: rotação de
+    // tela) reexecuta o efeito e start/para o loop corretamente, não só na
+    // primeira montagem.
+  }, [shouldAnimate, isLegendary]);
 
   return (
     <canvas

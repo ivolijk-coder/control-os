@@ -2,11 +2,16 @@
 
 import * as React from 'react';
 import { AnimatePresence, motion, useReducedMotion, type Variants } from 'framer-motion';
+import { useMediaQuery } from '@control-os/hooks';
 import { useRoutePersona } from '@/lib/use-route-persona';
 import { HERO_PERSONA_COLOR } from '@/components/nova/hero-scene/hero-scene-constants';
 import { hexToRgba } from '@/lib/utils';
 import { EASE_OUT } from '@/lib/motion';
 import type { NovaPersona } from '@/services/nova';
+
+// CONTROL OS — "otimização completa da experiência mobile" (Performance):
+// mesmo breakpoint usado em `background-network.tsx`/`mobile-bottom-nav.tsx`.
+const MOBILE_BREAKPOINT_QUERY = '(max-width: 767px)';
 
 /**
  * PersonaTransitionStage + PersonaEnergyFlash + PersonaAmbientGlow —
@@ -51,6 +56,19 @@ const REDUCED_CONTENT_VARIANTS: Variants = {
   exit: { opacity: 0, transition: { duration: 0.08, ease: EASE_OUT } },
 };
 
+// CONTROL OS — "otimização completa da experiência mobile" (Performance):
+// `filter: blur(...)` é a parte mais cara de compositar em `CONTENT_VARIANTS`
+// — GPUs de celular (principalmente Android médio/entrada) lidam pior com
+// filtros CSS animados do que desktop. Mantém fade + leve deslocamento (o
+// "premium" da transição continua perceptível) e derruba só o blur, que era
+// a fatia mais pesada do custo de renderização nesse momento específico
+// (troca de rota, já concorrendo com o resto da página montando).
+const MOBILE_CONTENT_VARIANTS: Variants = {
+  initial: { opacity: 0, y: 12 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3, ease: EASE_OUT } },
+  exit: { opacity: 0, y: -10, transition: { duration: 0.18, ease: EASE_OUT } },
+};
+
 /**
  * PersonaTransitionStage — envolve `{children}` (a página atual) com a
  * troca coreografada de saída/entrada. Só entra em cena dentro de /nova e
@@ -67,18 +85,30 @@ const REDUCED_CONTENT_VARIANTS: Variants = {
  * {routePersona}` é o que faz o Framer Motion tratar NOVA→LEGENDARY como
  * uma troca de identidade (exit+enter reais), não uma atualização de props
  * do mesmo componente.
+ *
+ * CONTROL OS — "otimização completa da experiência mobile" (Performance,
+ * "evitar excesso de animações simultâneas"): abaixo de `md`, usa
+ * `MOBILE_CONTENT_VARIANTS` (sem `filter: blur`, a parte mais cara pra
+ * compositar) e não monta `PersonaEnergyFlash` — o clarão radial full-
+ * screen é puramente decorativo (reforça a sensação de "mudança de
+ * energia" já comunicada pelo `PersonaAmbientGlow` de fundo) e é uma
+ * terceira camada animada rodando ao mesmo tempo da troca de conteúdo;
+ * cortá-la no mobile é puro ganho de fluidez sem tirar nenhuma capacidade
+ * (a troca de rota continua clara: fade + leve deslocamento + o glow de
+ * fundo mudando de cor).
  */
 export function PersonaTransitionStage({ children }: { children: React.ReactNode }) {
   const { routePersona } = useRoutePersona();
   const shouldReduceMotion = useReducedMotion();
+  const isMobile = useMediaQuery(MOBILE_BREAKPOINT_QUERY);
 
   if (!routePersona) return <>{children}</>;
 
-  const variants = shouldReduceMotion ? REDUCED_CONTENT_VARIANTS : CONTENT_VARIANTS;
+  const variants = shouldReduceMotion ? REDUCED_CONTENT_VARIANTS : isMobile ? MOBILE_CONTENT_VARIANTS : CONTENT_VARIANTS;
 
   return (
     <>
-      {!shouldReduceMotion && <PersonaEnergyFlash persona={routePersona} />}
+      {!shouldReduceMotion && !isMobile && <PersonaEnergyFlash persona={routePersona} />}
       <AnimatePresence mode="wait">
         <motion.div key={routePersona} variants={variants} initial="initial" animate="animate" exit="exit">
           {children}

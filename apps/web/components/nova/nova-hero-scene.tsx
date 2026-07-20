@@ -166,6 +166,19 @@ function HeroSceneContent({ status, pulseSignal, persona }: HeroSceneContentProp
  * redesenhar sozinha), mesmo comportamento de acessibilidade que a
  * `NovaOrb` já tinha.
  *
+ * CONTROL OS — "otimização completa da experiência mobile" (Performance,
+ * "otimizar componentes pesados"): abaixo de `md`, o teto de `dpr` cai pra
+ * `1.5` (em vez de `2`) e o `<EffectComposer>` (Bloom com `mipmapBlur` +
+ * Vignette + Noise) não é montado — pós-processamento é passe(s) de render
+ * extra sobre a cena inteira, a parte mais cara de qualquer pipeline WebGL,
+ * e GPUs de celular sentem isso muito mais que desktop. A cena continua
+ * 100% 3D, com a mesma geometria/material/iluminação/emissive — a
+ * identidade visual do Hero Object não muda; só o polimento de pós-
+ * produção (glow "vazando", vinheta, grão) fica reservado pra onde a GPU
+ * aguenta de sobra. `performance={{ min: 0.4 }}` (já existia) continua
+ * ativo nos dois casos — regulagem automática do R3F pra quedas de frame
+ * em tempo real, independente deste ajuste por breakpoint.
+ *
  * CONTROL OS — Etapa 17B (Hero Art Direction): câmera afastada (`z: 5.4 →
  * 6.2`) — a forma mais direta de fazer o Hero Object ocupar uma fatia menor
  * do quadro sem tocar em nenhuma das constantes de escala/respiração que já
@@ -192,11 +205,12 @@ function HeroSceneContent({ status, pulseSignal, persona }: HeroSceneContentProp
  */
 export function NovaHeroScene({ status = 'idle', pulseSignal, persona = 'nova', className }: NovaHeroSceneProps) {
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+  const isMobile = useMediaQuery('(max-width: 767px)');
 
   return (
     <div className={className ?? 'h-full w-full'}>
       <Canvas
-        dpr={[1, 2]}
+        dpr={isMobile ? [1, 1.5] : [1, 2]}
         gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
         camera={{ fov: 33, position: [0, 1.5, 9.0], near: 0.1, far: 50 }}
         frameloop={prefersReducedMotion ? 'demand' : 'always'}
@@ -214,12 +228,16 @@ export function NovaHeroScene({ status = 'idle', pulseSignal, persona = 'nova', 
             (luz de verdade "vazando" onde a cena já é muito brilhante, não
             um filtro cosmético por cima de tudo), Vignette (foco sutil no
             centro) e Noise (grão finíssimo, tira o aspecto "plástico" de
-            CGI limpo demais). */}
-        <EffectComposer multisampling={0}>
-          <Bloom intensity={0.55} luminanceThreshold={0.35} luminanceSmoothing={0.2} mipmapBlur radius={0.6} />
-          <Vignette eskil={false} offset={0.25} darkness={0.6} />
-          <Noise opacity={0.02} />
-        </EffectComposer>
+            CGI limpo demais). Fica fora do mobile (ver doc do componente) —
+            a cena em si (geometria, material, luz) é idêntica nos dois
+            casos. */}
+        {!isMobile && (
+          <EffectComposer multisampling={0}>
+            <Bloom intensity={0.55} luminanceThreshold={0.35} luminanceSmoothing={0.2} mipmapBlur radius={0.6} />
+            <Vignette eskil={false} offset={0.25} darkness={0.6} />
+            <Noise opacity={0.02} />
+          </EffectComposer>
+        )}
       </Canvas>
     </div>
   );
