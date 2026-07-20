@@ -63,23 +63,29 @@ export class ControlHubService implements ControlHub {
   ) {}
 
   async receive(message: HubMessage): Promise<HubPipelineResult> {
+    const pipelineStartedAt = Date.now();
+
     const validation = validateHubMessage(message);
     if (!validation.valid) {
       return { status: 'rejected', message, error: validation.errors.join('; ') };
     }
 
     const normalized = normalizeHubMessage(message);
+
+    const contextStartedAt = Date.now();
     const context = await this.contextManager.loadContext(normalized);
+    const contextMs = Date.now() - contextStartedAt;
 
     // "Send to NOVA" e "Decision Engine" rodam sobre a mesma entrada
     // (mensagem normalizada + contexto) — contrato explícito do pedido
     // original para o Decision Engine ("Ela deverá receber: HubMessage +
-    // Context"). Nesta fase, os dois são mocks independentes; a decisão
-    // final de texto de resposta prioriza o Decision Engine (é o
-    // componente cujo papel é decidir o que volta pro canal) e só cai
-    // para a resposta da NOVA se o Decision Engine não tiver uma.
+    // Context"). A decisão final de texto de resposta prioriza o Decision
+    // Engine (é o componente cujo papel é decidir o que volta pro canal) e
+    // só cai para a resposta da NOVA se o Decision Engine não tiver uma.
     const novaResult = await this.novaGateway.send(normalized, context);
+    const decisionStartedAt = Date.now();
     const decision = await this.decisionEngine.decide(normalized, context);
+    const decisionMs = Date.now() - decisionStartedAt;
 
     // Etapa "Action Engine" — CONTROL HUB Fase 4: agora roda de verdade
     // quando o Decision Engine pede ações (`decision.actions` não vazio).
@@ -88,7 +94,9 @@ export class ControlHubService implements ControlHub {
     // sempre será o Action Engine." — é este `execute` que dispara os
     // Module Services (`services/modules/*`), nunca o Decision Engine nem
     // o Nova Gateway diretamente.
+    const actionStartedAt = Date.now();
     const actionResults = decision.actions.length > 0 ? await this.actionEngine.execute(decision.actions) : [];
+    const actionMs = Date.now() - actionStartedAt;
 
     // Sem resposta explícita do Decision Engine (`kind: 'execute_actions'`
     // nunca carrega `reply`, ver `decision-engine.types.ts`): a resposta ao
@@ -102,6 +110,9 @@ export class ControlHubService implements ControlHub {
       message: normalized,
       reply: decision.reply ?? actionReply ?? novaResult.reply,
       actionResults: actionResults.length > 0 ? actionResults : undefined,
+      // CONTROL HUB — Fase 5: "Observabilidade — registrar tempo de montagem
+      // de contexto, chamada ao LLM, execução das actions, tempo total."
+      metrics: { contextMs, decisionMs, actionMs, totalMs: Date.now() - pipelineStartedAt },
     };
   }
 }

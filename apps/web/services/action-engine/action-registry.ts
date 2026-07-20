@@ -19,8 +19,17 @@ import { StoreDocumentAction } from './actions/documents/store-document.action';
  * Module Service default injetado (ver cada `*.action.ts`); passar outra
  * lista no construtor de `ActionRegistry` (ex.: em teste) troca só os
  * handlers que fizerem sentido, sem precisar reconstruir os outros.
+ *
+ * Exportado (não mais privado) desde a Fase 5 (Decision Engine com IA):
+ * `services/decision-engine/capability-registry.ts` usa esta MESMA lista
+ * pra montar o catálogo de Capabilities que vai pro prompt do modelo —
+ * "evitar duplicação de informações" entre "o que o Action Engine executa" e
+ * "o que o Decision Engine anuncia pro modelo" só é garantido de verdade se
+ * os dois lerem do mesmo array. Renomeado de `DEFAULT_HANDLERS` pra deixar
+ * explícito, agora que é um export público, que é "handlers padrão de
+ * Action" — não confundir com nenhum outro "default" do módulo.
  */
-const DEFAULT_HANDLERS: ActionHandler[] = [
+export const DEFAULT_ACTION_HANDLERS: ActionHandler[] = [
   new CreateEventAction(),
   new UpdateEventAction(),
   new DeleteEventAction(),
@@ -51,7 +60,7 @@ const DEFAULT_HANDLERS: ActionHandler[] = [
 export class ActionRegistry implements ActionEngine {
   private readonly handlers: Map<ActionKind, ActionHandler>;
 
-  constructor(handlers: ActionHandler[] = DEFAULT_HANDLERS) {
+  constructor(handlers: ActionHandler[] = DEFAULT_ACTION_HANDLERS) {
     this.handlers = new Map(handlers.map((handler) => [handler.kind, handler]));
   }
 

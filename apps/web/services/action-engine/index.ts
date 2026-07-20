@@ -6,7 +6,7 @@
  * `services/context-provider/index.ts`, `services/memory/index.ts` e
  * `services/modules/index.ts`.
  */
-export { ActionRegistry, actionRegistry } from './action-registry';
+export { ActionRegistry, actionRegistry, DEFAULT_ACTION_HANDLERS } from './action-registry';
 export type { ActionHandler } from './action.interfaces';
 export { getBoolean, getNumber, getString } from './payload-guards';
 

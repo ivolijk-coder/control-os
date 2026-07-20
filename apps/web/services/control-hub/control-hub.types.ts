@@ -103,4 +103,26 @@ export interface HubPipelineResult {
    * vazia por algum motivo" (que nunca deveria acontecer).
    */
   actionResults?: ActionResult[];
+  /**
+   * CONTROL HUB — Fase 5 (Decision Engine com IA): "Observabilidade —
+   * métricas simples: registrar tempo de montagem de contexto, chamada ao
+   * LLM, execução das actions, tempo total. Não utilizar ferramentas
+   * externas. Apenas estrutura preparada para evolução futura."
+   *
+   * `decisionMs` cobre a etapa "Decision Engine" inteira — quando o modo
+   * ativo é `OpenAIDecisionProvider`, isso já INCLUI a chamada ao LLM
+   * (`OpenAIDecisionProvider` também mede seus próprios sub-passos
+   * internamente, ver `services/decision-engine/metrics.ts`, para
+   * depuração mais fina sem inchar este tipo); quando o modo ativo é
+   * `MockDecisionProvider`, é só o tempo do `parseIntent` determinístico.
+   * Ausente só quando `status === 'rejected'` (a mensagem nem chegou a
+   * entrar no pipeline de verdade — `validateHubMessage` barra antes de
+   * qualquer etapa cronometrada rodar); presente em todo resultado `'ok'`.
+   */
+  metrics?: {
+    contextMs: number;
+    decisionMs: number;
+    actionMs: number;
+    totalMs: number;
+  };
 }

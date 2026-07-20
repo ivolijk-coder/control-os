@@ -48,6 +48,21 @@ import type { UserContext } from '@/services/context-provider';
  * `conversationService.processTurn` — mas só depois de (a) acima também
  * estar resolvido, ou o gateway real só funcionaria de verdade para o canal
  * `web`.
+ *
+ * CONTROL HUB — Fase 5 (Decision Engine com IA): "A NOVA deixa de
+ * interpretar comandos. Passa a apenas: montar contexto, consultar memória,
+ * solicitar decisão ao Decision Engine, enviar ao Action Engine, gerar a
+ * resposta final. Toda lógica de interpretação deverá sair da NOVA." Esse
+ * invariante já valia aqui mesmo antes desta fase — `MockNovaGateway.send`
+ * nunca chamou `parseIntent` nem nada parecido, é (e sempre foi) um texto
+ * fixo — e continua valendo depois dela: quem decide "o que fazer" com uma
+ * mensagem é exclusivamente o `DecisionEngine` (`decision-engine.ts`, agora
+ * podendo ser `OpenAIDecisionProvider`, ver `services/decision-engine`);
+ * este gateway só representa "avisar a NOVA que uma mensagem chegou", nunca
+ * decide nem executa nada. `ControlHubService.receive` é quem orquestra os
+ * dois lado a lado (ver aquele arquivo) — nenhuma mudança de ordem foi
+ * necessária nesta fase, porque a separação de responsabilidades já estava
+ * correta desde a Fase 1.
  */
 export class MockNovaGateway implements NovaGateway {
   async send(message: HubMessage, _context: UserContext): Promise<NovaGatewayResult> {

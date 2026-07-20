@@ -9,7 +9,15 @@ export { ControlHubService, controlHub } from './control-hub.service';
 export { validateHubMessage } from './validate-message';
 export { normalizeHubMessage } from './normalize-message';
 export { ContextManagerImpl, contextManager } from './context-manager';
-export { MockDecisionEngine, decisionEngine } from './decision-engine';
+/**
+ * `decisionEngine` — CONTROL HUB Fase 5: composição raiz que escolhe entre
+ * `MockDecisionProvider`/`OpenAIDecisionProvider` (`services/decision-engine`,
+ * ver `decision-engine.ts` para o critério). As duas classes concretas não
+ * são reexportadas por aqui de propósito — importe-as diretamente de
+ * `@/services/decision-engine` se precisar de uma delas por nome (ex.: em
+ * teste); este barrel só expõe o que o PIPELINE do Control Hub usa.
+ */
+export { decisionEngine } from './decision-engine';
 export { MockNovaGateway, novaGateway } from './nova-gateway';
 export type {
   Attachment,
