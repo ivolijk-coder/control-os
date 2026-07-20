@@ -56,6 +56,28 @@ export class BrowserVoiceProvider implements VoiceProvider {
     return typeof window !== 'undefined' && 'speechSynthesis' in window;
   }
 
+  /**
+   * Corrige o bug de mobile: "clico para ouvir a resposta e não escuto
+   * nada". Causa raiz — `nova-voice-overlay.tsx`/`nova-workspace.tsx`
+   * sempre chamam `speak()` DEPOIS de um `await conversationService.
+   * processTurn(...)` (o round-trip até a IA) — nunca dentro do mesmo
+   * clique síncrono do usuário. No Safari iOS (e no Chrome Android, por
+   * segurança), a primeira síntese de voz da sessão só é liberada de
+   * verdade se acontecer dentro da pilha síncrona de um gesto real —
+   * depois de um `await` o navegador já não considera mais isso um
+   * gesto, e `speechSynthesis.speak()` simplesmente não produz som
+   * nenhum (sem lançar erro, sem disparar `onerror` — daí "não escuto
+   * absolutamente nada"). Ver `VoiceProvider.unlock` (`types.ts`) pra
+   * quando isto precisa ser chamado.
+   */
+  unlock(): void {
+    if (!this.isSupported) return;
+    const primer = new SpeechSynthesisUtterance(' ');
+    primer.volume = 0.01;
+    window.speechSynthesis.speak(primer);
+    window.speechSynthesis.cancel();
+  }
+
   speak(text: string, handlers?: VoiceProviderHandlers): void {
     if (!this.isSupported) {
       handlers?.onError?.('Este navegador não suporta voz falada.');

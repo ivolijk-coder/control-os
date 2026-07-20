@@ -59,4 +59,21 @@ export interface VoiceProvider {
   speak(text: string, handlers?: VoiceProviderHandlers): void;
   /** Interrompe a fala atual imediatamente — usado quando o usuário interrompe a NOVA. */
   cancel(): void;
+  /**
+   * "Destrava" a síntese de voz pro resto da sessão (bug de mobile — Safari
+   * iOS/Chrome Android). Quem chama `speak()` primeiro é sempre a resposta
+   * da IA chegando DEPOIS de um round-trip assíncrono (`await
+   * conversationService.processTurn(...)`) — nunca dentro do mesmo clique
+   * síncrono do usuário. No desktop isso não importa; no Safari iOS (e, por
+   * segurança, também no Chrome Android) a política de autoplay de áudio
+   * exige que a PRIMEIRA chamada de síntese de voz da sessão aconteça
+   * dentro da pilha síncrona de um gesto real do usuário — depois de um
+   * `await`, o navegador já não considera mais isso um gesto, e `speak()`
+   * falha em silêncio (nenhum som, nenhum `onerror`). `unlock()` deve ser
+   * chamado de dentro do handler de clique síncrono que INICIA o fluxo de
+   * voz (tocar o microfone, tocar a Orb) — antes de qualquer `await` — pra
+   * "acordar" o motor de fala enquanto o gesto ainda é válido. Barato e
+   * idempotente: seguro chamar em todo clique, não só uma vez por sessão.
+   */
+  unlock(): void;
 }

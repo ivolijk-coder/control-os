@@ -261,6 +261,14 @@ export function NovaVoiceOverlay() {
   }, [setOpen]);
 
   const handleOrbTap = React.useCallback(() => {
+    // CONTROL OS — bug de mobile "áudio da resposta não toca": a fala da
+    // NOVA/LEGENDARY só acontece depois de um `await` até a IA
+    // (`handleFinalTranscript` abaixo), nunca dentro deste toque — no
+    // Safari iOS/Chrome Android isso é tarde demais pra liberar a síntese
+    // de voz. `unlock()` roda AQUI, síncrono, em todo toque na Orb —
+    // barato e idempotente (ver `VoiceProvider.unlock`).
+    getVoiceProvider().unlock();
+
     if (status === 'respondendo') {
       getVoiceProvider().cancel();
       startListening();

@@ -34,4 +34,12 @@ export class OpenAITTSVoiceProvider implements VoiceProvider {
   cancel(): void {
     // Nada a cancelar — nenhuma síntese real acontece ainda.
   }
+
+  unlock(): void {
+    // Nada a destravar — `isSupported` é sempre `false`, nenhum áudio real
+    // chega a tocar. Existe só pra satisfazer `VoiceProvider` (ver
+    // `types.ts`) — quando este provedor ganhar corpo de verdade, o
+    // destravamento real (provavelmente de um `<audio>`/`AudioContext`, não
+    // mais `SpeechSynthesis`) entra aqui.
+  }
 }

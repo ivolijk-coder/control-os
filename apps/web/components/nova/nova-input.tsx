@@ -6,7 +6,7 @@ import { ArrowUp, Check, Mic } from 'lucide-react';
 import type { NovaPersona } from '@/services/nova';
 import { cn } from '@/lib/utils';
 import { transitionOut } from '@/lib/motion';
-import { getSpeechProvider } from '@/services/voice';
+import { getSpeechProvider, getVoiceProvider } from '@/services/voice';
 
 /**
  * Placeholder cíclico por persona (CONTROL OS — "cada IA deve possuir sua
@@ -163,6 +163,13 @@ export function NovaInput({
     if (isListening) {
       stopListening();
     } else {
+      // CONTROL OS — bug de mobile "áudio da resposta não toca": a resposta
+      // falada só acontece depois de um `await` até a IA (`handleSend` em
+      // `nova-workspace.tsx`), nunca dentro deste clique — no Safari
+      // iOS/Chrome Android isso é tarde demais pra liberar a síntese de voz.
+      // `unlock()` precisa rodar AQUI, síncrono, enquanto o clique ainda
+      // conta como gesto do usuário (ver `VoiceProvider.unlock`).
+      getVoiceProvider().unlock();
       startListening();
     }
   };
