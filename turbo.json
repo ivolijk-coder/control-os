@@ -1,6 +1,10 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
+  "globalEnv": [
+    "OPENAI_API_KEY",
+    "AI_PROVIDER"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
