@@ -1,0 +1,169 @@
+# CONTROL OS — Traefik v3 — REFERÊNCIA (não é carregado pelo container)
+#
+# ATENÇÃO: este arquivo NÃO é montado em nenhum container e NÃO é lido
+# pelo Traefik. Ele existe só como documentação legível do que a
+# configuração estática do Traefik faz — a configuração REAL, que
+# realmente roda, está 100% em variáveis de ambiente TRAEFIK_* no serviço
+# "traefik" de docker-compose.yml.
+#
+# Por quê: a documentação oficial do Traefik é explícita — "It's crucial
+# to choose one method and stick to it, as mixing different configuration
+# options is not supported and can lead to unexpected behavior"
+# (https://doc.traefik.io/traefik/reference/install-configuration/boot-environment/).
+# Na prática (confirmado no fórum oficial da Traefik Labs), quando existe
+# um arquivo de configuração estática presente/montado, o Traefik carrega
+# a configuração estática inteira a partir dele e ignora por completo
+# quaisquer variáveis TRAEFIK_* — não há mesclagem parcial entre os dois
+# métodos. A versão anterior deste arquivo tentava contornar isso
+# colocando só o e-mail do ACME via um template Go (`{{env "..."}}`)
+# dentro do YAML montado — isso tinha DOIS problemas: (1) o Traefik não
+# processa templates Go no arquivo de configuração ESTÁTICA (isso só
+# existe no provider de arquivo DINÂMICO, ver traefik/dynamic/); e (2) a
+# sintaxe em si era YAML inválido (aspas duplas aninhadas sem escape). Ou
+# seja: o e-mail nunca chegava ao Traefik de verdade.
+#
+# A correção adotada: mover TODA a configuração estática para variáveis
+# de ambiente (um dos 3 métodos oficialmente suportados, junto com
+# "File" e "CLI") e parar de montar qualquer traefik.yml/toml no
+# container. Ver docker-compose.yml, serviço "traefik", bloco
+# "environment:" — cada variável ali corresponde 1:1 a uma seção abaixo.
+#
+# Se um dia quiser voltar para configuração em arquivo (ex.: preferência
+# de equipe, ou uma config estática grande demais para env vars), este
+# arquivo serve de ponto de partida — mas nesse caso REMOVA todas as
+# variáveis TRAEFIK_* do docker-compose.yml (não misture os dois) e volte
+# a montar este arquivo em /etc/traefik/traefik.yml.
+
+# --- Log -------------------------------------------------------------------
+# Env var real: TRAEFIK_LOG_LEVEL=INFO
+log:
+  level: INFO # Trocar para DEBUG só durante troubleshooting — gera muito volume.
+
+# Env vars reais: TRAEFIK_ACCESSLOG=true, TRAEFIK_ACCESSLOG_BUFFERINGSIZE=100
+# bufferingSize: acumula até N linhas em memória antes de gravar em lote,
+# em vez de um write() de I/O por requisição — reduz custo de disco sob
+# tráfego alto sem perder o access log (o buffer é descarregado
+# automaticamente; no pior caso de um crash, perde-se só as últimas
+# linhas ainda no buffer, aceitável para access log, diferente do log de
+# aplicação).
+accessLog:
+  bufferingSize: 100
+
+# --- API / Dashboard ---------------------------------------------------------
+# Env vars reais: TRAEFIK_API_DASHBOARD=true, TRAEFIK_API_INSECURE=false
+# "insecure: true" NÃO é usado de propósito — isso exporia o dashboard sem
+# autenticação em texto plano. O dashboard é exposto através de um router
+# HTTP normal (ver label traefik.http.routers.dashboard.* no
+# docker-compose.yml), protegido por HTTPS + Basic Auth (dynamic/middlewares.yml).
+api:
+  dashboard: true
+  insecure: false
+
+# --- Ping (healthcheck interno) -----------------------------------------------
+# Env var real: TRAEFIK_PING_ENTRYPOINT=traefik
+# Habilita o endpoint /ping, usado pelo healthcheck do container (ver
+# docker-compose.yml, serviço "traefik": test: ["CMD", "traefik",
+# "healthcheck", "--ping"]). Sem "ping" habilitado, esse comando falha
+# (não há endpoint para responder). Usa um entrypoint DEDICADO ("traefik",
+# porta 8080) em vez do "web"/"websecure" de propósito: esses dois já
+# carregam redirecionamento HTTP->HTTPS e roteamento por Host, o que faria
+# o /ping ser redirecionado (301) em vez de responder 200. A porta 8080
+# não é publicada em "ports:" no docker-compose.yml — só o próprio
+# processo do Traefik chama http://127.0.0.1:8080/ping de dentro do
+# container, nunca é exposta à internet.
+ping:
+  entryPoint: traefik
+
+# --- Entrypoints -------------------------------------------------------------
+# Env vars reais: TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=":80",
+# TRAEFIK_ENTRYPOINTS_WEB_HTTP_REDIRECTIONS_ENTRYPOINT_TO=websecure,
+# TRAEFIK_ENTRYPOINTS_WEB_HTTP_REDIRECTIONS_ENTRYPOINT_SCHEME=https,
+# TRAEFIK_ENTRYPOINTS_WEB_HTTP_REDIRECTIONS_ENTRYPOINT_PERMANENT=true,
+# TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS=":443",
+# TRAEFIK_ENTRYPOINTS_WEBSECURE_HTTP_TLS_CERTRESOLVER=letsencrypt,
+# TRAEFIK_ENTRYPOINTS_TRAEFIK_ADDRESS=":8080"
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        certResolver: letsencrypt
+  # Entrypoint interno só para o /ping (ver seção "Ping" acima) — não
+  # publicado no docker-compose.yml, portanto inacessível de fora do
+  # container.
+  traefik:
+    address: ":8080"
+
+# --- Provedores ---------------------------------------------------------------
+# Env vars reais: TRAEFIK_PROVIDERS_DOCKER_ENDPOINT=unix:///var/run/docker.sock,
+# TRAEFIK_PROVIDERS_DOCKER_EXPOSEDBYDEFAULT=false,
+# TRAEFIK_PROVIDERS_DOCKER_NETWORK=traefik-public,
+# TRAEFIK_PROVIDERS_FILE_DIRECTORY=/etc/traefik/dynamic,
+# TRAEFIK_PROVIDERS_FILE_WATCH=true
+providers:
+  # Descobre serviços automaticamente via labels no docker-compose.yml.
+  # exposedByDefault: false — nenhum container vira rota do Traefik a menos
+  # que explicitamente tenha "traefik.enable=true" (postura segura por padrão:
+  # containers internos — postgres, redis — nunca ficam acidentalmente
+  # expostos, mesmo estando na mesma rede docker).
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: traefik-public
+
+  # Middlewares reutilizáveis definidos em arquivo (não em label) — ver
+  # dynamic/middlewares.yml. Este SIM continua sendo lido de um arquivo de
+  # verdade (montado em /etc/traefik/dynamic) — é o provider de config
+  # DINÂMICA, que é um mecanismo diferente do assunto "escolha um método"
+  # deste arquivo (aquele é sobre config ESTÁTICA). Permite trocar a
+  # configuração (ex.: adicionar um IP à allowlist do dashboard) sem
+  # recriar nenhum container.
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+# --- Let's Encrypt (ACME) -----------------------------------------------------
+# Env vars reais:
+#   TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=${LETSENCRYPT_EMAIL}
+#   TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_STORAGE=/letsencrypt/acme.json
+#   TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_HTTPCHALLENGE_ENTRYPOINT=web
+#
+# Estratégia padrão: HTTP-01. Funciona para qualquer domínio/subdomínio
+# explícito (DOMAIN_APP, DOMAIN_API, DOMAIN_TRAEFIK, DOMAIN_EVOLUTION no
+# .env) sem depender de qual provedor de DNS o domínio usa — só precisa do
+# registro A apontando pra este servidor e as portas 80/443 abertas.
+#
+# Limitação conhecida do HTTP-01: não emite certificado WILDCARD
+# (*.dominio.com). Se o multi-tenant precisar de um subdomínio por tenant
+# SEM cadastrar cada um manualmente (ex.: tenant1.controlos.com.br,
+# tenant2.controlos.com.br, ...), troque para DNS-01 — ver as duas
+# variáveis comentadas no docker-compose.yml
+# (TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_DNSCHALLENGE_PROVIDER e
+# _DNSCHALLENGE_RESOLVERS) — ele SIM emite wildcard, mas exige um provedor
+# de DNS suportado pelo lego (biblioteca ACME do Traefik:
+# https://go-acme.github.io/lego/dns/). Hostinger é suportado nativamente
+# (HOSTINGER_API_TOKEN); Cloudflare também é uma opção comum se o domínio
+# for gerenciado lá em vez de na Hostinger. Veja o README (seção "SSL
+# wildcard para multi-tenant").
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "seu-email@dominio.com" # valor real vem de LETSENCRYPT_EMAIL no .env
+      storage: /letsencrypt/acme.json
+      httpChallenge:
+        entryPoint: web
+
+      # --- Alternativa: DNS-01 com Hostinger (wildcard) ---------------------
+      # dnsChallenge:
+      #   provider: hostinger
+      #   resolvers:
+      #     - "1.1.1.1:53"
+      #     - "8.8.8.8:53"

@@ -1,0 +1,78 @@
+# CONTROL OS — Traefik — middlewares dinâmicos
+#
+# Carregado via o provider "file" (ver traefik.yml, providers.file). Vive
+# em arquivo (não em label) porque middlewares aqui são reutilizados por
+# MÚLTIPLOS routers (dashboard, e futuramente qualquer outro serviço
+# interno) — definir uma vez aqui evita repetir a mesma lista de headers
+# em label de cada serviço no docker-compose.yml.
+#
+# Referenciado nos labels do Traefik como "nome-do-middleware@file", ex.:
+# traefik.http.routers.dashboard.middlewares=dashboard-auth@file
+
+http:
+  middlewares:
+    # --- Autenticação básica do Dashboard --------------------------------
+    # Usuário/hash gerado com scripts/generate-dashboard-hash.sh (nunca
+    # digite a senha em texto puro aqui — sempre o hash bcrypt/htpasswd).
+    # O valor abaixo é lido do .env via variável de ambiente do Traefik
+    # (TRAEFIK_DASHBOARD_AUTH), repassada como env var do container e
+    # referenciada aqui — ver docker-compose.yml, serviço "traefik",
+    # environment. Isso evita commitar qualquer hash de senha neste
+    # arquivo (que fica versionado no repositório).
+    dashboard-auth:
+      basicAuth:
+        usersFile: /etc/traefik/dynamic/.htpasswd
+        removeHeader: true
+
+    # --- Cabeçalhos de segurança padrão -----------------------------------
+    # Aplicado a qualquer serviço exposto publicamente (ver labels no
+    # docker-compose.yml). HSTS com preload é seguro aqui porque TODO
+    # tráfego já é forçado a HTTPS pelo entrypoint "web" (redirecionamento
+    # permanente configurado em traefik.yml).
+    security-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        forceSTSHeader: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        frameDeny: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        # Desliga por padrão as APIs de navegador que o CONTROL OS não usa
+        # (câmera, microfone só seriam usados por uma feature de voz que
+        # roda dentro do próprio app — ver services de voz em apps/web;
+        # nada aqui bloqueia isso, "self" continuaria liberado se algum
+        # dia for necessário — ajuste então).
+        permissionsPolicy: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+        # CSP inicial, deliberadamente permissiva o suficiente para não
+        # quebrar um app Next.js "out of the box" (sem infraestrutura de
+        # nonce): 'unsafe-inline' + 'unsafe-eval' em script-src cobrem o
+        # script de hidratação inline do Next e o HMR/eval usado em dev;
+        # 'unsafe-inline' em style-src cobre styled-jsx/CSS-in-JS. Isso é
+        # um PONTO DE PARTIDA seguro (ainda bloqueia scripts/estilos de
+        # origens externas não listadas, e objetos/plugins por completo)
+        # — não o estado final. Endurecer depois trocando para nonce por
+        # requisição (middleware do Next.js gerando o nonce e propagando
+        # pro CSP) é o próximo passo natural, fora do escopo desta entrega
+        # de infraestrutura. Este middleware é compartilhado por
+        # dashboard/web/api/evolution (ver labels no docker-compose.yml)
+        # — "connect-src" inclui wss: pensando em uma eventual conexão
+        # realtime do chat da NOVA.
+        contentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https: wss:; frame-ancestors 'self'; base-uri 'self'; form-action 'self';"
+        customResponseHeaders:
+          Server: ""
+
+    # --- Compressão --------------------------------------------------------
+    compress:
+      compress: {}
+
+    # --- Rate limit básico (proteção genérica contra abuso) -----------------
+    # Valores conservadores o suficiente para não incomodar uso normal;
+    # ajuste no .env se um canal específico (ex.: webhook da Evolution API
+    # recebendo rajadas de eventos do WhatsApp) precisar de um limite maior
+    # — nesse caso, crie um middleware dedicado em vez de afrouxar este.
+    rate-limit:
+      rateLimit:
+        average: 100
+        burst: 50

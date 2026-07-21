@@ -1,0 +1,40 @@
+# CONTROL OS — .dockerignore (raiz do monorepo)
+#
+# Usado pelo build da imagem "web" (infra/docker-compose.yml aponta o
+# contexto de build para esta raiz — ver apps/web/Dockerfile). Mantém o
+# contexto enviado ao daemon do Docker pequeno e o build reprodutível
+# (nenhum node_modules do host vaza para dentro da imagem).
+
+# Dependências (reinstaladas dentro do container)
+**/node_modules
+**/.pnpm-store
+
+# Build outputs (regenerados dentro do container)
+**/.next
+**/dist
+**/.turbo
+
+# Controle de versão e editor
+.git
+.gitignore
+.vscode
+.idea
+*.log
+
+# Documentação e artefatos que não fazem parte da imagem
+*.md
+*.docx
+docs/
+
+# Ambiente local (nunca deve ir para dentro da imagem — segredos)
+.env
+.env.local
+.env.*.local
+apps/web/.env.local
+
+# Infra (não precisa estar dentro da imagem da aplicação)
+infra/
+database/
+
+# apps/api tem seu próprio Dockerfile + contexto de build isolado
+apps/api

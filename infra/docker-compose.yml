@@ -1,0 +1,555 @@
+# CONTROL OS — Infraestrutura de produção (Docker Compose)
+#
+# Rodar a partir desta pasta (infra/): `docker compose up -d`.
+# Pré-requisitos e passo a passo completo: ver README.md desta pasta.
+#
+# Topologia de redes:
+#   - traefik-public (externa, criada uma vez por `docker network create`):
+#     único ponto de entrada da internet. Só entram aqui os serviços que
+#     o Traefik precisa rotear (traefik, web, api, evolution-api).
+#   - backend (interna): Postgres + Redis do CONTROL OS <-> web/api.
+#     Nunca exposta à internet nem ao Traefik.
+#   - evolution-backend (interna): Postgres + Redis DEDICADOS à Evolution
+#     API <-> evolution-api. Separada de "backend" de propósito — ver
+#     README, seção "Evolution API separada": nenhum dado/credencial da
+#     Evolution transita pela mesma rede do banco do CONTROL OS.
+#
+# Multi-tenant: ver README, seção "Multi-tenant: o que esta infraestrutura
+# resolve e o que não resolve" antes de assumir que isto já isola dados
+# por tenant sozinho — a infraestrutura prepara o roteamento (Traefik) e o
+# provisionamento de banco (script postgres/init), a lógica de seleção de
+# tenant é responsabilidade do código da aplicação.
+#
+# Logging: todo serviço define "logging.driver: json-file" com rotação
+# (max-size 20m, max-file 5) — sem isso, o driver padrão do Docker não
+# rotaciona, e logs de containers de longa duração podem encher o disco da
+# VPS silenciosamente.
+#
+# Limites de recursos: todo serviço define "deploy.resources" (limits +
+# reservations). Isso funciona com "docker compose up" normal (SEM
+# precisar de Swarm nem da flag "--compatibility") porque este arquivo já
+# usa o formato Compose Specification (sem a chave "version:" no topo) —
+# nesse formato, o CLI "docker compose" (v2, o plugin — não o binário
+# antigo "docker-compose" em Python) aplica deploy.resources.limits
+# diretamente via cgroups do container, mesmo fora de um cluster Swarm.
+# Os valores abaixo são conservadores para uma VPS pequena/média (ex.: 4
+# vCPU / 8 GB RAM) — ajuste conforme o plano de VPS contratado.
+#
+# Configuração estática do Traefik: 100% via variáveis de ambiente
+# (TRAEFIK_* no serviço "traefik" abaixo) — de propósito, NENHUM
+# traefik.yml é montado no container. A documentação oficial do Traefik é
+# explícita: misturar métodos de configuração estática (arquivo + env vars
+# + CLI) "não é suportado e pode levar a comportamento inesperado", e na
+# prática, quando existe um arquivo de config estática montado, o Traefik
+# ignora por completo as env vars TRAEFIK_* (confirmado no fórum oficial).
+# O arquivo traefik/traefik.yml continua no repositório só como
+# documentação de referência (não é lido pelo container — ver comentário
+# no topo dele). O provider "file" (traefik/dynamic/middlewares.yml) é
+# config DINÂMICA, não estática — continua montado normalmente e funciona
+# com qualquer método de config estática escolhido.
+
+networks:
+  traefik-public:
+    external: true
+  backend:
+    driver: bridge
+  evolution-backend:
+    driver: bridge
+
+volumes:
+  # Nomes fixados explicitamente ("name:") em vez de deixar o Compose
+  # prefixar com o nome do diretório onde ele é invocado (padrão do
+  # Compose seria algo como "infra_traefik_acme") — importante porque
+  # scripts/setup-vps.sh cria/prepara o volume "controlos_traefik_acme"
+  # ANTES da primeira subida da stack (para já existir com as permissões
+  # certas); nome fixo garante que os dois lados sempre concordam,
+  # independente de qual pasta o operador está quando roda os comandos.
+  traefik_acme:
+    name: controlos_traefik_acme
+  postgres_data:
+    name: controlos_postgres_data
+  redis_data:
+    name: controlos_redis_data
+  evolution_postgres_data:
+    name: controlos_evolution_postgres_data
+  evolution_redis_data:
+    name: controlos_evolution_redis_data
+  evolution_instances:
+    name: controlos_evolution_instances
+
+services:
+  # ============================================================
+  # TRAEFIK — reverse proxy, SSL (Let's Encrypt), dashboard
+  # ============================================================
+  traefik:
+    image: traefik:v3.7.5
+    container_name: controlos_traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "80:80"
+      - "443:443"
+    # --- Configuração ESTÁTICA do Traefik — 100% via variável de ambiente ---
+    # Traefik oferece 3 métodos para configuração estática (arquivo, CLI,
+    # env vars) e a própria documentação oficial é explícita: "It's crucial
+    # to choose one method and stick to it, as mixing different
+    # configuration options is not supported and can lead to unexpected
+    # behavior" (https://doc.traefik.io/traefik/reference/install-configuration/boot-environment/).
+    # Confirmado também na prática (fórum oficial): quando existe um
+    # traefik.yml montado, o Traefik carrega a config estática inteira a
+    # partir dele e ENV VARS TRAEFIK_* são ignoradas por completo — não há
+    # merge parcial. Por isso este projeto usa só um método: nenhum
+    # traefik.yml é montado (ver "volumes:" abaixo — só o "dynamic/" continua
+    # montado, que é config DINÂMICA via provider "file", um mecanismo
+    # diferente e compatível com qualquer método de config estática). O
+    # arquivo traefik/traefik.yml permanece no repositório só como
+    # documentação de referência (comentado como tal no próprio arquivo) —
+    # não é lido pelo container.
+    #
+    # Cada variável abaixo corresponde 1:1 a uma chave do antigo
+    # traefik.yml — ver o próprio arquivo (mantido como referência) para o
+    # comentário original de cada uma.
+    environment:
+      # -- Log --
+      TRAEFIK_LOG_LEVEL: "INFO"
+      # -- Access log (com buffering — ver comentário no traefik.yml de referência) --
+      TRAEFIK_ACCESSLOG: "true"
+      TRAEFIK_ACCESSLOG_BUFFERINGSIZE: "100"
+      # -- API / Dashboard --
+      TRAEFIK_API_DASHBOARD: "true"
+      TRAEFIK_API_INSECURE: "false"
+      # -- Ping (healthcheck interno, ver seção "healthcheck" abaixo) --
+      TRAEFIK_PING_ENTRYPOINT: "traefik"
+      # -- Entrypoints --
+      TRAEFIK_ENTRYPOINTS_WEB_ADDRESS: ":80"
+      TRAEFIK_ENTRYPOINTS_WEB_HTTP_REDIRECTIONS_ENTRYPOINT_TO: "websecure"
+      TRAEFIK_ENTRYPOINTS_WEB_HTTP_REDIRECTIONS_ENTRYPOINT_SCHEME: "https"
+      TRAEFIK_ENTRYPOINTS_WEB_HTTP_REDIRECTIONS_ENTRYPOINT_PERMANENT: "true"
+      TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS: ":443"
+      TRAEFIK_ENTRYPOINTS_WEBSECURE_HTTP_TLS_CERTRESOLVER: "letsencrypt"
+      # Entrypoint interno só para o /ping — não publicado em "ports:",
+      # portanto inacessível de fora do container (só o próprio processo
+      # do Traefik chama http://127.0.0.1:8080/ping).
+      TRAEFIK_ENTRYPOINTS_TRAEFIK_ADDRESS: ":8080"
+      # -- Provider Docker (descoberta de rotas via labels) --
+      TRAEFIK_PROVIDERS_DOCKER_ENDPOINT: "unix:///var/run/docker.sock"
+      TRAEFIK_PROVIDERS_DOCKER_EXPOSEDBYDEFAULT: "false"
+      TRAEFIK_PROVIDERS_DOCKER_NETWORK: "traefik-public"
+      # -- Provider File (config DINÂMICA — middlewares reutilizáveis; ver
+      # traefik/dynamic/middlewares.yml, ainda montado abaixo) --
+      TRAEFIK_PROVIDERS_FILE_DIRECTORY: "/etc/traefik/dynamic"
+      TRAEFIK_PROVIDERS_FILE_WATCH: "true"
+      # -- Let's Encrypt (ACME) — HTTP-01 por padrão --
+      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL: ${LETSENCRYPT_EMAIL}
+      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_STORAGE: "/letsencrypt/acme.json"
+      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_HTTPCHALLENGE_ENTRYPOINT: "web"
+      # --- Alternativa: DNS-01 com Hostinger (wildcard) --------------------
+      # Descomente as duas linhas abaixo E remova as duas linhas de
+      # "ACME_HTTPCHALLENGE_ENTRYPOINT" acima para migrar para DNS-01 (emite
+      # certificado wildcard, HTTP-01 não emite). Exige HOSTINGER_API_TOKEN
+      # no .env (gerado no painel da Hostinger: hPanel → API). Ver README,
+      # seção "SSL wildcard para multi-tenant".
+      # TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_DNSCHALLENGE_PROVIDER: "hostinger"
+      # TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_DNSCHALLENGE_RESOLVERS: "1.1.1.1:53,8.8.8.8:53"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - traefik_acme:/letsencrypt
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      # Dashboard — protegido por HTTPS + Basic Auth (dashboard-auth@file,
+      # ver traefik/dynamic/middlewares.yml e o .htpasswd gerado por
+      # scripts/generate-dashboard-hash.sh).
+      - "traefik.http.routers.dashboard.rule=Host(`${DOMAIN_TRAEFIK}`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.middlewares=dashboard-auth@file,security-headers@file"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+        reservations:
+          cpus: "0.10"
+          memory: 64M
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    healthcheck:
+      # "healthcheck --ping" chama o endpoint /ping do próprio Traefik —
+      # habilitado acima via TRAEFIK_PING_ENTRYPOINT (entrypoint dedicado
+      # "traefik", porta 8080, só interna).
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ============================================================
+  # POSTGRES — banco do CONTROL OS (apps/web via Prisma, apps/api via SQLAlchemy)
+  # ============================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: controlos_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Ver postgres/init/01-init-multiple-databases.sh — provisiona bancos
+      # extras (ex.: um por tenant) além de POSTGRES_DB, se preenchido.
+      POSTGRES_MULTIPLE_DATABASES: ${POSTGRES_MULTIPLE_DATABASES:-}
+    # shm_size: o padrão do Docker (64mb) é apertado para o Postgres sob
+    # carga (ordenações/hash joins grandes usam /dev/shm) — 256mb dá folga
+    # sem reservar memória de verdade (shm é RAM sob demanda, não alocação
+    # antecipada).
+    shm_size: "256mb"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1024M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ============================================================
+  # REDIS — cache/sessão do CONTROL OS (provisionado; ver redis/redis.conf)
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: controlos_redis
+    restart: unless-stopped
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD}"]
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis_data:/data
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 384M
+        reservations:
+          cpus: "0.10"
+          memory: 96M
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD} --no-auth-warning ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ============================================================
+  # WEB — CONTROL OS (Next.js, apps/web)
+  # ============================================================
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    container_name: controlos_web
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      NEXT_PUBLIC_AI_PROVIDER: ${AI_PROVIDER:-mock}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.5}
+      AI_DEBUG_LOGS: ${AI_DEBUG_LOGS:-0}
+      NEXT_PUBLIC_AI_DEBUG_LOGS: ${AI_DEBUG_LOGS:-0}
+      NEXT_PUBLIC_AI_FALLBACK_TO_MOCK: ${AI_FALLBACK_TO_MOCK:-0}
+      DECISION_PROVIDER: ${DECISION_PROVIDER:-mock}
+      DECISION_ENGINE_DEBUG_LOGS: ${DECISION_ENGINE_DEBUG_LOGS:-0}
+    networks:
+      - traefik-public
+      - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`${DOMAIN_APP}`)"
+      - "traefik.http.routers.web.entrypoints=websecure"
+      - "traefik.http.routers.web.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.web.middlewares=security-headers@file,compress@file"
+      - "traefik.http.services.web.loadbalancer.server.port=3000"
+      # --- Multi-tenant wildcard (opcional) ---------------------------------
+      # Descomente as 5 linhas abaixo SÓ depois de trocar o certResolver
+      # para DNS-01 em traefik/traefik.yml (HTTP-01 não emite wildcard).
+      # Direciona qualquer subdomínio de ROOT_DOMAIN para este mesmo
+      # container "web" — resolução de qual tenant é qual fica a cargo do
+      # código da aplicação, lendo o header Host (ver README).
+      # - "traefik.http.routers.web-tenants.rule=HostRegexp(`^[a-z0-9-]+\\.${ROOT_DOMAIN}$`)"
+      # - "traefik.http.routers.web-tenants.entrypoints=websecure"
+      # - "traefik.http.routers.web-tenants.tls.certresolver=letsencrypt"
+      # - "traefik.http.routers.web-tenants.middlewares=security-headers@file,compress@file"
+      # - "traefik.http.routers.web-tenants.service=web"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1024M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ============================================================
+  # API — CONTROL OS (FastAPI, apps/api)
+  # ============================================================
+  api:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+    container_name: controlos_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PROJECT_NAME: "CONTROL OS API"
+      API_V1_PREFIX: "/api/v1"
+      ENVIRONMENT: production
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      DATABASE_URL: "postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
+      SECRET_KEY: ${API_SECRET_KEY}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${API_ACCESS_TOKEN_EXPIRE_MINUTES:-60}
+      ALGORITHM: HS256
+      CORS_ORIGINS: "https://${DOMAIN_APP}"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    networks:
+      - traefik-public
+      - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`${DOMAIN_API}`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.api.middlewares=security-headers@file,compress@file,rate-limit@file"
+      - "traefik.http.services.api.loadbalancer.server.port=8000"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ============================================================
+  # EVOLUTION API — gateway do WhatsApp (separado: Postgres/Redis próprios)
+  # ============================================================
+  evolution-postgres:
+    image: postgres:16-alpine
+    container_name: controlos_evolution_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${EVOLUTION_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${EVOLUTION_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${EVOLUTION_POSTGRES_DB}
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=200"
+    # Ver comentário equivalente no serviço "postgres" acima — mesmo
+    # motivo (evita gargalo de /dev/shm em ordenações/hash joins).
+    shm_size: "128mb"
+    volumes:
+      - evolution_postgres_data:/var/lib/postgresql/data
+    networks:
+      - evolution-backend
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+        reservations:
+          cpus: "0.15"
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${EVOLUTION_POSTGRES_USER} -d ${EVOLUTION_POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  evolution-redis:
+    image: redis:7-alpine
+    container_name: controlos_evolution_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${EVOLUTION_REDIS_PASSWORD}"]
+    volumes:
+      - evolution_redis_data:/data
+    networks:
+      - evolution-backend
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+        reservations:
+          cpus: "0.10"
+          memory: 64M
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${EVOLUTION_REDIS_PASSWORD} --no-auth-warning ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  evolution-api:
+    # Versão fixada (não ":latest") — evita que um "docker compose up
+    # --build" numa manutenção futura puxe silenciosamente uma versão nova
+    # (e potencialmente incompatível) da Evolution API. v2.3.7 é a versão
+    # estável mais recente publicada em hub.docker.com/r/evoapicloud/evolution-api
+    # no momento em que esta infra foi montada; atualize deliberadamente
+    # (revisando o changelog) em vez de deixar o Docker escolher por você.
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: controlos_evolution_api
+    restart: unless-stopped
+    depends_on:
+      evolution-postgres:
+        condition: service_healthy
+      evolution-redis:
+        condition: service_healthy
+    environment:
+      SERVER_URL: "https://${DOMAIN_EVOLUTION}"
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+      LANGUAGE: pt-BR
+      CORS_ORIGIN: "https://${DOMAIN_APP}"
+      CORS_METHODS: "GET,POST,PUT,DELETE"
+      CORS_CREDENTIALS: "true"
+      LOG_LEVEL: "ERROR,WARN"
+      LOG_COLOR: "false"
+      DEL_INSTANCE: "false"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: "postgresql://${EVOLUTION_POSTGRES_USER}:${EVOLUTION_POSTGRES_PASSWORD}@evolution-postgres:5432/${EVOLUTION_POSTGRES_DB}?schema=evolution_api"
+      DATABASE_CONNECTION_CLIENT_NAME: controlos_evolution
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: "redis://:${EVOLUTION_REDIS_PASSWORD}@evolution-redis:6379/0"
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_LOCAL_ENABLED: "false"
+      # Webhook global — a Evolution API chama esta URL a cada evento do
+      # WhatsApp (mensagem recebida, QR code atualizado, etc.). Aponta pro
+      # Channel Gateway do CONTROL OS (ver services/channel-gateway na
+      # Fase 8) — endpoint HTTP real ainda não existe no apps/web (a Fase
+      # 8 entregou a infraestrutura do Gateway, não o webhook HTTP; ver
+      # README desta pasta, seção "Próximos passos"). Preencher
+      # WEBHOOK_GLOBAL_URL no .env quando essa rota existir.
+      WEBHOOK_GLOBAL_ENABLED: ${EVOLUTION_WEBHOOK_ENABLED:-false}
+      WEBHOOK_GLOBAL_URL: ${EVOLUTION_WEBHOOK_URL:-}
+      WEBHOOK_EVENTS_MESSAGES_UPSERT: "true"
+      WEBHOOK_EVENTS_CONNECTION_UPDATE: "true"
+      WEBHOOK_EVENTS_QRCODE_UPDATED: "true"
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - traefik-public
+      - evolution-backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.evolution.rule=Host(`${DOMAIN_EVOLUTION}`)"
+      - "traefik.http.routers.evolution.entrypoints=websecure"
+      - "traefik.http.routers.evolution.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.evolution.middlewares=security-headers@file"
+      - "traefik.http.services.evolution.loadbalancer.server.port=8080"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1024M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    healthcheck:
+      # "node -e" em vez de curl/wget: a imagem da Evolution API é
+      # Node.js e SEMPRE tem o binário "node" disponível — curl/wget
+      # dependem da distro base da imagem (não documentada/garantida pelo
+      # projeto), então evitamos assumir qual delas está instalada.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://127.0.0.1:8080', (r) => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

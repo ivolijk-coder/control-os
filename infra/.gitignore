@@ -1,0 +1,4 @@
+# CONTROL OS — Infra — nunca commitar segredos nem estado local
+
+.env
+traefik/dynamic/.htpasswd
