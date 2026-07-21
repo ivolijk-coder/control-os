@@ -29,11 +29,13 @@ type VoiceProviderName = 'browser';
 
 // Hoje só existe o valor `'browser'` de cada lado, então não há nada pra
 // decidir a partir de `NEXT_PUBLIC_SPEECH_PROVIDER`/`NEXT_PUBLIC_VOICE_PROVIDER`
-// ainda — as variáveis já estão documentadas (ver `.env.local.example`) e
-// reservadas: quando um segundo provedor for adicionado (ex.: `'openai'`),
-// basta estender os tipos acima e ler `process.env.NEXT_PUBLIC_SPEECH_PROVIDER`
-// aqui, sem tocar em nenhum outro arquivo que consome
-// `getSpeechProvider`/`getVoiceProvider`.
+// ainda — nomes só RESERVADOS aqui (nenhum `process.env` é lido de verdade
+// ainda, e por isso nenhuma das duas está em `.env.local.example` — só
+// documentar variável que o código realmente consome). Quando um segundo
+// provedor for adicionado (ex.: `'openai'`): estender os tipos acima, ler
+// `process.env.NEXT_PUBLIC_SPEECH_PROVIDER`/`NEXT_PUBLIC_VOICE_PROVIDER`
+// aqui, E só então documentar as duas em `.env.local.example` — sem tocar
+// em nenhum outro arquivo que consome `getSpeechProvider`/`getVoiceProvider`.
 export const SPEECH_PROVIDER: SpeechProviderName = 'browser';
 export const VOICE_PROVIDER: VoiceProviderName = 'browser';
 

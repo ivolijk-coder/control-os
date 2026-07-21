@@ -4,7 +4,7 @@ Operational Intelligence Platform. Este repositório contém a implementação r
 
 ## Status
 
-**Fase 2 — Pronto para deploy na Vercel.** Monorepo reorganizado com pnpm workspaces + Turborepo, `apps/web` completo (public/, styles/, componentes) e `packages/config` com a configuração de TypeScript compartilhada. Nenhuma integração real de IA, banco de dados ou WhatsApp foi conectada ainda — isso é proposital, e faz parte do escopo das próximas fases.
+**Fase 7 — Financeiro completo, pronto para produção.** O monorepo evoluiu bastante desde a Fase 2 (abaixo, texto histórico da configuração inicial de deploy): a NOVA hoje conversa de verdade com um provedor real de IA (OpenAI, com fallback determinístico via `MockAIProvider`), o CONTROL HUB tem um Action Engine e Decision Engine reais, e o módulo Financeiro persiste de verdade em PostgreSQL via Prisma (contas, categorias, transferências, parcelamentos, recorrências, consultas — ver `services/modules/finance`, `services/repositories/finance`, `apps/web/prisma`). WhatsApp continua como adapter de canal preparado, mas não conectado a um número real.
 
 A documentação conceitual completa (Etapas 1 a 6 — Design System, Control Engine, Ecossistema, Arquitetura de Experiência, UX Blueprint, Blueprint de Produto, Control Core Cognitivo) permanece como a fonte de verdade de produto e vive fora deste repositório, nos documentos `.docx` já entregues.
 
@@ -95,7 +95,7 @@ ERR_PNPM_META_FETCH_FAIL GET https://registry.npmjs.org/turbo
 Value of "this" must be of type URLSearchParams
 ```
 
-**Causa raiz:** este repositório não possui `pnpm-lock.yaml` (decisão deliberada, tomada para permitir push sem gerar o lockfile num ambiente sem acesso à rede). Sem lockfile, todo `pnpm install` precisa resolver o grafo de dependências do zero: buscar o metadata de cada pacote, direto e transitivo, das 7 packages do workspace, em paralelo, na registry do npm a cada build ("Scope: all 7 workspace projects" no log confirma isso). Esse volume alto de requisições HTTP concorrentes é o gatilho documentado de um bug de incompatibilidade entre o cliente de fetch do pnpm e o `fetch`/`URLSearchParams` nativos do Node.js — reportado de forma praticamente idêntica (mesmo texto de erro, mesmo padrão de log) na comunidade da própria Vercel. Não é causado por registry customizado, proxy, corepack, overrides/resolutions ou versão incompatível de pnpm/Node — a auditoria completa do repositório (abaixo) não encontrou nenhum desses itens.
+**Causa raiz (histórica — ver atualização logo abaixo):** neste momento do projeto, o repositório ainda não possuía `pnpm-lock.yaml` (decisão deliberada, tomada para permitir push sem gerar o lockfile num ambiente sem acesso à rede). Sem lockfile, todo `pnpm install` precisa resolver o grafo de dependências do zero: buscar o metadata de cada pacote, direto e transitivo, das 7 packages do workspace, em paralelo, na registry do npm a cada build ("Scope: all 7 workspace projects" no log confirma isso). Esse volume alto de requisições HTTP concorrentes é o gatilho documentado de um bug de incompatibilidade entre o cliente de fetch do pnpm e o `fetch`/`URLSearchParams` nativos do Node.js — reportado de forma praticamente idêntica (mesmo texto de erro, mesmo padrão de log) na comunidade da própria Vercel. Não é causado por registry customizado, proxy, corepack, overrides/resolutions ou versão incompatível de pnpm/Node — a auditoria completa do repositório (abaixo) não encontrou nenhum desses itens.
 
 **Auditoria realizada (resultado):**
 
@@ -114,10 +114,25 @@ Value of "this" must be of type URLSearchParams
 
 **Correção aplicada:** adicionado `.npmrc` na raiz do monorepo reduzindo a concorrência de rede do pnpm (`network-concurrency=1`) e aumentando a tolerância a retries (`fetch-retries`, `fetch-retry-mintimeout`, `fetch-retry-maxtimeout`). Isso ataca diretamente o mecanismo que dispara o bug (muitas requisições HTTP simultâneas durante a resolução a frio), sem alterar versões, dependências ou arquitetura do projeto.
 
-**Observação para o futuro:** a correção definitiva e mais robusta é gerar e commitar um `pnpm-lock.yaml` real (rodando `pnpm install` uma vez em uma máquina com acesso à rede). Com lockfile, o pnpm deixa de precisar resolver o grafo inteiro a cada build — ele lê o lockfile e baixa os tarballs diretamente, o que elimina a maior parte das requisições concorrentes de metadata e a exposição a esse bug. O `.npmrc` adicionado agora é a mitigação válida enquanto o projeto opera sem lockfile.
+**Atualização (Fase 7 — auditoria de produção):** a correção definitiva foi aplicada — `pnpm-lock.yaml` foi gerado e está commitado na raiz do monorepo, atualizado a cada dependência nova. Com lockfile, o pnpm lê o grafo já resolvido e baixa os tarballs diretamente, em vez de reresolver tudo do zero a cada build — a causa raiz do `ERR_INVALID_THIS`/`ERR_PNPM_META_FETCH_FAIL` está estruturalmente evitada. O `.npmrc` foi mantido como reforço de resiliência de rede (retries/concorrência), não porque ainda seja necessário para este bug específico.
+
+## Persistência (Prisma + PostgreSQL)
+
+`apps/web/prisma/schema.prisma` é o schema do módulo Financeiro (tabelas `finance_*`, mesmo Postgres de `apps/api`). Nada manual é necessário após `pnpm install`:
+
+| Etapa | Quando roda | Comando |
+|---|---|---|
+| Gerar o Prisma Client | Automático, todo `pnpm install` (script `postinstall` em `apps/web/package.json`) | `prisma generate` |
+| Aplicar migrations no banco | **Manual, uma vez por ambiente** (não faz parte do build) | `pnpm --filter @control-os/web db:deploy` |
+
+`prisma generate` não precisa de conexão com o banco (só lê o schema), por isso nunca bloqueia `pnpm install`/`pnpm build` mesmo sem `DATABASE_URL` configurada. Já `prisma migrate deploy` precisa de uma `DATABASE_URL` real apontando para o Postgres de destino — isso é deploy de banco de dados, não deploy de aplicação, e por isso não está (de propósito) amarrado ao `buildCommand` da Vercel: rodar migration a cada build de aplicação é arriscado sem um passo de aprovação explícito. Configure `DATABASE_URL` nas variáveis de ambiente da Vercel (Project Settings → Environment Variables) e rode `db:deploy` manualmente (ou via uma pipeline de CI separada) sempre que uma nova migration for adicionada.
+
+As migrations em `prisma/migrations/` foram escritas à mão (SQL padrão que `prisma migrate dev` geraria) porque o ambiente onde foram criadas não tinha acesso ao binário de engine do Prisma (`binaries.prisma.sh` bloqueado) — auditadas manualmente contra `schema.prisma` nesta fase, sem divergência encontrada. Recomendação: na primeira aplicação real contra um Postgres de verdade, rode `prisma migrate deploy` (não `dev`) para que o Prisma valide e registre o histórico de migrations sem tentar gerar SQL novo.
 
 ## Fases
 
 - [x] **Fase 1** — Estrutura, configuração de stack, Design System, tema dark, 6 telas mockadas
 - [x] **Fase 2** — Reorganização do monorepo (pnpm + Turborepo) para deploy na Vercel
-- [ ] Fase 3 — (aguardando aprovação)
+- [x] **Fases 3–5** — NOVA Core (intents/planner/executor), integração real com OpenAI, CONTROL HUB (Action Engine + Decision Engine)
+- [x] **Fase 6** — Persistência real (Prisma + PostgreSQL) para o módulo Financeiro
+- [x] **Fase 7** — Financeiro completo (contas, categorias, transferências, parcelamentos, recorrências) + chat real ligado à persistência + auditoria de produção (este documento)
