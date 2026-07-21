@@ -4,7 +4,20 @@ Operational Intelligence Platform. Este repositório contém a implementação r
 
 ## Status
 
-**Fase 7 — Financeiro completo, pronto para produção.** O monorepo evoluiu bastante desde a Fase 2 (abaixo, texto histórico da configuração inicial de deploy): a NOVA hoje conversa de verdade com um provedor real de IA (OpenAI, com fallback determinístico via `MockAIProvider`), o CONTROL HUB tem um Action Engine e Decision Engine reais, e o módulo Financeiro persiste de verdade em PostgreSQL via Prisma (contas, categorias, transferências, parcelamentos, recorrências, consultas — ver `services/modules/finance`, `services/repositories/finance`, `apps/web/prisma`). WhatsApp continua como adapter de canal preparado, mas não conectado a um número real.
+**Fase 8 — Gateway Omnichannel (infraestrutura), WhatsApp ainda em modo mock.** Desde a Fase 7, o CONTROL OS ganhou uma camada explícita de entrada para qualquer canal de mensagens:
+
+```
+WhatsApp / Web Chat / (futuro: Telegram, e-mail, voz, API)
+      ↓
+Channel Gateway   (services/channel-gateway)
+      ↓
+CONTROL HUB → Context Provider → Memory Layer → Decision Engine →
+Action Engine → Modules → Repositories → PostgreSQL
+```
+
+Nenhuma IA paralela foi criada: o Channel Gateway só decide QUAL adapter converte a mensagem nativa em `HubMessage` (`ChannelAdapter.toHubMessage`) e QUAL conversa ela pertence (`ConversationManager`), e então entrega ao MESMO `controlHub.receive(...)` que já processava o canal `api` desde a Fase 4 — o pipeline downstream (Decision Engine, Action Engine, Modules, Repositories) é idêntico para todos os canais, provado por teste (`services/channel-gateway/__tests__/channel-gateway.parity.test.ts`). Hoje só dois canais têm adapter registrado (`services/channel-gateway/index.ts`): Web Chat e WhatsApp — ambos MOCK (sem webhook/API externa real ainda; `sendMessage` grava num outbox em memória, inspecionável em teste). A migração do WhatsApp para uma API real (Evolution API/Meta Cloud/Twilio) e da UI web (`NovaWorkspace`) para passar pelo Gateway ficam para uma fase futura — só o lado de transporte muda quando isso acontecer, nada no Gateway ou no CONTROL HUB.
+
+**Fase 7 — Financeiro completo, pronto para produção.** O monorepo evoluiu bastante desde a Fase 2 (abaixo, texto histórico da configuração inicial de deploy): a NOVA hoje conversa de verdade com um provedor real de IA (OpenAI, com fallback determinístico via `MockAIProvider`), o CONTROL HUB tem um Action Engine e Decision Engine reais, e o módulo Financeiro persiste de verdade em PostgreSQL via Prisma (contas, categorias, transferências, parcelamentos, recorrências, consultas — ver `services/modules/finance`, `services/repositories/finance`, `apps/web/prisma`).
 
 A documentação conceitual completa (Etapas 1 a 6 — Design System, Control Engine, Ecossistema, Arquitetura de Experiência, UX Blueprint, Blueprint de Produto, Control Core Cognitivo) permanece como a fonte de verdade de produto e vive fora deste repositório, nos documentos `.docx` já entregues.
 
@@ -135,4 +148,5 @@ As migrations em `prisma/migrations/` foram escritas à mão (SQL padrão que `p
 - [x] **Fase 2** — Reorganização do monorepo (pnpm + Turborepo) para deploy na Vercel
 - [x] **Fases 3–5** — NOVA Core (intents/planner/executor), integração real com OpenAI, CONTROL HUB (Action Engine + Decision Engine)
 - [x] **Fase 6** — Persistência real (Prisma + PostgreSQL) para o módulo Financeiro
-- [x] **Fase 7** — Financeiro completo (contas, categorias, transferências, parcelamentos, recorrências) + chat real ligado à persistência + auditoria de produção (este documento)
+- [x] **Fase 7** — Financeiro completo (contas, categorias, transferências, parcelamentos, recorrências) + chat real ligado à persistência + auditoria de produção
+- [x] **Fase 8** — Gateway Omnichannel: Channel Gateway, Channel Registry, Conversation Manager, adapters Web Chat + WhatsApp (mock) — infraestrutura pronta para conectar uma API real de WhatsApp (Evolution API/Meta Cloud/Twilio) numa fase futura (este documento)

@@ -28,11 +28,30 @@ import type { UserContext } from '@/services/context-provider';
  * WhatsApp, evento do app, request da API pública...) — cada adapter
  * define o seu; `toHubMessage` é o único lugar onde esse formato nativo
  * existe, o resto do sistema nunca o vê.
+ *
+ * CONTROL HUB — Fase 8 (Gateway Omnichannel): adiciona `sendMessage`,
+ * simétrico a `toHubMessage` — enquanto aquele é o único lugar que
+ * entende o formato NATIVO de ENTRADA de um canal, este é o único lugar
+ * que entende o de SAÍDA. Recebe só `userId` (o mesmo endereço que a
+ * mensagem trouxe em `HubMessage.userId` — telefone no WhatsApp,
+ * sessionId no Web Chat etc.) + o texto de resposta já pronto; nenhuma
+ * camada acima (`ChannelGateway`, `ControlHub`) precisa saber COMO aquele
+ * canal entrega a mensagem de volta. Junto com `toHubMessage`, este par
+ * de métodos é exatamente o contrato pedido na Fase 8 ("interface
+ * ChannelAdapter { receiveMessage(...); sendMessage(...) }") — mantido
+ * como `toHubMessage`/`sendMessage` (em vez de renomear para
+ * `receiveMessage`) porque `toHubMessage` já era uma conversão pura,
+ * sem efeito colateral, testável isoladamente; `receiveMessage` como
+ * verbo de ORQUESTRAÇÃO (converter + rotear + responder) vira o método
+ * do `ChannelGateway` (`services/channel-gateway/channel-gateway.ts`),
+ * não do adapter — o adapter continua não sabendo nada sobre o Hub.
  */
 export interface ChannelAdapter<TInbound = unknown> {
   readonly channel: HubMessage['channel'];
   /** Converte o payload nativo do canal para o envelope universal — todo canal É obrigado a produzir um `HubMessage` válido aqui. */
   toHubMessage(raw: TInbound): HubMessage;
+  /** Entrega uma resposta de volta ao usuário, no formato nativo do canal. */
+  sendMessage(userId: string, text: string): Promise<void>;
 }
 
 /**

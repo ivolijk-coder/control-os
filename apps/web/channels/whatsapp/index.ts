@@ -1,4 +1,4 @@
-export { whatsAppChannelAdapter } from './whatsapp-channel.adapter';
+export { whatsAppChannelAdapter, whatsAppOutbox } from './whatsapp-channel.adapter';
 export type {
   InboundWhatsAppMessage,
   OutboundWhatsAppMessage,

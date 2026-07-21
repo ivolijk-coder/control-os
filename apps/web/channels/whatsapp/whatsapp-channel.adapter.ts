@@ -1,4 +1,3 @@
-import { controlHub } from '@/services/control-hub';
 import type { ChannelAdapter, HubMessage } from '@/services/control-hub';
 
 /**
@@ -8,18 +7,31 @@ import type { ChannelAdapter, HubMessage } from '@/services/control-hub';
  * removido), este adapter chamava `ConversationService.processTurn`
  * diretamente — exatamente a violação que o CONTROL HUB existe para
  * eliminar: "O WhatsApp NÃO deve conversar diretamente com a NOVA.
- * Nenhum canal deve conversar diretamente com a IA." Agora o único
- * destino de qualquer mensagem inbound é `controlHub.receive(...)`; este
- * arquivo não sabe nada sobre `ConversationService`, `NovaContext` ou
- * qualquer detalhe interno da NOVA — só sabe converter o formato nativo
- * do WhatsApp para `HubMessage` e devolver a resposta pro formato nativo
- * de volta.
+ * Nenhum canal deve conversar diretamente com a IA."
  *
- * Ainda NÃO conectado a nenhum webhook real (Meta Cloud API, Twilio
- * etc.) — igual antes, esta camada só isola o "formato de canal" da
- * orquestração. Quando a integração real chegar (fase futura), só o
- * lado de transporte muda (como a mensagem chega/sai) — a chamada pro
- * Hub, não.
+ * CONTROL HUB — Fase 8 (Gateway Omnichannel): este arquivo perdeu o
+ * método `handleInboundMessage` que tinha até a Fase 7 — ele chamava
+ * `controlHub.receive(...)` diretamente, o que fazia deste adapter, ao
+ * mesmo tempo, "conversor de formato" E "orquestrador do pipeline" — duas
+ * responsabilidades que a Fase 8 explicitamente separa em duas camadas:
+ * o `ChannelGateway` (`services/channel-gateway/channel-gateway.ts`) agora
+ * é quem chama `controlHub.receive(...)`, localiza/cria a conversa via
+ * `ConversationManager`, e devolve a resposta ao canal via `sendMessage`.
+ * Este adapter passou a fazer só duas coisas, nenhuma delas sabendo nada
+ * sobre o Hub: converter o formato nativo do WhatsApp para `HubMessage`
+ * (`toHubMessage`) e devolver uma resposta nesse mesmo formato nativo
+ * (`sendMessage`). Nenhum consumidor real chamava `handleInboundMessage`
+ * fora deste próprio arquivo — remoção segura, confirmada por busca no
+ * repositório inteiro antes desta mudança.
+ *
+ * Ainda NÃO conectado a nenhum webhook real (Meta Cloud API, Twilio,
+ * Evolution API etc.) — `sendMessage` é um MOCK: registra o envio num
+ * outbox em memória (`whatsAppOutbox`, exportado só para inspeção em
+ * testes) em vez de chamar uma API externa de verdade. Quando a
+ * integração real chegar (fase futura, fora do escopo desta), só o lado
+ * de transporte muda — `toHubMessage` e a assinatura de `sendMessage`
+ * continuam as mesmas, e nada em `ChannelGateway`/`ControlHub` precisa
+ * mudar.
  */
 
 export interface InboundWhatsAppMessage {
@@ -37,11 +49,18 @@ export interface OutboundWhatsAppMessage {
 
 export interface WhatsAppChannelAdapter extends ChannelAdapter<InboundWhatsAppMessage> {
   readonly channel: 'whatsapp';
-  /** Recebe uma mensagem inbound, roda pelo CONTROL HUB e devolve a resposta pronta para envio. */
-  handleInboundMessage: (message: InboundWhatsAppMessage) => Promise<OutboundWhatsAppMessage>;
 }
 
-const FALLBACK_REPLY = 'Não consegui processar sua mensagem agora — tente novamente em instantes.';
+/**
+ * Outbox em memória do mock — cada `sendMessage` bem-sucedido empurra uma
+ * entrada aqui. Único propósito: permitir que testes (ver
+ * `services/channel-gateway/__tests__`) verifiquem que uma resposta foi
+ * de fato "enviada" pelo canal, sem precisar de uma API externa real.
+ * Nunca lido por nenhuma camada de produção — se um webhook real
+ * substituir este mock no futuro, este array (e as importações dele)
+ * somem junto.
+ */
+export const whatsAppOutbox: OutboundWhatsAppMessage[] = [];
 
 export const whatsAppChannelAdapter: WhatsAppChannelAdapter = {
   channel: 'whatsapp',
@@ -61,9 +80,7 @@ export const whatsAppChannelAdapter: WhatsAppChannelAdapter = {
     return hubMessage;
   },
 
-  handleInboundMessage: async (message) => {
-    const hubMessage = whatsAppChannelAdapter.toHubMessage(message);
-    const result = await controlHub.receive(hubMessage);
-    return { to: message.from, text: result.reply ?? FALLBACK_REPLY };
+  sendMessage: async (userId, text) => {
+    whatsAppOutbox.push({ to: userId, text });
   },
 };

@@ -62,6 +62,20 @@ export interface HubMessage {
   id: string;
   channel: HubChannel;
   userId: string;
+  /**
+   * CONTROL HUB — Fase 8 (Gateway Omnichannel): identifica a CONVERSA
+   * (não a mensagem individual) a que este envelope pertence — o "thread"
+   * que agrupa turnos sucessivos do mesmo usuário no mesmo canal. Opcional
+   * porque nem todo produtor de `HubMessage` passa por
+   * `services/channel-gateway` ainda (ex.: os testes de integração deste
+   * módulo e do Action Engine, que chamam `controlHub.receive` direto,
+   * sem Gateway) — quando ausente, o pipeline funciona exatamente como
+   * antes da Fase 8. Preenchido pelo `ConversationManager`
+   * (`services/channel-gateway/conversation-manager.ts`), nunca pelo
+   * adapter de canal — nenhum adapter sabe (nem precisa saber) como
+   * conversas são localizadas/criadas.
+   */
+  conversationId?: string;
   type: HubMessageType;
   content: string;
   attachments?: Attachment[];
