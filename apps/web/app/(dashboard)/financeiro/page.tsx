@@ -12,7 +12,7 @@ import { MiniBarChart, MiniSparkline } from '@/components/dashboard/mini-charts'
 import { RecommendationCard } from '@/components/dashboard/recommendation-card';
 import { ProgressRing } from '@/components/dashboard/progress-ring';
 import { useDataStore } from '@/lib/data-store';
-import { formatCurrency } from '@/lib/utils';
+import { financeEntrySign, formatCurrency } from '@/lib/utils';
 
 const CATEGORY_EMOJI: Record<string, string> = {
   Alimentação: '🍽️',
@@ -71,7 +71,7 @@ export default function FinanceiroPage() {
   const chronological = [...financeEntries].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   const flowValues = chronological.reduce<number[]>((acc, entry) => {
     const previous = acc.length > 0 ? acc[acc.length - 1] ?? 0 : 0;
-    const delta = entry.type === 'receita' ? entry.amount : -entry.amount;
+    const delta = financeEntrySign(entry) * entry.amount;
     acc.push(previous + delta);
     return acc;
   }, []);
@@ -226,12 +226,12 @@ export default function FinanceiroPage() {
                   </div>
                   <span
                     className={
-                      entry.type === 'receita'
+                      financeEntrySign(entry) > 0
                         ? 'shrink-0 font-mono text-sm text-accent-green'
                         : 'shrink-0 font-mono text-sm text-accent-red'
                     }
                   >
-                    {entry.type === 'receita' ? '+' : '-'}
+                    {financeEntrySign(entry) > 0 ? '+' : '-'}
                     {formatCurrency(entry.amount)}
                   </span>
                 </div>

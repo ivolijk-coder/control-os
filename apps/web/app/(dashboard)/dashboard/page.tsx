@@ -5,7 +5,7 @@ import { AgentWidgetCard } from '@/components/dashboard/agent-widget-card';
 import { DataCard } from '@/components/dashboard/data-card';
 import { MiniBarChart, MiniSparkline, type ChartAccent } from '@/components/dashboard/mini-charts';
 import { useDataStore } from '@/lib/data-store';
-import { formatCurrency } from '@/lib/utils';
+import { financeEntrySign, formatCurrency } from '@/lib/utils';
 import { toLocalDateString } from '@/services/nova';
 
 /**
@@ -87,7 +87,7 @@ export default function DashboardPage() {
     const values: number[] = [];
     let running = 0;
     for (const entry of chronological) {
-      running += entry.type === 'receita' ? entry.amount : -entry.amount;
+      running += financeEntrySign(entry) * entry.amount;
       values.push(running);
     }
     return { saldo: running, flowValues: values };

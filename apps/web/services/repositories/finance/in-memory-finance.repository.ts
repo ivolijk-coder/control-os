@@ -90,7 +90,13 @@ export class InMemoryFinanceRepository implements FinanceRepository {
     const entry: FinanceEntry = {
       id: `finance_${nextTransactionId++}`,
       type: input.type,
-      description: input.description ?? (input.type === 'despesa' ? 'Despesa registrada' : 'Receita registrada'),
+      description:
+        input.description ??
+        (input.type === 'despesa'
+          ? 'Despesa registrada'
+          : input.type === 'transferencia'
+            ? 'Transferência registrada'
+            : 'Receita registrada'),
       amount: input.amount,
       category: input.category ?? 'Outros',
       date: input.date ?? new Date().toISOString(),

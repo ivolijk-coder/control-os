@@ -1,4 +1,27 @@
+import type { FinanceEntry } from '@control-os/types';
+
 export { cn } from '@control-os/utils';
+
+/**
+ * Sinal (+1/-1) de um lançamento sobre o saldo/patrimônio total — mesma
+ * convenção de `signedAmount`/`signedGroupTotal` em
+ * `services/repositories/finance` (Fase 7): receita soma, despesa
+ * subtrai, transferência soma ou subtrai dependendo da perna
+ * (`transferDirection`). Compartilhado entre `dashboard/page.tsx` e
+ * `financeiro/page.tsx` — as duas leem o mesmo `useDataStore.financeEntries`
+ * pra somar saldo acumulado/fluxo de caixa; sem esta função, cada página
+ * repetiria (e podia divergir) o mesmo ternário `type === 'receita' ?
+ * amount : -amount`, que trata errado qualquer lançamento que não seja
+ * receita/despesa (hoje só existe em teoria — nenhum `addFinanceEntry`
+ * grava `'transferencia'` em `useDataStore` ainda — mas o tipo já permite,
+ * então a conta precisa estar certa antes que o primeiro lançamento desse
+ * tipo apareça aqui).
+ */
+export function financeEntrySign(entry: Pick<FinanceEntry, 'type' | 'transferDirection'>): 1 | -1 {
+  if (entry.type === 'receita') return 1;
+  if (entry.type === 'despesa') return -1;
+  return entry.transferDirection === 'entrada' ? 1 : -1;
+}
 
 /** Formata um valor numérico em moeda BRL. Usado nos widgets financeiros do Dashboard. */
 export function formatCurrency(value: number): string {
