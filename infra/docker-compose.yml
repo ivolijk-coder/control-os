@@ -275,6 +275,10 @@ services:
     build:
       context: ..
       dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_AI_PROVIDER: ${AI_PROVIDER:-mock}
+        NEXT_PUBLIC_AI_DEBUG_LOGS: ${AI_DEBUG_LOGS:-0}
+        NEXT_PUBLIC_AI_FALLBACK_TO_MOCK: ${AI_FALLBACK_TO_MOCK:-0}
     container_name: controlos_web
     restart: unless-stopped
     depends_on:

@@ -37,6 +37,17 @@ COPY . .
 
 RUN pnpm install --frozen-lockfile
 
+# Variáveis NEXT_PUBLIC_* são incorporadas pelo Next.js no bundle do
+# navegador durante o build. Recebê-las como build args impede que uma
+# imagem compilada em modo mock continue usando mock depois de o container
+# receber AI_PROVIDER=openai em runtime.
+ARG NEXT_PUBLIC_AI_PROVIDER=mock
+ARG NEXT_PUBLIC_AI_DEBUG_LOGS=0
+ARG NEXT_PUBLIC_AI_FALLBACK_TO_MOCK=0
+ENV NEXT_PUBLIC_AI_PROVIDER=${NEXT_PUBLIC_AI_PROVIDER}
+ENV NEXT_PUBLIC_AI_DEBUG_LOGS=${NEXT_PUBLIC_AI_DEBUG_LOGS}
+ENV NEXT_PUBLIC_AI_FALLBACK_TO_MOCK=${NEXT_PUBLIC_AI_FALLBACK_TO_MOCK}
+
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm run build:web
 
