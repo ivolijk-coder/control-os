@@ -117,8 +117,12 @@ Teste no navegador: `https://app.controlos.com.br`, `https://api.controlos.com.b
 Deliberadamente **não** automático no build/boot do container — mesma decisão já documentada no README raiz do monorepo ("rodar migration a cada build de aplicação é arriscado sem um passo de aprovação explícito"). Rode manualmente na primeira subida e a cada nova migration:
 
 ```bash
-docker compose exec web sh -c "cd /app/apps/web && npx prisma migrate deploy"
+docker compose --profile maintenance run --rm --build migrate
 ```
+
+O serviço temporário `migrate` usa a mesma versão do Prisma e os mesmos
+arquivos de migration usados para construir o app. Ele termina sozinho após
+aplicar (ou confirmar que não há) migrations e não fica exposto na internet.
 
 ### 8. Criar a primeira instância de WhatsApp na Evolution API
 

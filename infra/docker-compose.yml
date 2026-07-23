@@ -343,6 +343,31 @@ services:
       start_period: 15s
 
   # ============================================================
+  # MIGRATE — aplica migrations Prisma sob demanda
+  # ============================================================
+  # O container web de produção contém apenas o runtime mínimo do Next.js;
+  # o CLI do Prisma não vai nele de propósito. Este serviço usa o estágio
+  # "builder" da mesma imagem, que inclui o schema, migrations e o CLI.
+  # Não inicia com "docker compose up" normal: execute explicitamente
+  # "docker compose --profile maintenance run --rm --build migrate" antes
+  # da primeira utilização (e a cada nova migration).
+  migrate:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      target: builder
+    profiles: ["maintenance"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+    networks:
+      - backend
+    command: ["pnpm", "--filter", "@control-os/web", "run", "db:deploy"]
+
+  # ============================================================
   # API — CONTROL OS (FastAPI, apps/api)
   # ============================================================
   api:
