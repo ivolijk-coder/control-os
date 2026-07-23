@@ -13,7 +13,10 @@ const TIME_PATTERN = /(\d{1,2})[h:](\d{2})?/;
 
 // "passei" adicionado na Fase 7 — "Passei R$ 80 no posto." é um dos
 // resultados esperados explicitamente listados para o módulo Financeiro.
-const EXPENSE_PATTERN = /\b(gastei|paguei|comprei|passei)\b/;
+// Além dos verbos no passado, aceita a forma comum de comando de WhatsApp:
+// "registrar gasto 20 almoço". O valor ainda é obrigatório antes de criar
+// a despesa, então palavras soltas como "gasto" não viram lançamento.
+const EXPENSE_PATTERN = /\b(gastei|paguei|comprei|passei|registr(?:ar|e|a)\s+(?:uma?\s+)?(?:despesa|gasto))\b/;
 const REVENUE_PATTERN = /\b(recebi|faturei|caiu|entrou)\b/;
 // Fase 7 (Financeiro completo). "Transferi", "transferir", "transfira" —
 // nunca colide com EXPENSE/REVENUE_PATTERN (nenhum verbo em comum).

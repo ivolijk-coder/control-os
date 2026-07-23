@@ -157,6 +157,14 @@ async function main(): Promise<void> {
     assert(result.actions[0]?.kind === 'expense.create', 'esperava kind expense.create');
   });
 
+  await test('OpenAIDecisionProvider — fallback entende comando curto de WhatsApp para gasto', async () => {
+    const provider = new OpenAIDecisionProvider(new MockLLMProvider(['{"actions":[]}']));
+    const result = await provider.decide(buildMessage('Registrar gasto 20 reais almoço'), buildEmptyContext());
+    assert(result.kind === 'execute_actions', `esperava 'execute_actions', recebeu '${result.kind}'`);
+    assert(result.actions[0]?.kind === 'expense.create', 'esperava kind expense.create');
+    assert(result.actions[0]?.payload.value === 20, 'esperava value 20 no payload');
+  });
+
   await test('OpenAIDecisionProvider — falha do LLMProvider vira reply amigável, nunca lança', async () => {
     const provider = new OpenAIDecisionProvider({
       complete: async () => {

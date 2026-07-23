@@ -2,6 +2,7 @@ import { LLMProviderError, OpenAILLMProvider } from '@/services/llm';
 import type { LLMProvider } from '@/services/llm';
 import type { DecisionEngine, DecisionResult, HubMessage } from '@/services/control-hub';
 import type { UserContext } from '@/services/context-provider';
+import { parseIntent } from '@/services/nova';
 import { capabilityRegistry } from './capability-registry';
 import type { CapabilityRegistry } from './capability-registry';
 import { DecisionPromptBuilder } from './prompt-builder';
@@ -68,7 +69,41 @@ export class OpenAIDecisionProvider implements DecisionEngine {
     const validationMs = Date.now() - validationStartedAt;
 
     logDecisionEngineTiming({ promptBuildMs, llmCallMs, validationMs, totalMs: Date.now() - startedAt });
-    return result;
+    // O LLM é a decisão principal, mas mensagens curtas de WhatsApp podem
+    // receber JSON sem action mesmo contendo um lançamento inequívoco.
+    // O fallback determinístico protege o fluxo básico (gasto, receita,
+    // lembrete e agenda) sem executar nada que o parser não reconheça.
+    if (result.actions.length > 0) return result;
+    const fallback = actionFromExplicitCommand(message.content);
+    return fallback ?? result;
+  }
+}
+
+function actionFromExplicitCommand(text: string): DecisionResult | undefined {
+  const intent = parseIntent(text);
+  switch (intent.kind) {
+    case 'registrar_despesa':
+      return {
+        kind: 'execute_actions',
+        actions: [{ kind: 'expense.create', confidence: 0.92, payload: { value: intent.amount, description: intent.description } }],
+      };
+    case 'registrar_receita':
+      return {
+        kind: 'execute_actions',
+        actions: [{ kind: 'income.create', confidence: 0.92, payload: { value: intent.amount, description: intent.description } }],
+      };
+    case 'criar_lembrete':
+      return {
+        kind: 'execute_actions',
+        actions: [{ kind: 'task.create', confidence: 0.92, payload: { title: intent.title, dueDate: intent.dueDate } }],
+      };
+    case 'criar_agenda':
+      return {
+        kind: 'execute_actions',
+        actions: [{ kind: 'calendar.create', confidence: 0.92, payload: { title: intent.title, date: intent.date, time: intent.time } }],
+      };
+    default:
+      return undefined;
   }
 }
 
