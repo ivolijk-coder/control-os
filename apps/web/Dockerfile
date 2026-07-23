@@ -24,7 +24,9 @@ FROM node:22-alpine AS builder
 
 # libc6-compat — necessário para alguns pacotes nativos (ex.: sharp, usado
 # transitivamente por next/image) rodarem corretamente no Alpine.
-RUN apk add --no-cache libc6-compat
+# openssl — necessário para o Prisma detectar e gerar o engine compatível
+# com Alpine/OpenSSL 3, usado pelo repositório financeiro e pelo webhook.
+RUN apk add --no-cache libc6-compat openssl
 
 WORKDIR /repo
 
@@ -62,6 +64,10 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# O Prisma Client incluído pelo output "standalone" precisa da biblioteca
+# OpenSSL também em runtime; sem ela, qualquer rota que acessa dados falha.
+RUN apk add --no-cache openssl
 
 # Usuário não-root — princípio de menor privilégio, mesmo dentro do
 # container (se o processo Next.js for comprometido, não roda como root).
