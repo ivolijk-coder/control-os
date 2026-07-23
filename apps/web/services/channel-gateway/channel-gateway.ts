@@ -87,7 +87,11 @@ export class ChannelGatewayService implements ChannelGateway {
     if (channel === 'whatsapp') {
       const confirmation = await whatsAppIdentityService.confirmFromMessage(envelope.userId, envelope.content);
       if (confirmation === 'confirmed') {
-        const result: HubPipelineResult = { status: 'ok', message: envelope, reply: 'WhatsApp vinculado com sucesso à sua conta CONTROL OS. Agora já posso registrar seus gastos, agenda e lembretes.' };
+        const result: HubPipelineResult = {
+          status: 'ok',
+          message: envelope,
+          reply: '🎉 Bem-vindo ao CONTROL OS! Seu WhatsApp foi conectado à sua conta com segurança.\n\nAgora você pode me mandar, por exemplo:\n• “Gastei 20 reais no almoço”\n• “Me lembre de pagar a conta amanhã”\n• “Tenho reunião segunda às 10h”\n\nSeus dados ficam privados na sua conta.',
+        };
         await adapter.sendMessage(envelope.userId, result.reply!);
         return result;
       }
