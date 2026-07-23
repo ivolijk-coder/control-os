@@ -40,6 +40,8 @@ export interface InboundWhatsAppMessage {
   text: string;
   /** Timestamp ISO de recebimento — preenchido pelo webhook real no futuro. */
   receivedAt: string;
+  /** ID nativo da mensagem da Meta, para deduplicação futura. */
+  messageId?: string;
 }
 
 export interface OutboundWhatsAppMessage {
@@ -70,7 +72,7 @@ export const whatsAppChannelAdapter: WhatsAppChannelAdapter = {
       // Composta (telefone + timestamp) na ausência de um ID nativo do
       // WhatsApp nesta fase (sem webhook real ainda) — suficiente para
       // identificar a mensagem de forma estável dentro do pipeline.
-      id: `whatsapp:${message.from}:${message.receivedAt}`,
+      id: message.messageId ?? `whatsapp:${message.from}:${message.receivedAt}`,
       channel: 'whatsapp',
       userId: message.from,
       type: 'text',
@@ -81,6 +83,23 @@ export const whatsAppChannelAdapter: WhatsAppChannelAdapter = {
   },
 
   sendMessage: async (userId, text) => {
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+
+    if (token && phoneNumberId) {
+      const response = await fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ messaging_product: 'whatsapp', to: userId.replace(/^\+/, ''), type: 'text', text: { body: text } }),
+      });
+
+      if (!response.ok) throw new Error(`WhatsApp Cloud API respondeu HTTP ${response.status}`);
+      return;
+    }
+
     whatsAppOutbox.push({ to: userId, text });
   },
 };
