@@ -8,7 +8,6 @@ import { Check } from 'lucide-react';
 import { Button, Card, Input, Label } from '@control-os/ui';
 import { FormError } from '@/components/ui/form-error';
 import { cn } from '@/lib/utils';
-import { useAppStore } from '@/lib/store';
 
 const PASSWORD_REQUIREMENTS = [
   { id: 'length', label: 'Mínimo de 8 caracteres', test: (v: string) => v.length >= 8 },
@@ -17,19 +16,19 @@ const PASSWORD_REQUIREMENTS = [
 ];
 
 /**
- * Formulário de Cadastro — Fase 1 cria a sessão localmente via
- * `useAppStore.login` (mesmo mock usado no Login). A criação de conta real,
- * validada por apps/api + PostgreSQL, entra em uma fase futura.
+ * Formulário de Cadastro — cria a conta de produto e pede a confirmação do
+ * WhatsApp antes de esse número poder registrar qualquer dado pessoal.
  */
 export function CadastroForm() {
   const router = useRouter();
-  const login = useAppStore((s) => s.login);
 
   const [name, setName] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
+  const [phone, setPhone] = React.useState('');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [verification, setVerification] = React.useState<{ phone: string; code: string } | null>(null);
 
   const requirementsMet = PASSWORD_REQUIREMENTS.every((req) => req.test(password));
 
@@ -37,7 +36,7 @@ export function CadastroForm() {
     e.preventDefault();
     setError(null);
 
-    if (!name || !email || !password) {
+    if (!name || !email || !password || !phone) {
       setError('Preencha todos os campos para continuar.');
       return;
     }
@@ -48,10 +47,17 @@ export function CadastroForm() {
 
     setIsSubmitting(true);
     try {
-      await login(email, password);
-      // CONTROL OS — Home/Dashboard (Design Lab → implementação oficial):
-      // Home passou de /nova (chat) para /dashboard (Visão geral).
-      router.push('/dashboard');
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password, phone }),
+      });
+      const data = await response.json() as { phone?: string; code?: string; message?: string };
+      if (!response.ok || !data.phone || !data.code) {
+        setError(data.message ?? 'Não foi possível criar a conta agora.');
+        return;
+      }
+      setVerification({ phone: data.phone, code: data.code });
     } finally {
       setIsSubmitting(false);
     }
@@ -73,7 +79,19 @@ export function CadastroForm() {
         </div>
       </div>
 
-      <Card className="p-6">
+      {verification ? (
+        <Card className="p-6">
+          <h2 className="text-base font-semibold text-text-primary">Confirme seu WhatsApp</h2>
+          <p className="mt-2 text-sm text-text-secondary">
+            Pelo número <strong className="text-text-primary">{verification.phone}</strong>, envie esta mensagem para o WhatsApp do CONTROL OS:
+          </p>
+          <p className="mt-4 rounded-md bg-white/[0.06] px-4 py-3 font-mono text-sm text-text-primary">VINCULAR {verification.code}</p>
+          <p className="mt-4 text-sm text-text-secondary">Assim confirmamos que o número é seu e seus dados ficam separados dos demais usuários.</p>
+          <Button type="button" size="lg" className="mt-6 w-full" onClick={() => router.push('/login')}>
+            Já enviei o código
+          </Button>
+        </Card>
+      ) : <Card className="p-6">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="name">Nome completo</Label>
@@ -96,6 +114,19 @@ export function CadastroForm() {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
               placeholder="voce@empresa.com"
             />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="phone">Seu WhatsApp</Label>
+            <Input
+              id="phone"
+              type="tel"
+              autoComplete="tel"
+              value={phone}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPhone(e.target.value)}
+              placeholder="(44) 99999-9999"
+            />
+            <p className="text-xs text-text-tertiary">Usaremos este número para ligar suas mensagens à sua conta.</p>
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -140,7 +171,7 @@ export function CadastroForm() {
             Criar conta
           </Button>
         </form>
-      </Card>
+      </Card>}
 
       <p className="mt-6 text-center text-sm text-text-secondary">
         Já tem conta?{' '}

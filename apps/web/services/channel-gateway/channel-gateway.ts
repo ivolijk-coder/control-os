@@ -4,6 +4,7 @@ import { channelRegistry as defaultChannelRegistry } from './channel-registry';
 import type { ChannelRegistry } from './channel-registry';
 import { conversationManager as defaultConversationManager } from './conversation-manager';
 import type { ConversationManager } from './conversation-manager';
+import { whatsAppIdentityService } from '@/services/identity';
 
 /**
  * Channel Gateway — CONTROL HUB Fase 8 (Gateway Omnichannel).
@@ -78,7 +79,32 @@ export class ChannelGatewayService implements ChannelGateway {
     const conversationId = this.conversations.findOrCreateConversationId(converted.channel, converted.userId);
     const envelope: HubMessage = { ...converted, conversationId };
 
-    const result = await this.hub.receive(envelope);
+    // WhatsApp é uma identidade externa: nunca usamos o telefone como se
+    // fosse um id interno nem deixamos um número não confirmado escrever em
+    // uma conta padrão. Primeiro tratamos o comando de confirmação; depois
+    // resolvemos o número já vinculado para o UUID da conta.
+    let actorUserId: string | undefined;
+    if (channel === 'whatsapp') {
+      const confirmation = await whatsAppIdentityService.confirmFromMessage(envelope.userId, envelope.content);
+      if (confirmation === 'confirmed') {
+        const result: HubPipelineResult = { status: 'ok', message: envelope, reply: 'WhatsApp vinculado com sucesso à sua conta CONTROL OS. Agora já posso registrar seus gastos, agenda e lembretes.' };
+        await adapter.sendMessage(envelope.userId, result.reply!);
+        return result;
+      }
+      if (confirmation === 'invalid') {
+        const result: HubPipelineResult = { status: 'ok', message: envelope, reply: 'Esse código de vínculo é inválido ou expirou. Volte ao cadastro para gerar um novo código.' };
+        await adapter.sendMessage(envelope.userId, result.reply!);
+        return result;
+      }
+      actorUserId = await whatsAppIdentityService.resolveUserId(envelope.userId);
+      if (!actorUserId) {
+        const result: HubPipelineResult = { status: 'ok', message: envelope, reply: 'Antes de registrar dados, crie sua conta no CONTROL OS e envie aqui o código de vínculo mostrado no cadastro.' };
+        await adapter.sendMessage(envelope.userId, result.reply!);
+        return result;
+      }
+    }
+
+    const result = await this.hub.receive(envelope, actorUserId);
 
     await adapter.sendMessage(envelope.userId, result.reply ?? FALLBACK_REPLY);
 

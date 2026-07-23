@@ -20,6 +20,7 @@ import { CreateNoteAction } from './actions/notes/create-note.action';
 import { UpdateHabitAction } from './actions/habits/update-habit.action';
 import { UpdateGoalAction } from './actions/goals/update-goal.action';
 import { StoreDocumentAction } from './actions/documents/store-document.action';
+import { runAsFinanceUser } from '@/services/modules/finance/finance-user-context';
 
 /**
  * Handlers desta fase — as 11 ações do catálogo (`ActionKind`,
@@ -80,8 +81,9 @@ export class ActionRegistry implements ActionEngine {
     this.handlers = new Map(handlers.map((handler) => [handler.kind, handler]));
   }
 
-  async execute(actions: ActionRequest[]): Promise<ActionResult[]> {
-    return Promise.all(actions.map((request) => this.executeOne(request)));
+  async execute(actions: ActionRequest[], actorUserId?: string): Promise<ActionResult[]> {
+    const execute = () => Promise.all(actions.map((request) => this.executeOne(request)));
+    return actorUserId ? runAsFinanceUser(actorUserId, execute) : execute();
   }
 
   private async executeOne(request: ActionRequest): Promise<ActionResult> {

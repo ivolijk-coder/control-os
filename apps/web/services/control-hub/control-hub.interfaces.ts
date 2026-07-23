@@ -61,7 +61,7 @@ export interface ChannelAdapter<TInbound = unknown> {
  * chamar.
  */
 export interface ControlHub {
-  receive(message: HubMessage): Promise<HubPipelineResult>;
+  receive(message: HubMessage, actorUserId?: string): Promise<HubPipelineResult>;
 }
 
 /**
@@ -87,7 +87,7 @@ export interface DecisionEngine {
 
 /** Executa as ações que o Decision Engine pediu. Nesta fase só a interface existe — ver `action-engine.ts`. */
 export interface ActionEngine {
-  execute(actions: ActionRequest[]): Promise<ActionResult[]>;
+  execute(actions: ActionRequest[], actorUserId?: string): Promise<ActionResult[]>;
 }
 
 /**

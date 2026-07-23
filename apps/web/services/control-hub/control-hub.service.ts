@@ -62,7 +62,7 @@ export class ControlHubService implements ControlHub {
     private readonly actionEngine: ActionEngine = defaultActionEngine
   ) {}
 
-  async receive(message: HubMessage): Promise<HubPipelineResult> {
+  async receive(message: HubMessage, actorUserId?: string): Promise<HubPipelineResult> {
     const pipelineStartedAt = Date.now();
 
     const validation = validateHubMessage(message);
@@ -95,7 +95,7 @@ export class ControlHubService implements ControlHub {
     // Module Services (`services/modules/*`), nunca o Decision Engine nem
     // o Nova Gateway diretamente.
     const actionStartedAt = Date.now();
-    const actionResults = decision.actions.length > 0 ? await this.actionEngine.execute(decision.actions) : [];
+    const actionResults = decision.actions.length > 0 ? await this.actionEngine.execute(decision.actions, actorUserId) : [];
     const actionMs = Date.now() - actionStartedAt;
 
     // Sem resposta explícita do Decision Engine (`kind: 'execute_actions'`

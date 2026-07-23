@@ -3,6 +3,7 @@ import type { FinanceAccount, FinanceCategory, FinanceEntry } from '@control-os/
 import type { ActionResult } from '@/services/action-result.types';
 import type { CreateFinanceTransactionInput, FinanceRepository } from '@/services/repositories';
 import type { FinanceService } from './finance.interfaces';
+import { currentFinanceUserId } from './finance-user-context';
 import type {
   CreateExpenseInput,
   CreateFinanceAccountServiceInput,
@@ -127,8 +128,12 @@ function buildInstallmentLegs(params: {
 export class PersistentFinanceService implements FinanceService {
   constructor(
     private readonly repository: FinanceRepository,
-    private readonly userId: string = DEFAULT_USER_ID
+    private readonly fallbackUserId: string = DEFAULT_USER_ID
   ) {}
+
+  private get userId(): string {
+    return currentFinanceUserId() ?? this.fallbackUserId;
+  }
 
   // --- Resolução de conta (CONTROL OS — Fase 7) ------------------------------
 

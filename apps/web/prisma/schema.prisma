@@ -175,6 +175,51 @@ model Account {
   @@map("finance_accounts")
 }
 
+/// Conta de produto do CONTROL OS. É separada da tabela histórica `users`
+/// do serviço Python: o app web é dono deste modelo e usa o mesmo UUID como
+/// escopo dos módulos financeiros.
+model AppUser {
+  id            String                 @id @default(uuid()) @db.Uuid
+  name          String
+  email         String                 @unique
+  passwordHash  String                 @map("password_hash")
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  whatsappLinks WhatsAppLink[]
+  verifications WhatsAppVerification[]
+
+  @@map("app_users")
+}
+
+/// Número do WhatsApp que já comprovou pertencer a uma conta. A unicidade
+/// impede que um mesmo número seja vinculado a duas pessoas.
+model WhatsAppLink {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  phoneE164  String   @unique @map("phone_e164")
+  verifiedAt DateTime @map("verified_at") @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  user       AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("whatsapp_links")
+}
+
+/// Desafio de confirmação iniciado no cadastro. O código nunca é guardado
+/// em texto puro; a pessoa confirma mandando `VINCULAR 123456` pelo número
+/// informado, o que comprova que controla aquele WhatsApp.
+model WhatsAppVerification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  phoneE164 String   @unique @map("phone_e164")
+  codeHash  String   @map("code_hash")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  user      AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("whatsapp_verifications")
+}
+
 /// Anexo de uma transação (ex.: foto de um recibo) — "preparar para
 /// anexos, mesmo que ainda não implementados". `onDelete: Cascade`: um
 /// anexo nunca deveria sobreviver à transação que ele documenta.
