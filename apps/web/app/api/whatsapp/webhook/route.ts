@@ -50,6 +50,17 @@ export async function POST(request: NextRequest) {
       }));
     }
   }
-  await Promise.all(jobs);
-  return NextResponse.json({ received: true });
+  // A Meta espera um 2xx assim que o evento foi aceito. Em especial, o
+  // botão "Teste" envia um remetente fictício: o CONTROL OS recebe e
+  // processa a amostra corretamente, mas a Cloud API recusa uma resposta
+  // para esse número inexistente. Não devolver 5xx aqui evita retentativas
+  // da Meta para um evento que já foi aceito. Em produção, a falha de envio
+  // fica registrada para observabilidade e poderá ser reenviada por fila.
+  const results = await Promise.allSettled(jobs);
+  for (const result of results) {
+    if (result.status === 'rejected') {
+      console.error('Falha ao enviar resposta do WhatsApp após receber o evento:', result.reason);
+    }
+  }
+  return NextResponse.json({ received: true, processed: jobs.length });
 }
