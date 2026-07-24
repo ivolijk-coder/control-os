@@ -1,9 +1,9 @@
 'use client';
 
-import { Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button, Card } from '@control-os/ui';
 import type { NovaMessage } from '@control-os/types';
+import { PersonaIdentityMark } from '@/components/nova/persona-identity-mark';
 
 /**
  * Cartão de sugestão da Nova™ no Dashboard Vivo™ — a IA se apresenta como
@@ -18,9 +18,9 @@ export function NovaSuggestionCard({ message }: { message: NovaMessage }) {
         <motion.span
           animate={{ opacity: [0.6, 1, 0.6] }}
           transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-purple/15 text-accent-purple"
+          className="flex h-8 w-8 shrink-0 items-center justify-center"
         >
-          <Sparkles className="h-4 w-4" />
+          <PersonaIdentityMark size={28} />
         </motion.span>
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium uppercase tracking-wider text-accent-purple">Nova sugere</p>

@@ -2,11 +2,12 @@
 
 import * as React from 'react';
 import { motion } from 'framer-motion';
-import { AlertCircle, Check, Sparkles } from 'lucide-react';
+import { AlertCircle, Check } from 'lucide-react';
 import { Button } from '@control-os/ui';
 import type { NovaPersona } from '@/services/nova';
 import { cn } from '@/lib/utils';
 import { fadeUp, transitionOut } from '@/lib/motion';
+import { PersonaIdentityMark } from '@/components/nova/persona-identity-mark';
 
 /**
  * Status final de uma resposta da NOVA — ver `services/nova/interfaces`
@@ -80,12 +81,10 @@ export function NovaMessageBubble({ message, onConfirm, onCancel, persona = 'nov
               : // CONTROL OS — Etapa 16E: o avatar da NOVA reflete quem
                 // respondeu (roxo/dourado) — a mesma dualidade que já existe
                 // na Orb e no seletor, agora também na conversa em texto.
-                isLegendary
-                ? 'bg-accent-gold/15 text-accent-gold'
-                : 'bg-accent-purple/15 text-accent-purple'
+                'bg-transparent'
           )}
         >
-          {isError ? <AlertCircle className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+          {isError ? <AlertCircle className="h-4 w-4" /> : <PersonaIdentityMark persona={isLegendary ? 'legendary' : 'nova'} size={28} />}
         </span>
       )}
       <div

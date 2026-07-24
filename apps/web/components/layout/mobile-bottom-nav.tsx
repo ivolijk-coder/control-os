@@ -7,6 +7,7 @@ import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useRoutePersona } from '@/lib/use-route-persona';
 import { ICON_MAP } from './icon-map';
+import { PersonaIdentityMark, type PersonaIdentity } from '@/components/nova/persona-identity-mark';
 
 /**
  * MobileBottomNav — CONTROL OS: "otimização completa da experiência
@@ -52,7 +53,7 @@ export function MobileBottomNav() {
       <MobileNavLink
         href={iaHref}
         label="IA"
-        Icon={ICON_MAP.Sparkles}
+        persona={effectivePersona}
         active={iaActive}
         accent={effectivePersona === 'legendary' ? 'gold' : 'purple'}
       />
@@ -88,12 +89,14 @@ function MobileNavLink({
   href,
   label,
   Icon,
+  persona,
   active,
   accent = 'purple',
 }: {
   href: string;
   label: string;
-  Icon: LucideIcon;
+  Icon?: LucideIcon;
+  persona?: PersonaIdentity;
   active: boolean;
   accent?: 'purple' | 'gold';
 }) {
@@ -112,7 +115,7 @@ function MobileNavLink({
           : 'text-text-tertiary hover:text-text-secondary'
       )}
     >
-      <Icon className="h-5 w-5" />
+      {persona ? <PersonaIdentityMark persona={persona} size={21} /> : Icon ? <Icon className="h-5 w-5" /> : null}
       <span className="truncate">{label}</span>
     </Link>
   );

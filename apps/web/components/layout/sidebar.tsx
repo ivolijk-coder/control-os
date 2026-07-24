@@ -11,6 +11,7 @@ import { useAppStore } from '@/lib/store';
 import type { NavItem } from '@control-os/types';
 import { MOCK_NAV_ITEMS, MOCK_USER } from '@/lib/mock-data';
 import { ICON_MAP } from './icon-map';
+import { PersonaIdentityMark } from '@/components/nova/persona-identity-mark';
 
 // Abaixo de 768px (breakpoint `md` do Tailwind) a Sidebar vira um drawer
 // off-canvas com backdrop, em vez de espremer o layout (Nova Experience —
@@ -53,6 +54,7 @@ function NavGroup({
       {items.map((item) => {
         const Icon = ICON_MAP[item.icon] ?? ICON_MAP.LayoutGrid;
         const isActive = pathname?.startsWith(item.href);
+        const persona = item.id === 'nav_nova' ? 'nova' : item.id === 'nav_legendary' ? 'legendary' : null;
         return (
           <Link
             key={item.id}
@@ -79,12 +81,16 @@ function NavGroup({
                 transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
               />
             )}
-            <Icon
-              className={cn(
-                'h-4 w-4 shrink-0 transition-colors duration-fast ease-out',
-                isActive && 'text-accent-purple'
-              )}
-            />
+            {persona ? (
+              <PersonaIdentityMark persona={persona} size={18} />
+            ) : (
+              <Icon
+                className={cn(
+                  'h-4 w-4 shrink-0 transition-colors duration-fast ease-out',
+                  isActive && 'text-accent-purple'
+                )}
+              />
+            )}
             {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
             {!collapsed && item.badge ? (
               <Badge variant="purple" className="ml-auto">
@@ -168,9 +174,7 @@ export function Sidebar() {
             {/* Etapa 16C: glow branco discreto e permanente atrás da marca —
                 "presença viva", nunca só no hover — reforçado no hover
                 (group-hover) sem depender só do scale existente. */}
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-white to-white/85 text-xs font-bold text-black shadow-[0_0_14px_rgba(255,255,255,0.18)] transition-transform duration-fast ease-out group-hover:scale-105 group-hover:shadow-[0_0_20px_rgba(255,255,255,0.28)]">
-              C
-            </span>
+            <PersonaIdentityMark size={32} className="transition-transform duration-fast ease-out group-hover:scale-105" />
             {!effectiveCollapsed && (
               <span className="truncate text-sm font-semibold tracking-tight text-text-primary">
                 CONTROL OS
