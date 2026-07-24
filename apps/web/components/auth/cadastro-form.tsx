@@ -8,6 +8,7 @@ import { Check } from 'lucide-react';
 import { Button, Card, Input, Label } from '@control-os/ui';
 import { FormError } from '@/components/ui/form-error';
 import { cn } from '@/lib/utils';
+import { OPENAI_VOICE_OPTIONS, setVoicePreference, type OpenAIVoice } from '@/services/voice/voice-preferences';
 
 const PASSWORD_REQUIREMENTS = [
   { id: 'length', label: 'Mínimo de 8 caracteres', test: (v: string) => v.length >= 8 },
@@ -31,6 +32,8 @@ export function CadastroForm() {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [phone, setPhone] = React.useState('');
+  const [novaVoice, setNovaVoice] = React.useState<OpenAIVoice>('nova');
+  const [legendaryVoice, setLegendaryVoice] = React.useState<OpenAIVoice>('onyx');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [verification, setVerification] = React.useState<{ phone: string; code: string } | null>(null);
@@ -68,6 +71,10 @@ export function CadastroForm() {
         setError(data.message ?? 'Não foi possível criar a conta agora.');
         return;
       }
+      // A escolha inicial é uma preferência deste dispositivo; o usuário
+      // pode mudar as duas vozes quando quiser em Configurações.
+      setVoicePreference('nova', novaVoice);
+      setVoicePreference('legendary', legendaryVoice);
       setVerification({ phone: data.phone, code: data.code });
     } finally {
       setIsSubmitting(false);
@@ -116,6 +123,35 @@ export function CadastroForm() {
               placeholder="Seu nome"
             />
           </div>
+
+          <fieldset className="flex flex-col gap-3 rounded-md border border-white/[0.08] bg-white/[0.02] p-4">
+            <div>
+              <p className="text-sm font-medium text-text-primary">Como as IAs devem falar?</p>
+              <p className="mt-1 text-xs text-text-tertiary">Você poderá mudar isso depois em Configurações.</p>
+            </div>
+            <label className="flex flex-col gap-1.5 text-sm text-text-secondary" htmlFor="nova-voice">
+              Voz da NOVA
+              <select
+                id="nova-voice"
+                value={novaVoice}
+                onChange={(event) => setNovaVoice(event.target.value as OpenAIVoice)}
+                className="rounded-md border border-white/[0.1] bg-black/20 px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-purple/60"
+              >
+                {OPENAI_VOICE_OPTIONS.map((voice) => <option key={voice.id} value={voice.id}>{voice.label} — {voice.description}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5 text-sm text-text-secondary" htmlFor="legendary-voice">
+              Voz da LEGENDARY
+              <select
+                id="legendary-voice"
+                value={legendaryVoice}
+                onChange={(event) => setLegendaryVoice(event.target.value as OpenAIVoice)}
+                className="rounded-md border border-white/[0.1] bg-black/20 px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-gold/60"
+              >
+                {OPENAI_VOICE_OPTIONS.map((voice) => <option key={voice.id} value={voice.id}>{voice.label} — {voice.description}</option>)}
+              </select>
+            </label>
+          </fieldset>
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="email">E-mail</Label>
