@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Check } from 'lucide-react';
 import { hoverLift, transitionOut, transitionSpring } from '@/lib/motion';
 import { cn } from '@/lib/utils';
@@ -29,7 +29,6 @@ export function NovaFloatingLauncher() {
   const pathname = usePathname();
   const [open, setOpen] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
-  const reduceMotion = useReducedMotion();
   const activeHref: EnvironmentOption['href'] = pathname?.startsWith('/legendary') ? '/legendary' : '/nova';
   const activePersona: Persona = activeHref === '/legendary' ? 'legendary' : 'nova';
 
@@ -113,9 +112,7 @@ export function NovaFloatingLauncher() {
         aria-label="Acessar NOVA ou LEGENDARY"
         className={cn(
           'relative flex h-[72px] w-[72px] items-center justify-center overflow-visible rounded-full p-0 shadow-[0_15px_38px_rgba(0,0,0,0.64)]',
-          activePersona === 'nova'
-            ? 'bg-transparent'
-            : 'border border-amber-200/[0.42] bg-[radial-gradient(circle_at_36%_25%,rgba(157,94,34,0.52),rgba(63,35,15,0.94)_40%,rgba(12,7,4,0.98)_74%)] shadow-[inset_0_0_18px_rgba(255,203,119,0.2),inset_0_-12px_20px_rgba(0,0,0,0.58),0_15px_38px_rgba(0,0,0,0.64)] backdrop-blur-md'
+          activePersona === 'nova' ? 'bg-[#030406]' : 'bg-[#080402]'
         )}
         {...hoverLift}
         initial={{ opacity: 0, scale: 0.8 }}
@@ -123,17 +120,9 @@ export function NovaFloatingLauncher() {
         transition={transitionOut(0.3)}
       >
         {activePersona === 'nova' ? (
-          <Image src="/personas/nova-launcher-c.png" alt="NOVA" width={72} height={72} priority className="relative h-full w-full rounded-full object-cover" />
+          <Image src="/personas/nova-launcher-c.png" alt="NOVA" width={72} height={72} priority className="relative h-full w-full scale-[0.91] rounded-full object-cover" />
         ) : (
-          <>
-            <motion.span
-              aria-hidden="true"
-              className="absolute -inset-2 rounded-full border border-amber-300/[0.52] shadow-[0_0_28px_rgba(255,154,34,0.5)]"
-              animate={reduceMotion ? undefined : { opacity: [0.3, 0.82, 0.3], scale: [0.985, 1.045, 0.985] }}
-              transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
-            />
-            <PersonaIdentityMark persona="legendary" size={63} surface="transparent" />
-          </>
+          <Image src="/personas/legendary-launcher-c.png" alt="LEGENDARY" width={72} height={72} priority className="relative h-full w-full scale-[0.91] rounded-full object-cover" />
         )}
       </motion.button>
     </div>
