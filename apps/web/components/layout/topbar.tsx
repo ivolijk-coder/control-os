@@ -42,8 +42,8 @@ export function Topbar() {
     // "espessura de vidro" da Sidebar (Etapa 16C) — uma linha de luz de 1px
     // no topo do painel, simulando a mesma fonte de luz vindo de cima que
     // ilumina o resto da interface (glow/halo da NovaOrb, pedestal-glow).
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/[0.08] bg-bg/60 px-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl">
-      <div className="flex items-center gap-3">
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/[0.08] bg-bg/60 px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl sm:px-6">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <button
           onClick={() => setMobileNavOpen(true)}
           aria-label="Abrir menu"
@@ -51,7 +51,7 @@ export function Topbar() {
         >
           <ICON_MAP.Menu className="h-4 w-4" />
         </button>
-        <h1 className="text-sm font-semibold text-text-primary">{title}</h1>
+        <h1 className="truncate text-sm font-semibold text-text-primary">{title}</h1>
       </div>
 
       <div className="flex flex-1 items-center justify-end gap-2 md:justify-center md:px-8">
@@ -81,7 +81,7 @@ export function Topbar() {
         </button>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
         <Button variant="secondary" size="sm" className="gap-1.5">
           <ICON_MAP.Plus className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Nova Missão</span>
@@ -93,7 +93,7 @@ export function Topbar() {
           <ICON_MAP.Bell className="h-4 w-4" />
           <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-accent-red shadow-[0_0_6px_2px_rgba(239,68,68,0.4)]" />
         </button>
-        <Avatar className="h-8 w-8 cursor-pointer ring-1 ring-white/10 transition-all duration-fast ease-out hover:scale-105 hover:ring-white/20 active:scale-95">
+        <Avatar className="hidden h-8 w-8 cursor-pointer ring-1 ring-white/10 transition-all duration-fast ease-out hover:scale-105 hover:ring-white/20 active:scale-95 sm:flex">
           <AvatarFallback>{getInitials(MOCK_USER.name)}</AvatarFallback>
         </Avatar>
       </div>

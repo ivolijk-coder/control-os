@@ -261,10 +261,16 @@ export function NovaVoiceOverlay() {
     setOpen(false);
   }, [setOpen]);
 
-  const beginPressToTalk = React.useCallback(() => {
+  const toggleVoiceCapture = React.useCallback(() => {
     if (status === 'respondendo') {
       getVoiceProvider().cancel();
       startListening();
+      return;
+    }
+    if (status === 'ouvindo') {
+      getSpeechProvider().stop();
+      setStatus('pensando');
+      setWaitingLabel('Transcrevendo seu áudio...');
       return;
     }
     if (status === 'pronto') {
@@ -272,14 +278,6 @@ export function NovaVoiceOverlay() {
       startListening();
     }
   }, [status, startListening]);
-
-  const finishPressToTalk = React.useCallback(() => {
-    if (status === 'ouvindo') {
-      getSpeechProvider().stop();
-      setStatus('pensando');
-      setWaitingLabel('Transcrevendo seu áudio...');
-    }
-  }, [status]);
 
   const caption =
     status === 'ouvindo'
@@ -317,26 +315,13 @@ export function NovaVoiceOverlay() {
           <div className="flex flex-1 flex-col items-center justify-center gap-8 px-6 pb-16">
             <motion.button
               type="button"
-              onPointerDown={beginPressToTalk}
-              onPointerUp={finishPressToTalk}
-              onPointerCancel={finishPressToTalk}
-              onPointerLeave={(event) => {
-                if (event.buttons !== 0) finishPressToTalk();
-              }}
-              onKeyDown={(event) => {
-                if ((event.key === 'Enter' || event.key === ' ') && !event.repeat) {
-                  event.preventDefault();
-                  beginPressToTalk();
-                }
-              }}
-              onKeyUp={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  finishPressToTalk();
-                }
-              }}
+              onClick={toggleVoiceCapture}
               aria-label={
-                status === 'respondendo' ? `Segure para interromper e falar com a ${personaLabel}` : `Segure para falar com a ${personaLabel}`
+                status === 'respondendo'
+                  ? `Toque para interromper e falar com a ${personaLabel}`
+                  : status === 'ouvindo'
+                    ? 'Toque para encerrar e enviar sua fala'
+                    : `Toque para falar com a ${personaLabel}`
               }
               className="flex h-56 w-56 items-center justify-center rounded-full sm:h-64 sm:w-64"
               animate={{ scale: ORB_SCALE_BY_VOICE_STATUS[status] }}

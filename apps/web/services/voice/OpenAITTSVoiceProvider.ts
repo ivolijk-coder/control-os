@@ -40,7 +40,11 @@ export class OpenAITTSVoiceProvider implements VoiceProvider {
       const response = await fetch('/api/voice/speech', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice: getVoicePreference(handlers?.persona ?? 'nova') }),
+        body: JSON.stringify({
+          text,
+          persona: handlers?.persona ?? 'nova',
+          voice: getVoicePreference(handlers?.persona ?? 'nova'),
+        }),
       });
       if (!response.ok) throw new Error('Voz premium indisponível.');
 
@@ -49,6 +53,15 @@ export class OpenAITTSVoiceProvider implements VoiceProvider {
       this.objectUrl = URL.createObjectURL(audioBlob);
       const audio = new Audio(this.objectUrl);
       this.audio = audio;
+      let lastPulseAt = 0;
+      const pulse = () => {
+        const now = performance.now();
+        if (now - lastPulseAt < 220) return;
+        lastPulseAt = now;
+        handlers?.onBoundary?.();
+      };
+      audio.onplay = pulse;
+      audio.ontimeupdate = pulse;
       audio.onended = () => {
         if (requestId !== this.requestId) return;
         this.clearAudio();

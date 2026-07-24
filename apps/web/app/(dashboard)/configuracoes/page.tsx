@@ -105,7 +105,7 @@ export default function ConfiguracoesPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-8">
+    <div className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
       <FadeIn>
         <h1 className="text-lg font-semibold text-text-primary">Configurações</h1>
       </FadeIn>
@@ -128,15 +128,15 @@ export default function ConfiguracoesPage() {
             <ICON_MAP.Settings className="h-4 w-4 shrink-0 text-text-tertiary" />
             <span className="text-sm font-medium text-text-primary">WhatsApp</span>
           </div>
-          <div className="flex items-center justify-between gap-4 rounded-md bg-white/[0.04] px-4 py-3">
-            <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-3 rounded-md bg-white/[0.04] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div className="flex min-w-0 flex-col gap-1">
               <span className="text-xs text-text-tertiary">Status da conexão</span>
               <span className="text-sm text-text-primary">{whatsAppContent}</span>
             </div>
             {whatsApp.status === 'active' ? (
-              <span className="rounded-full bg-accent-green/15 px-2.5 py-1 text-xs font-medium text-accent-green">Vinculado</span>
+              <span className="w-fit rounded-full bg-accent-green/15 px-2.5 py-1 text-xs font-medium text-accent-green">Vinculado</span>
             ) : (
-              <span className="rounded-full bg-white/[0.08] px-2.5 py-1 text-xs text-text-secondary">Pendente</span>
+              <span className="w-fit rounded-full bg-white/[0.08] px-2.5 py-1 text-xs text-text-secondary">Pendente</span>
             )}
           </div>
           <p className="text-xs text-text-tertiary">Mensagens recebidas por um número vinculado são registradas somente na conta correspondente.</p>

@@ -65,7 +65,7 @@ export interface NovaInputProps {
  * NovaInput — campo central da NOVA (Nova Experience — Fase 2; microfone
  * inline adicionado na Etapa 11C — "campo de conversa unificado, estilo
  * ChatGPT/Gemini: falar, escrever e enviar coexistem, o microfone nunca
- * desaparece"). Segure o botão enquanto fala e solte para enviar.
+ * desaparece"). Toque para iniciar a fala e toque novamente para encerrar.
  *
  * Componente de captura: mantém o texto digitado (ou a transcrição ao vivo,
  * enquanto o microfone está ativo), o placeholder cíclico e o pulso de
@@ -162,15 +162,14 @@ export function NovaInput({
     });
   }, [speechSupported, disabled, onListeningChange, onSubmit]);
 
-  const beginPressToTalk = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (isListening || disabled) return;
-    event.preventDefault();
+  const toggleVoiceCapture = () => {
+    if (disabled) return;
+    if (isListening) {
+      stopListening();
+      return;
+    }
     getVoiceProvider().unlock();
     startListening();
-  };
-
-  const finishPressToTalk = () => {
-    if (isListening) stopListening();
   };
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -231,33 +230,15 @@ export function NovaInput({
             o botão de enviar ("os dois coexistem" — Etapa 11C). */}
         <motion.button
           type="button"
-          onPointerDown={beginPressToTalk}
-          onPointerUp={finishPressToTalk}
-          onPointerCancel={finishPressToTalk}
-          onPointerLeave={(event) => {
-            if (event.buttons !== 0) finishPressToTalk();
-          }}
-          onKeyDown={(event) => {
-            if ((event.key === 'Enter' || event.key === ' ') && !event.repeat && !isListening) {
-              event.preventDefault();
-              getVoiceProvider().unlock();
-              startListening();
-            }
-          }}
-          onKeyUp={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              finishPressToTalk();
-            }
-          }}
+          onClick={toggleVoiceCapture}
           disabled={!speechSupported || disabled}
           whileHover={{ scale: 1.08 }}
           whileTap={{ scale: 0.92 }}
           animate={isListening ? { scale: [1, 1.12, 1] } : { scale: 1 }}
           transition={isListening ? { duration: 1.1, repeat: Infinity, ease: 'easeInOut' } : transitionOut(0.2)}
-          aria-label={isListening ? 'Solte para enviar sua fala' : `Segure para falar com a ${personaLabel}`}
+          aria-label={isListening ? 'Toque para encerrar e enviar sua fala' : `Toque para falar com a ${personaLabel}`}
           aria-pressed={isListening}
-          title={speechSupported ? 'Segure para falar e solte para enviar' : 'Este navegador não suporta reconhecimento de voz'}
+          title={speechSupported ? 'Toque para falar; toque novamente para enviar' : 'Este navegador não suporta reconhecimento de voz'}
           className={cn(
             // CONTROL OS — Etapa 12B: h-8/w-8 (32px) ficava abaixo do alvo de
             // toque confortável ("botões grandes... nada apertado") pro

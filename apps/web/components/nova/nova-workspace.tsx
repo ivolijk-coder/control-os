@@ -553,8 +553,8 @@ export function NovaWorkspace({
       : <LegendaryCommandOverview onAction={handleSend} />;
 
     return (
-      <div className="flex h-[calc(100vh-4rem)] flex-col">
-        <div ref={dockedScrollRef} className="flex-1 overflow-y-auto px-5 py-6 sm:px-8">
+      <div className="flex h-[calc(100dvh-11rem)] min-h-0 flex-col overflow-hidden md:h-[calc(100dvh-4rem)]">
+        <div ref={dockedScrollRef} className="min-h-0 flex-1 overscroll-contain overflow-y-auto px-4 py-5 sm:px-8 sm:py-6">
           <div className={`mx-auto flex w-full flex-col items-center gap-6 ${isCommandOverviewVisible ? 'max-w-6xl' : 'max-w-3xl'}`}>
             {/* CONTROL OS — /nova e /legendary agora são ambientes fixos
                 (`lockedPersona`) — trocar de identidade é navegar pro
@@ -604,7 +604,7 @@ export function NovaWorkspace({
             {!isCommandOverviewVisible && <div className="flex w-full flex-col gap-6">{conversationArea}</div>}
           </div>
         </div>
-        <div className="shrink-0 border-t border-white/[0.08] bg-bg/85 px-5 py-4 backdrop-blur-xl sm:px-8">
+        <div className="shrink-0 border-t border-white/[0.08] bg-bg/95 px-4 py-3 backdrop-blur-xl sm:px-8 sm:py-4">
           {inputRow}
         </div>
       </div>
