@@ -536,8 +536,8 @@ export function NovaWorkspace({
   if (variant === 'docked') {
     const isCommandOverviewVisible = showCommandOverview && Boolean(lockedPersona);
     const commandOverview = effectivePersona === 'nova'
-      ? <NovaCommandOverview onAction={handleSend} status={orbStatus} pulseSignal={speechPulse} />
-      : <LegendaryCommandOverview onAction={handleSend} status={orbStatus} pulseSignal={speechPulse} />;
+      ? <NovaCommandOverview onAction={handleSend} />
+      : <LegendaryCommandOverview onAction={handleSend} />;
 
     return (
       <div className="flex h-[calc(100vh-4rem)] flex-col">

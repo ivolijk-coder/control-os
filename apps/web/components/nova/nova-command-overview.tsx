@@ -2,23 +2,19 @@
 
 import * as React from 'react';
 import { ArrowUpRight, CalendarDays, CheckCircle2, CircleAlert, Sparkles } from 'lucide-react';
-import { NovaHeroStage } from '@/components/nova/nova-hero-stage';
-import type { NovaOrbStatus } from '@/components/nova/nova-orb';
 import { formatCurrency } from '@/lib/utils';
 import { useNovaContext } from '@/lib/use-nova-context';
 import { toLocalDateString } from '@/services/nova';
 
 interface NovaCommandOverviewProps {
   onAction: (prompt: string) => void;
-  status: NovaOrbStatus;
-  pulseSignal: number;
 }
 
 /**
  * A primeira tela da NOVA: uma superfície de decisão, não uma apresentação
  * da IA. Mostra só o que pede atenção e oferece uma próxima ação objetiva.
  */
-export function NovaCommandOverview({ onAction, status, pulseSignal }: NovaCommandOverviewProps) {
+export function NovaCommandOverview({ onAction }: NovaCommandOverviewProps) {
   const { userName, debts, habits, agendaEvents, missions } = useNovaContext();
   const activeDebt = debts.filter((debt) => debt.remainingAmount > 0);
   const debtTotal = activeDebt.reduce((sum, debt) => sum + debt.remainingAmount, 0);
@@ -42,8 +38,8 @@ export function NovaCommandOverview({ onAction, status, pulseSignal }: NovaComma
           <h1 className="text-3xl font-semibold tracking-[-0.04em] text-text-primary sm:text-4xl">Bom dia, {userName}.</h1>
           <p className="mt-2 text-sm text-text-secondary">Foco no que move seu dia.</p>
         </div>
-        <div className="hidden h-16 w-16 shrink-0 sm:block">
-          <NovaHeroStage status={status} pulseSignal={pulseSignal} persona="nova" />
+        <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border border-accent-blue/30 bg-accent-blue/10 text-sm font-semibold text-accent-blue sm:flex">
+          N
         </div>
       </header>
 

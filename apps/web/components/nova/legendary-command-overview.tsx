@@ -1,21 +1,17 @@
 'use client';
 
 import { ArrowUpRight, BookOpenText, Compass, Flame, Target } from 'lucide-react';
-import { NovaHeroStage } from '@/components/nova/nova-hero-stage';
-import type { NovaOrbStatus } from '@/components/nova/nova-orb';
 import { useNovaContext } from '@/lib/use-nova-context';
 
 interface LegendaryCommandOverviewProps {
   onAction: (prompt: string) => void;
-  status: NovaOrbStatus;
-  pulseSignal: number;
 }
 
 /**
  * Tela de entrada do LEGENDARY. Ele é mentor e estrategista: aponta uma
  * direção e transforma repertório, disciplina e metas em próximos passos.
  */
-export function LegendaryCommandOverview({ onAction, status, pulseSignal }: LegendaryCommandOverviewProps) {
+export function LegendaryCommandOverview({ onAction }: LegendaryCommandOverviewProps) {
   const { userName, habits, missions } = useNovaContext();
   const activeMission = missions.find((mission) => mission.status === 'em_risco')
     ?? missions.find((mission) => mission.status === 'em_andamento')
@@ -36,8 +32,8 @@ export function LegendaryCommandOverview({ onAction, status, pulseSignal }: Lege
           <h1 className="text-3xl font-semibold tracking-[-0.04em] text-text-primary sm:text-4xl">Visão para avançar, {userName}.</h1>
           <p className="mt-2 text-sm text-text-secondary">Estratégia, evolução e clareza para sua próxima fase.</p>
         </div>
-        <div className="hidden h-16 w-16 shrink-0 sm:block">
-          <NovaHeroStage status={status} pulseSignal={pulseSignal} persona="legendary" />
+        <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border border-accent-gold/30 bg-accent-gold/10 text-sm font-semibold text-accent-gold sm:flex">
+          L
         </div>
       </header>
 
