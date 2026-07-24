@@ -3,15 +3,13 @@ import type { VoiceProvider, VoiceProviderHandlers } from './types';
 
 /**
  * Síntese premium via OpenAI, sempre por uma rota do servidor: a chave nunca
- * é enviada para o navegador. Se a API não estiver disponível, a conversa
- * continua pela voz nativa do navegador recebida como fallback.
+ * é enviada para o navegador. Nunca mistura com a voz do navegador: uma
+ * resposta deve ter uma única voz, não duas falando ao mesmo tempo.
  */
 export class OpenAITTSVoiceProvider implements VoiceProvider {
   private audio: HTMLAudioElement | undefined;
   private objectUrl: string | undefined;
   private requestId = 0;
-
-  constructor(private readonly fallback: VoiceProvider) {}
 
   get isSupported(): boolean {
     return typeof window !== 'undefined' && typeof Audio !== 'undefined';
@@ -29,11 +27,12 @@ export class OpenAITTSVoiceProvider implements VoiceProvider {
     this.audio = undefined;
     if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
     this.objectUrl = undefined;
-    this.fallback.cancel();
   }
 
   unlock(): void {
-    this.fallback.unlock();
+    // A reprodução é feita por um elemento Audio quando a resposta chega.
+    // Não iniciamos SpeechSynthesis aqui porque ele poderia somar uma segunda
+    // fala à voz premium.
   }
 
   private async play(text: string, handlers: VoiceProviderHandlers | undefined, requestId: number): Promise<void> {
@@ -58,13 +57,13 @@ export class OpenAITTSVoiceProvider implements VoiceProvider {
       audio.onerror = () => {
         if (requestId !== this.requestId) return;
         this.clearAudio();
-        this.fallback.speak(text, handlers);
+        handlers?.onError?.('Não foi possível tocar a voz agora.');
       };
       await audio.play();
     } catch {
       if (requestId !== this.requestId) return;
       this.clearAudio();
-      this.fallback.speak(text, handlers);
+      handlers?.onError?.('Não foi possível tocar a voz agora.');
     }
   }
 

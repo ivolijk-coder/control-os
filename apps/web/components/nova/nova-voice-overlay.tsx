@@ -237,8 +237,8 @@ export function NovaVoiceOverlay() {
 
   startListeningRef.current = startListening;
 
-  // Abre → começa a ouvir na hora ("performance: abertura quase instantânea").
-  // Fecha (ou desmonta) → sempre libera o microfone e cancela qualquer fala
+  // Abre pronto para o gesto de segurar e falar. Fecha (ou desmonta) →
+  // sempre libera o microfone e cancela qualquer fala
   // em andamento, nunca deixa nenhum dos dois rodando em segundo plano.
   // Roda só quando `open` muda (não a cada re-render por causa de
   // `startListening` mudar de identidade quando os dados do usuário mudam) —
@@ -248,7 +248,7 @@ export function NovaVoiceOverlay() {
   React.useEffect(() => {
     if (!open) return undefined;
     setNovaReply('');
-    startListeningRef.current();
+    setStatus('pronto');
     return () => {
       getSpeechProvider().stop();
       getVoiceProvider().cancel();
@@ -261,32 +261,25 @@ export function NovaVoiceOverlay() {
     setOpen(false);
   }, [setOpen]);
 
-  const handleOrbTap = React.useCallback(() => {
-    // CONTROL OS — bug de mobile "áudio da resposta não toca": a fala da
-    // NOVA/LEGENDARY só acontece depois de um `await` até a IA
-    // (`handleFinalTranscript` abaixo), nunca dentro deste toque — no
-    // Safari iOS/Chrome Android isso é tarde demais pra liberar a síntese
-    // de voz. `unlock()` roda AQUI, síncrono, em todo toque na Orb —
-    // barato e idempotente (ver `VoiceProvider.unlock`).
-    getVoiceProvider().unlock();
-
+  const beginPressToTalk = React.useCallback(() => {
     if (status === 'respondendo') {
       getVoiceProvider().cancel();
       startListening();
       return;
     }
-    // No Firefox a transcrição usa uma gravação curta: o segundo toque
-    // encerra a captura e envia o áudio para transcrever.
+    if (status === 'pronto') {
+      getVoiceProvider().unlock();
+      startListening();
+    }
+  }, [status, startListening]);
+
+  const finishPressToTalk = React.useCallback(() => {
     if (status === 'ouvindo') {
       getSpeechProvider().stop();
       setStatus('pensando');
       setWaitingLabel('Transcrevendo seu áudio...');
-      return;
     }
-    if (status === 'pronto') {
-      startListening();
-    }
-  }, [status, startListening]);
+  }, [status]);
 
   const caption =
     status === 'ouvindo'
@@ -324,9 +317,26 @@ export function NovaVoiceOverlay() {
           <div className="flex flex-1 flex-col items-center justify-center gap-8 px-6 pb-16">
             <motion.button
               type="button"
-              onClick={handleOrbTap}
+              onPointerDown={beginPressToTalk}
+              onPointerUp={finishPressToTalk}
+              onPointerCancel={finishPressToTalk}
+              onPointerLeave={(event) => {
+                if (event.buttons !== 0) finishPressToTalk();
+              }}
+              onKeyDown={(event) => {
+                if ((event.key === 'Enter' || event.key === ' ') && !event.repeat) {
+                  event.preventDefault();
+                  beginPressToTalk();
+                }
+              }}
+              onKeyUp={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  finishPressToTalk();
+                }
+              }}
               aria-label={
-                status === 'respondendo' ? `Tocar para interromper a ${personaLabel}` : `Tocar para falar com a ${personaLabel}`
+                status === 'respondendo' ? `Segure para interromper e falar com a ${personaLabel}` : `Segure para falar com a ${personaLabel}`
               }
               className="flex h-56 w-56 items-center justify-center rounded-full sm:h-64 sm:w-64"
               animate={{ scale: ORB_SCALE_BY_VOICE_STATUS[status] }}
@@ -342,7 +352,7 @@ export function NovaVoiceOverlay() {
               {errorMessage ? (
                 <p className="text-sm text-accent-red">{errorMessage}</p>
               ) : (
-                <p className="text-base text-text-primary">{caption}</p>
+                <p className="text-base text-text-primary">{status === 'pronto' ? 'Segure para falar.' : caption}</p>
               )}
             </div>
           </div>

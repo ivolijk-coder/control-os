@@ -581,7 +581,7 @@ export function NovaWorkspace({
                 (limitado a 20rem pra não estourar em telas bem altas)
                 garante isso sem media query nova — a partir de `sm:` volta
                 ao tamanho fixo de desktop. */}
-            {!isCommandOverviewVisible && (
+            {!isCommandOverviewVisible && messages.length === 0 && (
               <motion.div
                 animate={{ scale: orbScale }}
                 transition={transitionSpring}

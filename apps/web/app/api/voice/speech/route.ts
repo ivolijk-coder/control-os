@@ -23,7 +23,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const response = await fetch(OPENAI_SPEECH_URL, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'tts-1', voice, input: text, response_format: 'mp3' }),
+      body: JSON.stringify({ model: 'tts-1-hd', voice, input: text, response_format: 'mp3', speed: 0.94 }),
     });
     if (!response.ok || !response.body) {
       return NextResponse.json({ message: 'Não foi possível gerar a voz agora.' }, { status: 502 });

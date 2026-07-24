@@ -12,9 +12,9 @@ export const OPENAI_VOICE_OPTIONS = [
 
 export type OpenAIVoice = (typeof OPENAI_VOICE_OPTIONS)[number]['id'];
 
-const STORAGE_KEY = 'control-os-voice-preferences';
+const STORAGE_KEY = 'control-os-voice-preferences-v2';
 const DEFAULT_VOICE_BY_PERSONA: Record<NovaPersona, OpenAIVoice> = {
-  nova: 'nova',
+  nova: 'shimmer',
   legendary: 'onyx',
 };
 

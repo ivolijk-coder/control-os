@@ -76,12 +76,12 @@ export function buildDailyCheckIn(
   firstName?: string
 ): string {
   const highlights = buildTodayHighlights(missions, agendaEvents, financeEntries, habits);
-  const greeting = firstName ? `Olá, ${firstName}! Vamos planejar seu dia.` : 'Vamos planejar seu dia.';
+  const greeting = firstName ? `Olá, chefe. Como está seu dia, ${firstName}?` : 'Olá, chefe. Como está seu dia?';
 
   if (highlights.length === 0) {
-    return `${greeting} Não encontrei pendências críticas — está tranquilo. Quer organizar alguma coisa mesmo assim?`;
+    return `${greeting} Está tudo tranquilo por enquanto. Quer organizar alguma coisa?`;
   }
 
-  const bullets = highlights.map((item) => `• ${item}`).join('\n');
-  return `${greeting} Hoje você tem:\n${bullets}\nPosso organizar alguma dessas coisas?`;
+  const summary = highlights.slice(0, 3).join(', ');
+  return `${greeting} Hoje eu vi: ${summary}. Quer que eu priorize algo?`;
 }
