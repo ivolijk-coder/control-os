@@ -24,6 +24,8 @@ import type { NovaOrbStatus } from '@/components/nova/nova-orb';
 import { QuickAction } from '@/components/ui/quick-action';
 import { IntelligentPanel } from '@/components/home/intelligent-panel';
 import { NovaHeroStage } from '@/components/nova/nova-hero-stage';
+import { NovaCommandOverview } from '@/components/nova/nova-command-overview';
+import { LegendaryCommandOverview } from '@/components/nova/legendary-command-overview';
 import { conversationService, KEEP_RECENT_TURNS, shouldCondense } from '@/services/ai';
 import { buildProactiveOpening, generateRecommendations, toReadOnlyContext } from '@/services/nova';
 import type { NovaPersona, NovaRecommendationCategory, NovaStatus } from '@/services/nova';
@@ -519,17 +521,22 @@ export function NovaWorkspace({
   );
 
   if (variant === 'docked') {
+    const showCommandOverview = messages.length === 0 && Boolean(lockedPersona);
+    const commandOverview = effectivePersona === 'nova'
+      ? <NovaCommandOverview onAction={handleSend} status={orbStatus} pulseSignal={speechPulse} />
+      : <LegendaryCommandOverview onAction={handleSend} status={orbStatus} pulseSignal={speechPulse} />;
+
     return (
       <div className="flex h-[calc(100vh-4rem)] flex-col">
-        <div ref={dockedScrollRef} className="flex-1 overflow-y-auto px-6 py-8">
-          <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-6">
+        <div ref={dockedScrollRef} className="flex-1 overflow-y-auto px-5 py-6 sm:px-8">
+          <div className={cn('mx-auto flex w-full flex-col items-center gap-6', showCommandOverview ? 'max-w-6xl' : 'max-w-3xl')}>
             {/* CONTROL OS — /nova e /legendary agora são ambientes fixos
                 (`lockedPersona`) — trocar de identidade é navegar pro
                 outro, pelo botão flutuante global (`NovaFloatingLauncher`),
                 nunca mais um seletor que muda estado nesta mesma tela. */}
             {!lockedPersona && <NovaPersonaSwitch persona={activePersona} onChange={setActivePersona} />}
 
-            {messages.length === 0 && topContent}
+            {showCommandOverview ? commandOverview : messages.length === 0 && topContent}
 
             {/* Tamanho do container é fixo por breakpoint — só o `scale`
                 muda — pra não forçar o canvas a recalcular resolução a cada
@@ -538,11 +545,12 @@ export function NovaWorkspace({
                 (limitado a 20rem pra não estourar em telas bem altas)
                 garante isso sem media query nova — a partir de `sm:` volta
                 ao tamanho fixo de desktop. */}
-            <motion.div
-              animate={{ scale: orbScale }}
-              transition={transitionSpring}
-              className="flex h-[44vh] w-[44vh] max-h-[20rem] max-w-[20rem] shrink-0 items-center justify-center sm:h-80 sm:w-80"
-            >
+            {!showCommandOverview && (
+              <motion.div
+                animate={{ scale: orbScale }}
+                transition={transitionSpring}
+                className="flex h-[44vh] w-[44vh] max-h-[20rem] max-w-[20rem] shrink-0 items-center justify-center sm:h-80 sm:w-80"
+              >
               {/* CONTROL OS — Etapa 9: "NOVA ORB. Grande. Viva. Respirando."
                   CONTROL OS — HERO SCENE REBOOT: esta é a única Orb grande
                   e central do produto — `NovaHeroStage` decide, por
@@ -551,15 +559,16 @@ export function NovaWorkspace({
                   `nova-hero-stage.tsx`). `NovaFloatingLauncher` e o
                   `NovaFloatingPanel` inline continuam usando a `NovaOrb`
                   original, intocados. */}
-              <NovaHeroStage status={orbStatus} pulseSignal={speechPulse} persona={effectivePersona} />
-            </motion.div>
+                <NovaHeroStage status={orbStatus} pulseSignal={speechPulse} persona={effectivePersona} />
+              </motion.div>
+            )}
 
-            {messages.length === 0 && belowOrbContent}
+            {!showCommandOverview && messages.length === 0 && belowOrbContent}
 
             <div className="flex w-full flex-col gap-6">{conversationArea}</div>
           </div>
         </div>
-        <div className="shrink-0 border-t border-white/[0.08] bg-bg/70 px-6 py-4 backdrop-blur-xl">
+        <div className="shrink-0 border-t border-white/[0.08] bg-bg/85 px-5 py-4 backdrop-blur-xl sm:px-8">
           {inputRow}
         </div>
       </div>

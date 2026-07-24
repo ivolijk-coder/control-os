@@ -216,7 +216,7 @@ export function NovaInput({
       <form
         onSubmit={handleSubmit}
         className={cn(
-          'group relative flex items-center gap-3 rounded-2xl border bg-card/60 px-5 py-4 shadow-e4 backdrop-blur-xl transition-colors duration-base ease-out',
+          'group relative flex items-center gap-3 rounded-xl border bg-card/75 px-4 py-3 shadow-e4 backdrop-blur-xl transition-colors duration-base ease-out',
           // CONTROL OS — Etapa 16E: o brilho de foco do campo (a "casa" da
           // conversa) segue a mesma dualidade roxo/dourado do avatar e do
           // seletor — antes era sempre roxo, mesmo com LEGENDARY ativo.
