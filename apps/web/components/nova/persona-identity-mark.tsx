@@ -33,7 +33,7 @@ export function PersonaIdentityMark({ persona = 'nova', size = 28, className }: 
       <span className="absolute inset-0 rounded-full bg-[#050608]" />
       <svg className="absolute inset-[3%] overflow-visible" viewBox="0 0 100 100" fill="none">
         <defs>
-          <linearGradient id={gradientId} x1="40" y1="22" x2="77" y2="64" gradientUnits="userSpaceOnUse">
+          <linearGradient id={gradientId} x1="39" y1="30" x2="75" y2="67" gradientUnits="userSpaceOnUse">
             <stop stopColor={isLegendary ? '#fff3c9' : '#f5f8ff'} />
             <stop offset="0.26" stopColor={colors.bright} />
             <stop offset="0.7" stopColor={colors.base} />
@@ -52,8 +52,13 @@ export function PersonaIdentityMark({ persona = 'nova', size = 28, className }: 
             <circle cx="50" cy="50" r="46.5" stroke={colors.bright} strokeWidth="1.45" strokeLinecap="round" strokeDasharray="6 286" opacity="0.92" />
           </motion.g>
         )}
-        <path d="M 40.5 25.5 A 30.5 30.5 0 1 0 77 62" stroke={`url(#${gradientId})`} strokeWidth="12" strokeLinecap="butt" />
-        <circle cx="65" cy="30" r="7.5" fill={colors.base} style={{ filter: `drop-shadow(0 0 6px ${colors.glow})` }} />
+        <path
+          d="M 42 31 C 32 36 28 48 31 60 C 34 73 46 80 58 78 C 67 77 73 71 75 63"
+          stroke={`url(#${gradientId})`}
+          strokeWidth="12"
+          strokeLinecap="butt"
+        />
+        <circle cx="64" cy="34" r="7.5" fill={colors.base} style={{ filter: `drop-shadow(0 0 6px ${colors.glow})` }} />
       </svg>
     </span>
   );
