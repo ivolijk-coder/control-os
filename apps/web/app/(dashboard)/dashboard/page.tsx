@@ -123,11 +123,12 @@ export default function DashboardPage() {
       });
     }
 
-    if (todayEvents.length > 0) {
+    const firstTodayEvent = todayEvents[0];
+    if (firstTodayEvent) {
       items.push({
         id: 'agenda-today',
-        title: todayEvents[0].title,
-        detail: `${todayEvents[0].time ?? 'Hoje'} · compromisso de hoje`,
+        title: firstTodayEvent.title,
+        detail: `${firstTodayEvent.time ?? 'Hoje'} · compromisso de hoje`,
         href: '/agenda',
         tone: 'neutral',
         icon: CalendarDays,
