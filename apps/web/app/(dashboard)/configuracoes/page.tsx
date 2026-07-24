@@ -7,6 +7,8 @@ import { GlassCard } from '@/components/ui/glass-card';
 import { ICON_MAP } from '@/components/layout/icon-map';
 import { getInitials } from '@/lib/utils';
 
+const CONTROL_OS_WHATSAPP_NUMBER = '554499599236';
+
 /**
  * Configurações — página nova, criada junto com a simplificação da Sidebar
  * (fim dos Control Spaces™, navegação flat de "pessoa física").
@@ -23,6 +25,8 @@ import { getInitials } from '@/lib/utils';
 export default function ConfiguracoesPage() {
   const [whatsApp, setWhatsApp] = React.useState<{ status: 'loading' | 'active' | 'pending' | 'unauthenticated'; phone?: string }>({ status: 'loading' });
   const [account, setAccount] = React.useState<{ name: string; email: string } | null>(null);
+  const [linking, setLinking] = React.useState(false);
+  const [linkError, setLinkError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     fetch('/api/account/whatsapp')
@@ -43,6 +47,25 @@ export default function ConfiguracoesPage() {
     whatsApp.status === 'active' ? `Ativo · ${whatsApp.phone}` :
     whatsApp.status === 'pending' ? 'Aguardando confirmação do número' :
     'Entre novamente para ver sua configuração';
+
+  async function beginWhatsAppLink() {
+    setLinking(true);
+    setLinkError(null);
+    try {
+      const response = await fetch('/api/account/whatsapp/link', { method: 'POST' });
+      const data = await response.json() as { code?: string; message?: string };
+      if (!response.ok || !data.code) {
+        setLinkError(data.message ?? 'Não foi possível iniciar o vínculo.');
+        return;
+      }
+      const message = encodeURIComponent(`VINCULAR ${data.code}`);
+      window.open(`https://wa.me/${CONTROL_OS_WHATSAPP_NUMBER}?text=${message}`, '_blank', 'noopener,noreferrer');
+    } catch {
+      setLinkError('Não foi possível iniciar o vínculo. Tente novamente.');
+    } finally {
+      setLinking(false);
+    }
+  }
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-8">
@@ -80,6 +103,19 @@ export default function ConfiguracoesPage() {
             )}
           </div>
           <p className="text-xs text-text-tertiary">Mensagens recebidas por um número vinculado são registradas somente na conta correspondente.</p>
+          {whatsApp.status === 'pending' && (
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={beginWhatsAppLink}
+                disabled={linking}
+                className="rounded-md bg-white px-3 py-2 text-sm font-medium text-black transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {linking ? 'Preparando vínculo…' : 'Vincular WhatsApp'}
+              </button>
+              {linkError && <p className="text-xs text-accent-red">{linkError}</p>}
+            </div>
+          )}
         </GlassCard>
       </FadeIn>
     </div>

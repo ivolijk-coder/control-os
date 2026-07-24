@@ -41,6 +41,23 @@ export class WhatsAppIdentityService {
     return (await prisma.whatsAppLink.findUnique({ where: { phoneE164 }, select: { userId: true } }))?.userId;
   }
 
+  /**
+   * Gera um novo código para quem criou a conta, mas não conseguiu concluir
+   * a conversa no WhatsApp. O número continua sendo o informado no cadastro;
+   * nunca aceitamos uma troca silenciosa de número nesta etapa.
+   */
+  async restartVerification(userId: string) {
+    const pending = await prisma.whatsAppVerification.findFirst({ where: { userId } });
+    if (!pending) throw new Error('Não existe um número pendente para vincular nesta conta.');
+    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    const expiresAt = new Date(Date.now() + VERIFICATION_TTL_MS);
+    await prisma.whatsAppVerification.update({
+      where: { id: pending.id },
+      data: { codeHash: hashCode(code), expiresAt },
+    });
+    return { phone: pending.phoneE164, code, expiresAt };
+  }
+
   async confirmFromMessage(phone: string, text: string): Promise<'confirmed' | 'invalid' | 'not_a_command'> {
     const code = text.match(VERIFY_COMMAND)?.[1];
     if (!code) return 'not_a_command';
