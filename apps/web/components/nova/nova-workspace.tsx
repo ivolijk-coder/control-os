@@ -529,7 +529,7 @@ export function NovaWorkspace({
     return (
       <div className="flex h-[calc(100vh-4rem)] flex-col">
         <div ref={dockedScrollRef} className="flex-1 overflow-y-auto px-5 py-6 sm:px-8">
-          <div className={cn('mx-auto flex w-full flex-col items-center gap-6', showCommandOverview ? 'max-w-6xl' : 'max-w-3xl')}>
+          <div className={`mx-auto flex w-full flex-col items-center gap-6 ${showCommandOverview ? 'max-w-6xl' : 'max-w-3xl'}`}>
             {/* CONTROL OS — /nova e /legendary agora são ambientes fixos
                 (`lockedPersona`) — trocar de identidade é navegar pro
                 outro, pelo botão flutuante global (`NovaFloatingLauncher`),
