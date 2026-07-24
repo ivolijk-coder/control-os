@@ -6,18 +6,14 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Button, Card, Input, Label } from '@control-os/ui';
 import { FormError } from '@/components/ui/form-error';
-import { useAppStore } from '@/lib/store';
 
 /**
- * Formulário de Login — Fase 1 usa `useAppStore.login`, que simula latência
- * de rede e autentica com o usuário mockado. Nenhuma chamada real a
- * apps/api ou ao Control Core™ acontece ainda.
+ * Formulário de login da conta do CONTROL OS.
  */
 export function LoginForm() {
   const router = useRouter();
-  const login = useAppStore((s) => s.login);
 
-  const [email, setEmail] = React.useState('ivolijk@gmail.com');
+  const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -46,7 +42,16 @@ export function LoginForm() {
 
     setIsSubmitting(true);
     try {
-      await login(submittedEmail, submittedPassword);
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: submittedEmail, password: submittedPassword }),
+      });
+      const data = await response.json() as { message?: string };
+      if (!response.ok) {
+        setError(data.message ?? 'Não foi possível entrar.');
+        return;
+      }
       // CONTROL OS — Home/Dashboard (Design Lab → implementação oficial):
       // Home passou de /nova (chat) para /dashboard (Visão geral).
       router.push('/dashboard');
