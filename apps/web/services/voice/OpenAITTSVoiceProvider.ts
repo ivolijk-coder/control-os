@@ -1,45 +1,76 @@
+import { getVoicePreference } from './voice-preferences';
 import type { VoiceProvider, VoiceProviderHandlers } from './types';
 
 /**
- * Stub do futuro `VoiceProvider` via OpenAI Text-to-Speech (CONTROL OS —
- * Etapa 11: "preparar a arquitetura para futura substituição por OpenAI TTS
- * ou outro provedor premium, mantendo a interface atual"). Implementa a
- * MESMA interface que `BrowserVoiceProvider` — nenhum componente de UI
- * (`nova-voice-overlay.tsx`) precisaria mudar uma linha quando este provedor
- * virar o padrão.
- *
- * Deliberadamente NÃO ativado ainda (não está em `services/voice/config.ts`)
- * — ativar exigiria: (1) uma Route Handler server-side própria (mesmo
- * padrão de `app/api/ai/nova/route.ts`) pra manter `OPENAI_API_KEY` fora do
- * cliente, já que síntese de fala real custa uma chamada de API paga; (2)
- * tocar áudio recebido (`<audio>`/`AudioContext`) em vez de
- * `SpeechSynthesis`. Nenhuma das duas coisas está implementada aqui — é só o
- * contorno da classe, pronta pra ganhar corpo quando a etapa de voz premium
- * for priorizada. Para ativar então: implementar o corpo abaixo, estender
- * `VoiceProviderName` em `config.ts` com `'openai'`, e trocar
- * `getVoiceProvider()` pra instanciar esta classe quando
- * `NEXT_PUBLIC_VOICE_PROVIDER === 'openai'`.
+ * Síntese premium via OpenAI, sempre por uma rota do servidor: a chave nunca
+ * é enviada para o navegador. Se a API não estiver disponível, a conversa
+ * continua pela voz nativa do navegador recebida como fallback.
  */
 export class OpenAITTSVoiceProvider implements VoiceProvider {
+  private audio: HTMLAudioElement | undefined;
+  private objectUrl: string | undefined;
+  private requestId = 0;
+
+  constructor(private readonly fallback: VoiceProvider) {}
+
   get isSupported(): boolean {
-    // Sempre `false` enquanto não implementado — nunca reivindica suporte
-    // que não tem de verdade.
-    return false;
+    return typeof window !== 'undefined' && typeof Audio !== 'undefined';
   }
 
-  speak(_text: string, handlers?: VoiceProviderHandlers): void {
-    handlers?.onError?.('Voz premium (OpenAI TTS) ainda não está disponível nesta versão.');
+  speak(text: string, handlers?: VoiceProviderHandlers): void {
+    this.cancel();
+    const requestId = ++this.requestId;
+    void this.play(text, handlers, requestId);
   }
 
   cancel(): void {
-    // Nada a cancelar — nenhuma síntese real acontece ainda.
+    this.requestId += 1;
+    this.audio?.pause();
+    this.audio = undefined;
+    if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
+    this.objectUrl = undefined;
+    this.fallback.cancel();
   }
 
   unlock(): void {
-    // Nada a destravar — `isSupported` é sempre `false`, nenhum áudio real
-    // chega a tocar. Existe só pra satisfazer `VoiceProvider` (ver
-    // `types.ts`) — quando este provedor ganhar corpo de verdade, o
-    // destravamento real (provavelmente de um `<audio>`/`AudioContext`, não
-    // mais `SpeechSynthesis`) entra aqui.
+    this.fallback.unlock();
+  }
+
+  private async play(text: string, handlers: VoiceProviderHandlers | undefined, requestId: number): Promise<void> {
+    try {
+      const response = await fetch('/api/voice/speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, voice: getVoicePreference(handlers?.persona ?? 'nova') }),
+      });
+      if (!response.ok) throw new Error('Voz premium indisponível.');
+
+      const audioBlob = await response.blob();
+      if (requestId !== this.requestId) return;
+      this.objectUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(this.objectUrl);
+      this.audio = audio;
+      audio.onended = () => {
+        if (requestId !== this.requestId) return;
+        this.clearAudio();
+        handlers?.onEnd?.();
+      };
+      audio.onerror = () => {
+        if (requestId !== this.requestId) return;
+        this.clearAudio();
+        this.fallback.speak(text, handlers);
+      };
+      await audio.play();
+    } catch {
+      if (requestId !== this.requestId) return;
+      this.clearAudio();
+      this.fallback.speak(text, handlers);
+    }
+  }
+
+  private clearAudio(): void {
+    this.audio = undefined;
+    if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
+    this.objectUrl = undefined;
   }
 }

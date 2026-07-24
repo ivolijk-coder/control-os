@@ -432,6 +432,7 @@ export function NovaWorkspace({
         if (source === 'voice' && getVoiceProvider().isSupported) {
           setIsSpeakingReply(true);
           getVoiceProvider().speak(result.reply, {
+            persona: effectivePersona,
             onBoundary: () => setSpeechPulse((tick) => tick + 1),
             onEnd: () => setIsSpeakingReply(false),
             onError: () => setIsSpeakingReply(false),

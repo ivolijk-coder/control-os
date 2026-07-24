@@ -97,6 +97,7 @@ export function NovaInput({
   const [justSent, setJustSent] = React.useState(false);
   const [isListening, setIsListening] = React.useState(false);
   const [interimTranscript, setInterimTranscript] = React.useState('');
+  const [voiceError, setVoiceError] = React.useState<string | null>(null);
 
   const speechSupported = React.useMemo(() => getSpeechProvider().isSupported, []);
 
@@ -131,6 +132,7 @@ export function NovaInput({
 
   const startListening = React.useCallback(() => {
     if (!speechSupported || disabled) return;
+    setVoiceError(null);
     setIsListening(true);
     setInterimTranscript('');
     onListeningChange?.(true);
@@ -146,7 +148,8 @@ export function NovaInput({
           onSubmit(transcript, 'voice');
         }
       },
-      onError: () => {
+      onError: (message) => {
+        setVoiceError(message);
         setIsListening(false);
         setInterimTranscript('');
         onListeningChange?.(false);
@@ -314,6 +317,7 @@ export function NovaInput({
           {justSent ? <Check className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
         </motion.button>
       </form>
+      {voiceError && <p role="status" className="mt-2 px-1 text-xs text-accent-red">{voiceError}</p>}
     </div>
   );
 }

@@ -14,6 +14,8 @@
  * `services/voice/config.ts` — nenhum outro arquivo muda.
  */
 
+import type { NovaPersona } from '@/services/nova';
+
 /** Um resultado de reconhecimento de fala — parcial (`isFinal: false`, ainda mudando) ou definitivo. */
 export interface SpeechRecognitionResultPayload {
   transcript: string;
@@ -50,6 +52,8 @@ export interface VoiceProviderHandlers {
    * sincronizado", nunca como erro.
    */
   onBoundary?: () => void;
+  /** Persona que está respondendo, para aplicar a voz escolhida para ela. */
+  persona?: NovaPersona;
 }
 
 export interface VoiceProvider {

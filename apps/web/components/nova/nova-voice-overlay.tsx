@@ -188,6 +188,7 @@ export function NovaVoiceOverlay() {
         }
 
         getVoiceProvider().speak(result.reply, {
+          persona: activePersona,
           onBoundary: () => setSpeechPulse((tick) => tick + 1),
           onEnd: () => {
             setStatus('ouvindo');
@@ -272,6 +273,14 @@ export function NovaVoiceOverlay() {
     if (status === 'respondendo') {
       getVoiceProvider().cancel();
       startListening();
+      return;
+    }
+    // No Firefox a transcrição usa uma gravação curta: o segundo toque
+    // encerra a captura e envia o áudio para transcrever.
+    if (status === 'ouvindo') {
+      getSpeechProvider().stop();
+      setStatus('pensando');
+      setWaitingLabel('Transcrevendo seu áudio...');
       return;
     }
     if (status === 'pronto') {

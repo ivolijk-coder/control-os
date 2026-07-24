@@ -1,59 +1,25 @@
 import { BrowserVoiceProvider } from './BrowserVoiceProvider';
+import { HybridSpeechProvider } from './HybridSpeechProvider';
+import { OpenAITTSVoiceProvider } from './OpenAITTSVoiceProvider';
 import type { SpeechProvider, VoiceProvider } from './types';
-import { WebSpeechProvider } from './WebSpeechProvider';
 
 /**
- * Ponto único de configuração de quais provedores de voz a NOVA usa
- * (CONTROL OS — Etapa 8), espelhando exatamente o padrão já usado em
- * `services/ai/config.ts` (`getAIProvider`) — mesmo shape, mesma ideia:
- * uma variável de ambiente `NEXT_PUBLIC_...` escolhe a implementação, e o
- * resto do sistema só conhece a interface (`SpeechProvider`/`VoiceProvider`),
- * nunca a classe concreta.
- *
- * Hoje só existe um provedor de cada lado (`WebSpeechProvider`/
- * `BrowserVoiceProvider`, ambos via Web APIs nativas do navegador) — as
- * variáveis já existem e já têm valor padrão `'browser'` para que trocar por
- * um provedor melhor no futuro (OpenAI Speech-to-Text/Whisper/Deepgram/
- * AssemblyAI; OpenAI Text-to-Speech/ElevenLabs/Azure/Google) seja só
- * adicionar a nova classe aqui, sem tocar em nenhum componente de UI.
- *
- * CONTROL OS — Etapa 11: `./OpenAITTSVoiceProvider.ts` já existe como stub
- * (implementa `VoiceProvider`, mas `isSupported` é sempre `false` — nenhuma
- * chamada real ainda). Quando a voz premium via OpenAI for priorizada:
- * estender `VoiceProviderName` com `'openai'`, ler
- * `NEXT_PUBLIC_VOICE_PROVIDER` aqui, e instanciar `OpenAITTSVoiceProvider`
- * nesse caso — sem mudar `nova-voice-overlay.tsx`.
+ * Configuração única de áudio. A captura é híbrida: Web Speech onde o
+ * navegador suporta, transcrição OpenAI onde ele não suporta (Firefox).
+ * A resposta usa voz premium e recorre à voz do sistema se necessário.
  */
-type SpeechProviderName = 'browser';
-type VoiceProviderName = 'browser';
-
-// Hoje só existe o valor `'browser'` de cada lado, então não há nada pra
-// decidir a partir de `NEXT_PUBLIC_SPEECH_PROVIDER`/`NEXT_PUBLIC_VOICE_PROVIDER`
-// ainda — nomes só RESERVADOS aqui (nenhum `process.env` é lido de verdade
-// ainda, e por isso nenhuma das duas está em `.env.local.example` — só
-// documentar variável que o código realmente consome). Quando um segundo
-// provedor for adicionado (ex.: `'openai'`): estender os tipos acima, ler
-// `process.env.NEXT_PUBLIC_SPEECH_PROVIDER`/`NEXT_PUBLIC_VOICE_PROVIDER`
-// aqui, E só então documentar as duas em `.env.local.example` — sem tocar
-// em nenhum outro arquivo que consome `getSpeechProvider`/`getVoiceProvider`.
-export const SPEECH_PROVIDER: SpeechProviderName = 'browser';
-export const VOICE_PROVIDER: VoiceProviderName = 'browser';
+export const SPEECH_PROVIDER = 'hybrid' as const;
+export const VOICE_PROVIDER = 'openai' as const;
 
 let cachedSpeechProvider: SpeechProvider | undefined;
 let cachedVoiceProvider: VoiceProvider | undefined;
 
-/** Fábrica do `SpeechProvider` ativo — cacheia a instância (mesmo padrão de `getAIProvider`). */
 export function getSpeechProvider(): SpeechProvider {
-  if (!cachedSpeechProvider) {
-    cachedSpeechProvider = new WebSpeechProvider();
-  }
+  if (!cachedSpeechProvider) cachedSpeechProvider = new HybridSpeechProvider();
   return cachedSpeechProvider;
 }
 
-/** Fábrica do `VoiceProvider` ativo — cacheia a instância (mesmo padrão de `getAIProvider`). */
 export function getVoiceProvider(): VoiceProvider {
-  if (!cachedVoiceProvider) {
-    cachedVoiceProvider = new BrowserVoiceProvider();
-  }
+  if (!cachedVoiceProvider) cachedVoiceProvider = new OpenAITTSVoiceProvider(new BrowserVoiceProvider());
   return cachedVoiceProvider;
 }
