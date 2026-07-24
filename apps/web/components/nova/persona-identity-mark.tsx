@@ -9,6 +9,7 @@ export interface PersonaIdentityMarkProps {
   persona?: PersonaIdentity;
   size?: number;
   className?: string;
+  surface?: 'solid' | 'transparent';
 }
 
 /**
@@ -18,7 +19,7 @@ export interface PersonaIdentityMarkProps {
  * e ponto no alto à direita. NOVA usa azul/ciano/roxo; LEGENDARY preserva o
  * desenho e troca apenas a matéria para ouro incandescente.
  */
-export function PersonaIdentityMark({ persona = 'nova', size = 28, className }: PersonaIdentityMarkProps) {
+export function PersonaIdentityMark({ persona = 'nova', size = 28, className, surface = 'solid' }: PersonaIdentityMarkProps) {
   const rawId = React.useId().replace(/[^a-zA-Z0-9]/g, '');
   const reduceMotion = useReducedMotion();
   const isLegendary = persona === 'legendary';
@@ -30,7 +31,7 @@ export function PersonaIdentityMark({ persona = 'nova', size = 28, className }: 
 
   return (
     <span aria-hidden="true" className={`relative block shrink-0 ${className ?? ''}`} style={{ width: size, height: size }}>
-      <span className="absolute inset-0 rounded-full bg-[#050608]" />
+      {surface === 'solid' && <span className="absolute inset-0 rounded-full bg-[#050608]" />}
       <svg className="absolute inset-[3%] overflow-visible" viewBox="0 0 100 100" fill="none">
         <defs>
           <linearGradient id={gradientId} x1="39" y1="30" x2="75" y2="67" gradientUnits="userSpaceOnUse">
