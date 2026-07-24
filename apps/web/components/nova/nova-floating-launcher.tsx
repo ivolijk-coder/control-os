@@ -109,13 +109,13 @@ export function NovaFloatingLauncher() {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="Acessar NOVA ou LEGENDARY"
-        className="relative flex h-[62px] w-[62px] items-center justify-center rounded-full border border-white/[0.12] bg-[#080b10]/95 p-2 shadow-e5 backdrop-blur-md"
+        className="relative flex h-16 w-16 items-center justify-center rounded-full bg-[#050608]/95 p-0 shadow-[0_10px_30px_rgba(0,0,0,0.5)] backdrop-blur-md"
         {...hoverLift}
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={transitionOut(0.3)}
       >
-        <PersonaIdentityMark persona={activePersona} size={46} />
+        <PersonaIdentityMark persona={activePersona} size={60} />
       </motion.button>
     </div>
   );
