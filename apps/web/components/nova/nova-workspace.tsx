@@ -229,6 +229,14 @@ export function NovaWorkspace({
   // enviado à IA), nunca `activePersona` sozinha.
   const effectivePersona = lockedPersona ?? activePersona;
   const messages = useAppStore((state) => state.novaMessagesByPersona[effectivePersona]);
+  // Mesmo com um histórico salvo, cada entrada em /nova ou /legendary começa
+  // pela visão própria do ambiente. O histórico continua disponível, sem ser
+  // apagado, e a conversa volta ao primeiro envio ou pelo botão abaixo.
+  const [showCommandOverview, setShowCommandOverview] = React.useState(Boolean(lockedPersona));
+
+  React.useEffect(() => {
+    if (variant === 'docked' && lockedPersona) setShowCommandOverview(true);
+  }, [variant, lockedPersona]);
 
   // CONTROL OS — "separação completa entre NOVA e LEGENDARY": antes, todo
   // turno de texto usava a sessão padrão fixa de `ConversationService`
@@ -260,8 +268,12 @@ export function NovaWorkspace({
   React.useEffect(() => {
     const el = dockedScrollRef.current;
     if (!el) return;
+    if (showCommandOverview) {
+      el.scrollTo({ top: 0 });
+      return;
+    }
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-  }, [messages, isThinking]);
+  }, [messages, isThinking, showCommandOverview]);
 
   // Nunca deixa uma fala em andamento presa em segundo plano se este
   // workspace desmontar (ex.: usuário navega pra outra tela) no meio de uma
@@ -373,6 +385,7 @@ export function NovaWorkspace({
 
   const handleSend = React.useCallback(
     (text: string, source: NovaInputSource = 'text') => {
+      setShowCommandOverview(false);
       const userMessage: ConversationMessage = {
         id: nextMessageId('user'),
         role: 'user',
@@ -521,7 +534,7 @@ export function NovaWorkspace({
   );
 
   if (variant === 'docked') {
-    const showCommandOverview = messages.length === 0 && Boolean(lockedPersona);
+    const isCommandOverviewVisible = showCommandOverview && Boolean(lockedPersona);
     const commandOverview = effectivePersona === 'nova'
       ? <NovaCommandOverview onAction={handleSend} status={orbStatus} pulseSignal={speechPulse} />
       : <LegendaryCommandOverview onAction={handleSend} status={orbStatus} pulseSignal={speechPulse} />;
@@ -529,14 +542,24 @@ export function NovaWorkspace({
     return (
       <div className="flex h-[calc(100vh-4rem)] flex-col">
         <div ref={dockedScrollRef} className="flex-1 overflow-y-auto px-5 py-6 sm:px-8">
-          <div className={`mx-auto flex w-full flex-col items-center gap-6 ${showCommandOverview ? 'max-w-6xl' : 'max-w-3xl'}`}>
+          <div className={`mx-auto flex w-full flex-col items-center gap-6 ${isCommandOverviewVisible ? 'max-w-6xl' : 'max-w-3xl'}`}>
             {/* CONTROL OS — /nova e /legendary agora são ambientes fixos
                 (`lockedPersona`) — trocar de identidade é navegar pro
                 outro, pelo botão flutuante global (`NovaFloatingLauncher`),
                 nunca mais um seletor que muda estado nesta mesma tela. */}
             {!lockedPersona && <NovaPersonaSwitch persona={activePersona} onChange={setActivePersona} />}
 
-            {showCommandOverview ? commandOverview : messages.length === 0 && topContent}
+            {isCommandOverviewVisible ? commandOverview : messages.length === 0 && topContent}
+
+            {isCommandOverviewVisible && messages.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowCommandOverview(false)}
+                className="text-sm text-text-secondary underline-offset-4 transition-colors hover:text-text-primary hover:underline"
+              >
+                Abrir conversa anterior
+              </button>
+            )}
 
             {/* Tamanho do container é fixo por breakpoint — só o `scale`
                 muda — pra não forçar o canvas a recalcular resolução a cada
@@ -545,7 +568,7 @@ export function NovaWorkspace({
                 (limitado a 20rem pra não estourar em telas bem altas)
                 garante isso sem media query nova — a partir de `sm:` volta
                 ao tamanho fixo de desktop. */}
-            {!showCommandOverview && (
+            {!isCommandOverviewVisible && (
               <motion.div
                 animate={{ scale: orbScale }}
                 transition={transitionSpring}
@@ -563,9 +586,9 @@ export function NovaWorkspace({
               </motion.div>
             )}
 
-            {!showCommandOverview && messages.length === 0 && belowOrbContent}
+            {!isCommandOverviewVisible && messages.length === 0 && belowOrbContent}
 
-            <div className="flex w-full flex-col gap-6">{conversationArea}</div>
+            {!isCommandOverviewVisible && <div className="flex w-full flex-col gap-6">{conversationArea}</div>}
           </div>
         </div>
         <div className="shrink-0 border-t border-white/[0.08] bg-bg/85 px-5 py-4 backdrop-blur-xl sm:px-8">
