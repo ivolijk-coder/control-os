@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Check } from 'lucide-react';
 import { hoverLift, transitionOut, transitionSpring } from '@/lib/motion';
 import { cn } from '@/lib/utils';
@@ -28,6 +28,7 @@ export function NovaFloatingLauncher() {
   const pathname = usePathname();
   const [open, setOpen] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const reduceMotion = useReducedMotion();
   const activeHref: EnvironmentOption['href'] = pathname?.startsWith('/legendary') ? '/legendary' : '/nova';
   const activePersona: Persona = activeHref === '/legendary' ? 'legendary' : 'nova';
 
@@ -109,12 +110,18 @@ export function NovaFloatingLauncher() {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="Acessar NOVA ou LEGENDARY"
-        className="relative flex h-16 w-16 items-center justify-center rounded-full bg-[#050608]/95 p-0 shadow-[0_10px_30px_rgba(0,0,0,0.5)] backdrop-blur-md"
+        className="relative flex h-16 w-16 items-center justify-center rounded-full border border-sky-300/[0.18] bg-[radial-gradient(circle_at_45%_36%,rgba(27,79,130,0.38),rgba(5,6,8,0.97)_58%)] p-0 shadow-[0_12px_34px_rgba(0,0,0,0.58)] backdrop-blur-md"
         {...hoverLift}
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={transitionOut(0.3)}
       >
+        <motion.span
+          aria-hidden="true"
+          className={`absolute -inset-1 rounded-full border ${activePersona === 'nova' ? 'border-sky-300/[0.32] shadow-[0_0_22px_rgba(22,184,255,0.25)]' : 'border-amber-300/[0.32] shadow-[0_0_22px_rgba(255,154,34,0.26)]'}`}
+          animate={reduceMotion ? undefined : { opacity: [0.24, 0.72, 0.24], scale: [0.985, 1.035, 0.985] }}
+          transition={{ duration: activePersona === 'nova' ? 3.8 : 3.2, repeat: Infinity, ease: 'easeInOut' }}
+        />
         <PersonaIdentityMark persona={activePersona} size={60} />
       </motion.button>
     </div>
