@@ -164,6 +164,14 @@ export interface NovaWorkspaceProps {
    * conversa só, com seletor de persona in-place.
    */
   lockedPersona?: NovaPersona;
+  /**
+   * No dashboard, a conversa aparece antes do campo para manter o histórico
+   * como contexto visual e o compositor como a ação final da tela. O painel
+   * flutuante preserva a ordem antiga por padrão.
+   */
+  conversationFirst?: boolean;
+  /** Oculta os atalhos abaixo do compositor em superfícies mais enxutas. */
+  showQuickActions?: boolean;
 }
 
 /**
@@ -194,6 +202,8 @@ export function NovaWorkspace({
   topContent,
   belowOrbContent,
   lockedPersona,
+  conversationFirst = false,
+  showQuickActions = true,
 }: NovaWorkspaceProps) {
   // Vive no `useAppStore` (não mais `useState` local) — sobrevive a
   // fechar/reabrir o painel flutuante. Ver comentário em `lib/store.ts`.
@@ -495,16 +505,18 @@ export function NovaWorkspace({
         onListeningChange={setIsListening}
         persona={effectivePersona}
       />
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-        {quickActions.map((action) => (
-          <QuickAction
-            key={action.label}
-            icon={action.icon}
-            label={action.label}
-            onClick={() => handleSend(action.label)}
-          />
-        ))}
-      </div>
+      {showQuickActions && (
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          {quickActions.map((action) => (
+            <QuickAction
+              key={action.label}
+              icon={action.icon}
+              label={action.label}
+              onClick={() => handleSend(action.label)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 
@@ -615,8 +627,17 @@ export function NovaWorkspace({
           <NovaPersonaSwitch persona={activePersona} onChange={setActivePersona} />
         </div>
       )}
-      {inputRow}
-      {conversationArea}
+      {conversationFirst ? (
+        <>
+          {conversationArea}
+          {inputRow}
+        </>
+      ) : (
+        <>
+          {inputRow}
+          {conversationArea}
+        </>
+      )}
     </div>
   );
 }
