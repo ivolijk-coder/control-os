@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Check } from 'lucide-react';
@@ -110,19 +111,30 @@ export function NovaFloatingLauncher() {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="Acessar NOVA ou LEGENDARY"
-        className="relative flex h-[72px] w-[72px] items-center justify-center overflow-visible rounded-full border border-sky-200/[0.42] bg-[radial-gradient(circle_at_36%_25%,rgba(116,157,255,0.52),rgba(28,44,92,0.94)_40%,rgba(5,7,15,0.98)_74%)] p-0 shadow-[inset_0_0_18px_rgba(149,187,255,0.2),inset_0_-12px_20px_rgba(0,0,0,0.58),0_15px_38px_rgba(0,0,0,0.64)] backdrop-blur-md"
+        className={cn(
+          'relative flex h-[72px] w-[72px] items-center justify-center overflow-visible rounded-full p-0 shadow-[0_15px_38px_rgba(0,0,0,0.64)]',
+          activePersona === 'nova'
+            ? 'bg-transparent'
+            : 'border border-amber-200/[0.42] bg-[radial-gradient(circle_at_36%_25%,rgba(157,94,34,0.52),rgba(63,35,15,0.94)_40%,rgba(12,7,4,0.98)_74%)] shadow-[inset_0_0_18px_rgba(255,203,119,0.2),inset_0_-12px_20px_rgba(0,0,0,0.58),0_15px_38px_rgba(0,0,0,0.64)] backdrop-blur-md'
+        )}
         {...hoverLift}
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={transitionOut(0.3)}
       >
-        <motion.span
-          aria-hidden="true"
-          className={`absolute -inset-2 rounded-full border ${activePersona === 'nova' ? 'border-sky-300/[0.52] shadow-[0_0_28px_rgba(22,184,255,0.5)]' : 'border-amber-300/[0.52] shadow-[0_0_28px_rgba(255,154,34,0.5)]'}`}
-          animate={reduceMotion ? undefined : { opacity: [0.3, 0.82, 0.3], scale: [0.985, 1.045, 0.985] }}
-          transition={{ duration: activePersona === 'nova' ? 3.8 : 3.2, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <PersonaIdentityMark persona={activePersona} size={63} surface="transparent" />
+        {activePersona === 'nova' ? (
+          <Image src="/personas/nova-launcher-c.png" alt="NOVA" width={72} height={72} priority className="relative h-full w-full rounded-full object-cover" />
+        ) : (
+          <>
+            <motion.span
+              aria-hidden="true"
+              className="absolute -inset-2 rounded-full border border-amber-300/[0.52] shadow-[0_0_28px_rgba(255,154,34,0.5)]"
+              animate={reduceMotion ? undefined : { opacity: [0.3, 0.82, 0.3], scale: [0.985, 1.045, 0.985] }}
+              transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+            />
+            <PersonaIdentityMark persona="legendary" size={63} surface="transparent" />
+          </>
+        )}
       </motion.button>
     </div>
   );
