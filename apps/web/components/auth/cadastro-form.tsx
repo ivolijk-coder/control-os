@@ -15,6 +15,11 @@ const PASSWORD_REQUIREMENTS = [
   { id: 'number', label: 'Um número', test: (v: string) => /\d/.test(v) },
 ];
 
+// Número oficial atual do CONTROL OS na Cloud API. O link só abre o
+// WhatsApp com a mensagem pronta; a confirmação continua dependendo do
+// envio feito pela própria pessoa, a prova de que ela controla o número.
+const CONTROL_OS_WHATSAPP_NUMBER = '554499599236';
+
 /**
  * Formulário de Cadastro — cria a conta de produto e pede a confirmação do
  * WhatsApp antes de esse número poder registrar qualquer dado pessoal.
@@ -31,6 +36,12 @@ export function CadastroForm() {
   const [verification, setVerification] = React.useState<{ phone: string; code: string } | null>(null);
 
   const requirementsMet = PASSWORD_REQUIREMENTS.every((req) => req.test(password));
+
+  function openWhatsAppConfirmation() {
+    if (!verification) return;
+    const message = encodeURIComponent(`VINCULAR ${verification.code}`);
+    window.open(`https://wa.me/${CONTROL_OS_WHATSAPP_NUMBER}?text=${message}`, '_blank', 'noopener,noreferrer');
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -85,10 +96,12 @@ export function CadastroForm() {
           <p className="mt-2 text-sm text-text-secondary">
             Pelo número <strong className="text-text-primary">{verification.phone}</strong>, envie esta mensagem para o WhatsApp do CONTROL OS:
           </p>
-          <p className="mt-4 rounded-md bg-white/[0.06] px-4 py-3 font-mono text-sm text-text-primary">VINCULAR {verification.code}</p>
           <p className="mt-4 text-sm text-text-secondary">Assim confirmamos que o número é seu e seus dados ficam separados dos demais usuários.</p>
-          <Button type="button" size="lg" className="mt-6 w-full" onClick={() => router.push('/login')}>
-            Já enviei o código
+          <Button type="button" size="lg" className="mt-6 w-full" onClick={openWhatsAppConfirmation}>
+            Confirmar no WhatsApp
+          </Button>
+          <Button type="button" variant="secondary" size="lg" className="mt-3 w-full" onClick={() => router.push('/login')}>
+            Já enviei a confirmação
           </Button>
         </Card>
       ) : <Card className="p-6">
