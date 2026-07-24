@@ -120,7 +120,7 @@ export function NovaFloatingLauncher() {
         transition={transitionOut(0.3)}
       >
         {activePersona === 'nova' ? (
-          <Image src="/personas/nova-launcher-c.png" alt="NOVA" width={72} height={72} priority className="relative h-full w-full scale-[0.91] rounded-full object-cover" />
+          <Image src="/personas/nova-launcher-c-clean.png" alt="NOVA" width={72} height={72} priority className="relative h-full w-full scale-[0.91] rounded-full object-cover" />
         ) : (
           <Image src="/personas/legendary-launcher-c.png" alt="LEGENDARY" width={72} height={72} priority className="relative h-full w-full scale-[0.91] rounded-full object-cover" />
         )}

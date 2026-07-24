@@ -11,7 +11,7 @@ export interface PersonaIdentityMarkProps {
 }
 
 const PERSONA_MARK_ASSET: Record<PersonaIdentity, string> = {
-  nova: '/personas/nova-launcher-c.png',
+  nova: '/personas/nova-launcher-c-clean.png',
   legendary: '/personas/legendary-launcher-c.png',
 };
 

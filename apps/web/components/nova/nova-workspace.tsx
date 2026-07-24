@@ -172,6 +172,12 @@ export interface NovaWorkspaceProps {
   conversationFirst?: boolean;
   /** Oculta os atalhos abaixo do compositor em superfícies mais enxutas. */
   showQuickActions?: boolean;
+  /**
+   * Modo usado na Visão geral: mantém o histórico em uma área própria com
+   * rolagem, enquanto o campo de mensagem fica sempre acessível no rodapé do
+   * card. Assim, uma conversa longa nunca empurra o dashboard para baixo.
+   */
+  containedConversation?: boolean;
 }
 
 /**
@@ -204,6 +210,7 @@ export function NovaWorkspace({
   lockedPersona,
   conversationFirst = false,
   showQuickActions = true,
+  containedConversation = false,
 }: NovaWorkspaceProps) {
   // Vive no `useAppStore` (não mais `useState` local) — sobrevive a
   // fechar/reabrir o painel flutuante. Ver comentário em `lib/store.ts`.
@@ -605,6 +612,21 @@ export function NovaWorkspace({
           </div>
         </div>
         <div className="shrink-0 border-t border-white/[0.08] bg-bg/95 px-4 py-3 backdrop-blur-xl sm:px-8 sm:py-4">
+          {inputRow}
+        </div>
+      </div>
+    );
+  }
+
+  if (containedConversation) {
+    return (
+      <div className="flex h-[min(58dvh,34rem)] min-h-[22rem] w-full flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.015]">
+        <div className="min-h-0 flex-1 overscroll-contain overflow-y-auto px-4 py-5 sm:px-6">
+          <div className="mx-auto flex w-full max-w-2xl flex-col gap-5">
+            {conversationArea}
+          </div>
+        </div>
+        <div className="shrink-0 border-t border-white/[0.07] bg-[#060708]/95 px-4 py-3 backdrop-blur-xl sm:px-6">
           {inputRow}
         </div>
       </div>

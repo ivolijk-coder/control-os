@@ -172,7 +172,7 @@ export default function DashboardPage() {
 
           {/* A conversa é a interface principal: texto e microfone executam
               o mesmo fluxo real da NOVA, não uma simulação visual. */}
-          <NovaWorkspace lockedPersona="nova" conversationFirst showQuickActions={false} />
+          <NovaWorkspace lockedPersona="nova" conversationFirst showQuickActions={false} containedConversation />
         </div>
 
         <aside className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5 sm:p-6">
