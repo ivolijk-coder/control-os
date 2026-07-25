@@ -103,6 +103,15 @@ export async function buildModelContextSummary(ctx: AIConversationContext): Prom
     lines.push(`Maiores categorias de despesa no mês: ${categoriasTexto}`);
   }
 
+  if (ctx.agendaEvents.length > 0) {
+    const agenda = [...ctx.agendaEvents]
+      .sort((a, b) => `${a.date} ${a.time ?? ''}`.localeCompare(`${b.date} ${b.time ?? ''}`))
+      .slice(0, 20)
+      .map((event) => `id=${event.id}; título="${event.title}"; data=${event.date}${event.time ? `; horário=${event.time}` : ''}`)
+      .join(' | ');
+    lines.push(`Agenda (para consultar ou excluir somente por ID exato): ${agenda}`);
+  }
+
   lines.push(
     `Metas em andamento: ${metasAtivas.length}${metasAtivas.length > 0 ? ` (ex.: "${metasAtivas[0]?.title}" em ${metasAtivas[0]?.progress}%)` : ''}`,
     `Projetos ativos: ${projetosAtivos.length}${projetosAtivos.length > 0 ? ` (ex.: "${projetosAtivos[0]?.title}" em ${projetosAtivos[0]?.progress}%)` : ''}`,

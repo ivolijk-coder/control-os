@@ -91,6 +91,7 @@ export function eventTypeForIntentKind(kind: NovaIntentKind): NovaEventType | un
       return 'NoteCreated';
     case 'consultar_dividas':
     case 'consultar_dia':
+    case 'excluir_agenda':
     case 'desconhecido':
       return undefined;
   }

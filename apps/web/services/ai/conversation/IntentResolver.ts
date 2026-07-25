@@ -79,6 +79,7 @@ export class IntentResolver {
         return new CreateNoteAction({ title: intent.title, content: intent.content, category: intent.category });
       case 'criar_projeto':
       case 'registrar_divida':
+      case 'excluir_agenda':
       case 'consultar_dividas':
       case 'consultar_dia':
       case 'desconhecido':

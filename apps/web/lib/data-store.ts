@@ -66,6 +66,8 @@ interface DataState {
   addFinanceEntry: (entry: Omit<FinanceEntry, 'id'>) => FinanceEntry;
 
   addAgendaEvent: (event: Omit<AgendaEvent, 'id'>) => AgendaEvent;
+  /** Remove um compromisso pelo próprio calendário, sempre por id exato. */
+  deleteAgendaEvent: (id: string) => void;
 
   addDebt: (debt: Omit<Debt, 'id'>) => Debt;
   /** Paga 1 parcela: soma 1 a `installmentsPaid` e reduz `remainingAmount` proporcionalmente. Não faz nada se já quitada. */
@@ -131,6 +133,9 @@ export const useDataStore = create<DataState>()(
         const created: AgendaEvent = { ...event, id: nextId('ag') };
         set((state) => ({ agendaEvents: [created, ...state.agendaEvents] }));
         return created;
+      },
+      deleteAgendaEvent: (id) => {
+        set((state) => ({ agendaEvents: state.agendaEvents.filter((event) => event.id !== id) }));
       },
 
       addDebt: (debt) => {

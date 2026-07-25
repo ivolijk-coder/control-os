@@ -18,8 +18,8 @@ import type { NovaIntent } from '@/services/nova';
  * criados) deve retornar `true` — sem duplicar o mecanismo de pendência/
  * confirmação já pronto em `ConversationService`.
  */
-export function isSensitiveIntent(_intent: NovaIntent): boolean {
-  return false;
+export function isSensitiveIntent(intent: NovaIntent): boolean {
+  return intent.kind === 'excluir_agenda';
 }
 
 /** "sim", "s", "confirma", "pode", "ok", "beleza", "isso" — variações comuns de confirmação em pt-BR. */
@@ -37,6 +37,8 @@ export function buildConfirmationPreview(intent: NovaIntent): string {
       return `Vou registrar uma receita de R$ ${intent.amount.toFixed(2)} (${intent.description}). Confirma?`;
     case 'registrar_divida':
       return `Vou registrar uma dívida de R$ ${intent.totalAmount.toFixed(2)} em ${intent.installments}x (${intent.description}). Confirma?`;
+    case 'excluir_agenda':
+      return `Vou excluir o compromisso "${intent.title}" da agenda. Confirma?`;
     default:
       // Nunca alcançado em runtime — só chega aqui um `intent` que `isSensitiveIntent` já aprovou.
       return 'Confirma essa ação?';
@@ -66,6 +68,8 @@ function describeIntentForBatch(intent: NovaIntent): string {
       return `criar o lembrete "${intent.title}"`;
     case 'criar_agenda':
       return `criar o compromisso "${intent.title}"${intent.time ? ` às ${intent.time}` : ''}`;
+    case 'excluir_agenda':
+      return `excluir o compromisso "${intent.title}" da agenda`;
     case 'criar_objetivo':
       return `criar a meta "${intent.title}"`;
     case 'criar_projeto':

@@ -37,7 +37,7 @@ export { parseIntent, parseAmount, parseTime } from './intent/parser';
 export { runIntent } from './executor';
 export { buildPlan } from './planner';
 export { TOOL_REGISTRY } from './tool-registry';
-export { createExpense, createRevenue, createAgendaEvent, createGoal, createReminder } from './actions';
+export { createExpense, createRevenue, createAgendaEvent, deleteAgendaEvent, createGoal, createReminder } from './actions';
 export { recallRecent, rememberTurn, rememberFact, recallFacts } from './memory';
 export type { NovaFact, NovaFactCategory } from './memory';
 export { publish, subscribe, subscribeAll, eventTypeForIntentKind } from './events';

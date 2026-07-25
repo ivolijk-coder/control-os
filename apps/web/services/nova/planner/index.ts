@@ -40,6 +40,8 @@ export function buildPlan(intent: NovaIntent): NovaAction[] {
         { kind: 'criar_missao', label: 'Criar lembrete vinculado' },
         { kind: 'registrar_timeline', label: 'Adicionar ao histórico' },
       ];
+    case 'excluir_agenda':
+      return [{ kind: 'excluir_evento_agenda', label: 'Excluir compromisso da agenda' }];
     case 'criar_objetivo':
       return [
         { kind: 'criar_missao', label: 'Criar objetivo' },

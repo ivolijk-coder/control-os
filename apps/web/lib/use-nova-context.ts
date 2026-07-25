@@ -27,6 +27,7 @@ export function useNovaContext(): NovaContext {
   const addTimelineEvent = useDataStore((state) => state.addTimelineEvent);
   const addFinanceEntry = useDataStore((state) => state.addFinanceEntry);
   const addAgendaEvent = useDataStore((state) => state.addAgendaEvent);
+  const deleteAgendaEvent = useDataStore((state) => state.deleteAgendaEvent);
   const addDebt = useDataStore((state) => state.addDebt);
   const addHabit = useDataStore((state) => state.addHabit);
   const addDocument = useDataStore((state) => state.addDocument);
@@ -53,6 +54,7 @@ export function useNovaContext(): NovaContext {
         addTimelineEvent,
         addFinanceEntry,
         addAgendaEvent,
+        deleteAgendaEvent,
         addDebt,
         addHabit,
         addDocument,
@@ -79,6 +81,7 @@ export function useNovaContext(): NovaContext {
       addTimelineEvent,
       addFinanceEntry,
       addAgendaEvent,
+      deleteAgendaEvent,
       addDebt,
       addHabit,
       addDocument,

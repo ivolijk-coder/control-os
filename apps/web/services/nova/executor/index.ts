@@ -3,6 +3,7 @@ import {
   createExpense,
   createRevenue,
   createAgendaEvent,
+  deleteAgendaEvent,
   createGoal,
   createProject,
   createReminder,
@@ -25,6 +26,8 @@ export function runIntent(ctx: NovaContext, intent: NovaIntent): NovaActionResul
       return createReminder(ctx, intent);
     case 'criar_agenda':
       return createAgendaEvent(ctx, intent);
+    case 'excluir_agenda':
+      return deleteAgendaEvent(ctx, intent);
     case 'criar_objetivo':
       return createGoal(ctx, intent);
     case 'criar_projeto':

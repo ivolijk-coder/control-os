@@ -40,6 +40,11 @@ export const TOOL_REGISTRY: readonly NovaToolDescriptor[] = [
     description: 'Cria um evento de agenda e um lembrete vinculado.',
   },
   {
+    kind: 'excluir_agenda',
+    label: 'Excluir compromisso',
+    description: 'Remove um compromisso específico da agenda, sempre após confirmação.',
+  },
+  {
     kind: 'criar_objetivo',
     label: 'Criar objetivo',
     description: 'Cria uma missão de meta/objetivo.',

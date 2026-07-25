@@ -128,6 +128,19 @@ export const INTENT_TOOL_SCHEMAS: ToolSchema[] = [
     },
   },
   {
+    name: 'excluir_agenda',
+    description:
+      'Excluir um compromisso específico da agenda. Use somente quando o usuário pedir claramente para excluir/remover/cancelar e somente com o eventId exato listado no contexto. Nunca adivinhe um ID.',
+    parameters: {
+      type: 'object',
+      properties: {
+        eventId: { type: 'string', description: 'ID exato do compromisso, copiado do contexto da agenda.' },
+        title: { type: 'string', description: 'Título do compromisso correspondente, para a confirmação mostrada ao usuário.' },
+      },
+      required: ['eventId', 'title'],
+    },
+  },
+  {
     name: 'criar_objetivo',
     description: 'Criar uma meta/objetivo pessoal para o usuário.',
     parameters: {

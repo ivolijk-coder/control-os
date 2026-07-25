@@ -33,6 +33,8 @@ export function buildReply(intent: NovaIntent, ok: boolean): string {
       return `Pronto. Já deixei programado${intent.dueDate ? ` para ${intent.dueDate}` : ''}${intent.time ? ` às ${intent.time}` : ''}.`;
     case 'criar_agenda':
       return `Feito. Adicionei "${intent.title}"${intent.date ? ` para ${intent.date}` : ''}${intent.time ? ` às ${intent.time}` : ''} na agenda e criei um lembrete vinculado.`;
+    case 'excluir_agenda':
+      return `Pronto. Excluí "${intent.title}" da agenda.`;
     case 'criar_objetivo':
       return `Feito. Criei o objetivo "${intent.title}" em Missões.`;
     case 'criar_projeto':

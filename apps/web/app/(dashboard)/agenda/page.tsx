@@ -1,6 +1,7 @@
 'use client';
 
-import { AlertTriangle, CalendarClock } from 'lucide-react';
+import * as React from 'react';
+import { AlertTriangle, CalendarClock, Clock3, MapPin, Trash2 } from 'lucide-react';
 import { FadeIn } from '@/components/dashboard/fade-in';
 import { EmptyState } from '@/components/ui/empty-state';
 import { SectionHeader } from '@/components/dashboard/section-header';
@@ -62,6 +63,7 @@ function eventToTimelineItem(event: AgendaEvent, accent?: 'purple' | 'blue' | 'g
  */
 export default function AgendaPage() {
   const agendaEvents = useDataStore((state) => state.agendaEvents);
+  const deleteAgendaEvent = useDataStore((state) => state.deleteAgendaEvent);
 
   const todayIso = isoDate(new Date());
   const in7Days = isoDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
@@ -114,6 +116,15 @@ export default function AgendaPage() {
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ];
   const todayDay = now.getDate();
+  const [selectedDate, setSelectedDate] = React.useState(todayIso);
+  const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(null);
+  const selectedDay = Number(selectedDate.slice(-2));
+  const selectedEvents = sorted.filter((event) => event.date === selectedDate);
+
+  const selectDay = (day: number) => {
+    setSelectedDate(`${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+    setPendingDeleteId(null);
+  };
 
   const nextEvent = sorted.find((event) => new Date(`${event.date}T${event.time ?? '00:00'}`).getTime() >= Date.now());
   const biggestGap = freeGaps.length > 0 ? freeGaps.reduce((a, b) => (timeToMinutes(b.end) - timeToMinutes(b.start) > timeToMinutes(a.end) - timeToMinutes(a.start) ? b : a)) : null;
@@ -125,7 +136,7 @@ export default function AgendaPage() {
     : 'Nenhum compromisso à frente — sua agenda está livre.';
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
+    <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
       <FadeIn>
         <SectionHeader level="page" title="Agenda" meta={`${sorted.length} compromissos`} />
       </FadeIn>
@@ -154,7 +165,7 @@ export default function AgendaPage() {
 
       <FadeIn delay={0.1}>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.4fr]">
-          <ChartCard title="Este mês" description={now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}>
+          <ChartCard title="Este mês" description="Toque em um dia para ver os compromissos">
             <div className="grid grid-cols-7 gap-1.5 text-center">
               {WEEKDAY_LABELS.map((label, index) => (
                 <span key={index} className="text-[10px] text-text-tertiary">
@@ -162,26 +173,56 @@ export default function AgendaPage() {
                 </span>
               ))}
               {monthCells.map((day, index) => (
-                <span
+                <button
                   key={index}
+                  type="button"
+                  disabled={day === null}
+                  onClick={() => day !== null && selectDay(day)}
+                  aria-label={day === null ? undefined : `Ver compromissos do dia ${day}`}
                   className={cn(
-                    'flex h-7 items-center justify-center rounded-md text-xs',
+                    'relative flex h-9 items-center justify-center rounded-lg text-xs transition-colors disabled:pointer-events-none',
                     day === null && 'invisible',
-                    day === todayDay ? 'bg-accent-purple text-white' : 'text-text-secondary',
-                    day !== null && day !== todayDay && daysWithEvents.has(day) && 'bg-white/[0.06] font-medium text-text-primary'
+                    day === selectedDay && daysWithEvents.has(day) ? 'bg-accent-gold text-black font-semibold' : '',
+                    day === selectedDay && !daysWithEvents.has(day) ? 'bg-accent-purple text-white font-semibold' : '',
+                    day !== selectedDay && day === todayDay ? 'border border-accent-purple/50 text-accent-purple' : 'text-text-secondary hover:bg-white/[0.06]',
+                    day !== selectedDay && daysWithEvents.has(day) && 'bg-accent-gold/15 font-semibold text-accent-gold'
                   )}
                 >
                   {day ?? ''}
-                </span>
+                  {day !== null && day !== selectedDay && daysWithEvents.has(day) && <span className="absolute bottom-1 h-1 w-1 rounded-full bg-accent-gold" />}
+                </button>
               ))}
             </div>
           </ChartCard>
 
-          <ChartCard title="Hoje" description={formatEventDate(todayIso)}>
-            {todayEvents.length > 0 ? (
-              <TimelineCard items={todayEvents.map((event) => eventToTimelineItem(event, 'purple'))} />
+          <ChartCard title={selectedDate === todayIso ? 'Hoje' : 'Dia selecionado'} description={formatEventDate(selectedDate)}>
+            {selectedEvents.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {selectedEvents.map((event) => (
+                  <article key={event.id} className="rounded-xl border border-white/[0.08] bg-black/20 p-3">
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-gold/15 text-accent-gold"><CalendarClock className="h-4 w-4" /></span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-text-primary">{event.title}</p>
+                        <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-tertiary">
+                          {event.time && <span className="inline-flex items-center gap-1"><Clock3 className="h-3 w-3" />{event.time}</span>}
+                          {event.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{event.location}</span>}
+                        </p>
+                      </div>
+                      {pendingDeleteId === event.id ? (
+                        <span className="flex shrink-0 items-center gap-1">
+                          <button type="button" onClick={() => { deleteAgendaEvent(event.id); setPendingDeleteId(null); }} className="rounded-lg bg-accent-red px-2 py-1.5 text-[11px] font-medium text-white">Excluir</button>
+                          <button type="button" onClick={() => setPendingDeleteId(null)} className="rounded-lg border border-white/[0.1] px-2 py-1.5 text-[11px] text-text-secondary">Cancelar</button>
+                        </span>
+                      ) : (
+                        <button type="button" onClick={() => setPendingDeleteId(event.id)} aria-label={`Excluir ${event.title}`} className="rounded-lg p-2 text-text-tertiary transition-colors hover:bg-accent-red/10 hover:text-accent-red"><Trash2 className="h-4 w-4" /></button>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
             ) : (
-              <p className="text-xs text-text-tertiary">Nada marcado para hoje.</p>
+              <p className="text-xs text-text-tertiary">Nada marcado para este dia.</p>
             )}
           </ChartCard>
         </div>

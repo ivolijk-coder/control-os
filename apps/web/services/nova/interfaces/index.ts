@@ -55,6 +55,7 @@ export type NovaIntentKind =
   | 'parcelar_despesa'
   | 'criar_lembrete'
   | 'criar_agenda'
+  | 'excluir_agenda'
   | 'criar_objetivo'
   | 'criar_projeto'
   | 'registrar_divida'
@@ -125,6 +126,13 @@ export interface AgendaIntent extends NovaIntentBase {
    * continua caindo em hoje (mesmo comportamento de antes).
    */
   date?: string;
+}
+
+/** Remove um compromisso específico da agenda. O ID só vem do contexto real enviado à IA. */
+export interface DeleteAgendaIntent extends NovaIntentBase {
+  kind: 'excluir_agenda';
+  eventId: string;
+  title: string;
 }
 
 export interface GoalIntent extends NovaIntentBase {
@@ -218,6 +226,7 @@ export type NovaIntent =
   | InstallmentIntent
   | ReminderIntent
   | AgendaIntent
+  | DeleteAgendaIntent
   | GoalIntent
   | ProjectIntent
   | DebtIntent
@@ -241,6 +250,7 @@ export type NovaActionKind =
   | 'criar_parcelamento'
   | 'criar_missao'
   | 'criar_evento_agenda'
+  | 'excluir_evento_agenda'
   | 'criar_divida'
   | 'criar_habito'
   | 'criar_viagem'
@@ -286,6 +296,7 @@ export interface NovaDataActions {
   addTimelineEvent: (event: Omit<TimelineEvent, 'id'>) => TimelineEvent;
   addFinanceEntry: (entry: Omit<FinanceEntry, 'id'>) => FinanceEntry;
   addAgendaEvent: (event: Omit<AgendaEvent, 'id'>) => AgendaEvent;
+  deleteAgendaEvent: (id: string) => void;
   addDebt: (debt: Omit<Debt, 'id'>) => Debt;
   addHabit: (habit: Omit<Habit, 'id'>) => Habit;
   addDocument: (document: Omit<PersonalDocument, 'id'>) => PersonalDocument;
