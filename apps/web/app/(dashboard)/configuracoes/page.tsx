@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Volume2 } from 'lucide-react';
+import { Check, Moon, Sun, Volume2 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@control-os/ui';
 import { FadeIn } from '@/components/dashboard/fade-in';
 import { GlassCard } from '@/components/ui/glass-card';
@@ -10,6 +10,7 @@ import { getInitials } from '@/lib/utils';
 import type { NovaPersona } from '@/services/nova';
 import { getVoiceProvider } from '@/services/voice';
 import { getVoicePreferences, OPENAI_VOICE_OPTIONS, setVoicePreference, type OpenAIVoice } from '@/services/voice/voice-preferences';
+import { getThemePreference, setThemePreference, type AppTheme } from '@/lib/theme-preferences';
 
 const CONTROL_OS_WHATSAPP_NUMBER = '554499599236';
 
@@ -34,6 +35,7 @@ export default function ConfiguracoesPage() {
   const [voicePreferences, setVoicePreferences] = React.useState<Record<NovaPersona, OpenAIVoice>>({ nova: 'nova', legendary: 'onyx' });
   const [testingVoice, setTestingVoice] = React.useState<NovaPersona | null>(null);
   const [voiceMessage, setVoiceMessage] = React.useState<string | null>(null);
+  const [theme, setTheme] = React.useState<AppTheme>('dark');
 
   React.useEffect(() => {
     fetch('/api/account/whatsapp')
@@ -44,6 +46,7 @@ export default function ConfiguracoesPage() {
 
   React.useEffect(() => {
     setVoicePreferences(getVoicePreferences());
+    setTheme(getThemePreference());
   }, []);
 
   React.useEffect(() => {
@@ -84,6 +87,11 @@ export default function ConfiguracoesPage() {
     setVoiceMessage('Preferência salva neste dispositivo.');
   }
 
+  function updateTheme(nextTheme: AppTheme) {
+    setThemePreference(nextTheme);
+    setTheme(nextTheme);
+  }
+
   function testVoice(persona: NovaPersona) {
     setTestingVoice(persona);
     setVoiceMessage(null);
@@ -119,6 +127,43 @@ export default function ConfiguracoesPage() {
             <span className="truncate text-sm font-medium text-text-primary">{account?.name ?? 'Sua conta'}</span>
             <span className="truncate text-xs text-text-tertiary">{account?.email ?? 'Entre para ver seus dados'}</span>
           </div>
+        </GlassCard>
+      </FadeIn>
+
+      <FadeIn delay={0.08}>
+        <GlassCard interactive={false} className="flex flex-col gap-4 p-5">
+          <div className="flex items-center gap-3">
+            <ICON_MAP.Settings className="h-4 w-4 shrink-0 text-text-tertiary" />
+            <div>
+              <span className="text-sm font-medium text-text-primary">Aparência</span>
+              <p className="mt-0.5 text-xs text-text-tertiary">Escolha a identidade visual que fica mais confortável para você.</p>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {([
+              { id: 'dark' as const, label: 'Escuro', description: 'Identidade CONTROL OS', Icon: Moon, preview: 'bg-[#080808] border-white/10' },
+              { id: 'light' as const, label: 'Claro', description: 'Leve, limpo e estilo iPhone', Icon: Sun, preview: 'bg-[#f6f7fb] border-slate-200' },
+            ]).map(({ id, label, description, Icon, preview }) => {
+              const selected = theme === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => updateTheme(id)}
+                  className={`relative flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${selected ? 'border-accent-blue bg-accent-blue/10' : 'border-border hover:bg-white/[0.04]'}`}
+                  aria-pressed={selected}
+                >
+                  <span className={`flex h-11 w-11 items-center justify-center rounded-lg border ${preview}`}><Icon className={`h-5 w-5 ${id === 'light' ? 'text-slate-700' : 'text-accent-blue'}`} /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-text-primary">{label}</span>
+                    <span className="block text-xs text-text-tertiary">{description}</span>
+                  </span>
+                  {selected && <Check className="h-4 w-4 shrink-0 text-accent-blue" aria-label="Selecionado" />}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-text-tertiary">A preferência é salva neste dispositivo. Você pode voltar ao escuro quando quiser.</p>
         </GlassCard>
       </FadeIn>
 

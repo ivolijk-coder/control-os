@@ -12,13 +12,13 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        bg: '#050505',
-        card: '#101010',
-        glass: 'rgba(255,255,255,.05)',
-        border: 'rgba(255,255,255,.08)',
-        'text-primary': '#FFFFFF',
-        'text-secondary': '#A1A1AA',
-        'text-tertiary': '#71717A',
+        bg: 'rgb(var(--bg-rgb) / <alpha-value>)',
+        card: 'rgb(var(--card-rgb) / <alpha-value>)',
+        glass: 'rgb(var(--glass-rgb) / <alpha-value>)',
+        border: 'rgb(var(--border-rgb) / <alpha-value>)',
+        'text-primary': 'rgb(var(--text-primary-rgb) / <alpha-value>)',
+        'text-secondary': 'rgb(var(--text-secondary-rgb) / <alpha-value>)',
+        'text-tertiary': 'rgb(var(--text-tertiary-rgb) / <alpha-value>)',
         accent: {
           green: '#22C55E',
           blue: '#3B82F6',

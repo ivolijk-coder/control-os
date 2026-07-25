@@ -8,6 +8,13 @@
    ========================================================================== */
 :root {
   /* Base */
+  --bg-rgb: 5 5 5;
+  --card-rgb: 16 16 16;
+  --glass-rgb: 255 255 255;
+  --border-rgb: 255 255 255;
+  --text-primary-rgb: 255 255 255;
+  --text-secondary-rgb: 161 161 170;
+  --text-tertiary-rgb: 113 113 122;
   --bg: #050505;
   --card: #101010;
   --glass: rgba(255, 255, 255, 0.05);
@@ -104,6 +111,55 @@
 html {
   color-scheme: dark;
 }
+
+/* Aparência clara — limpa, macia e legível como a interface do iPhone,
+   sem apagar os acentos azul da NOVA e dourado da LEGENDARY. */
+html[data-theme='light'] {
+  color-scheme: light;
+  --bg-rgb: 246 247 251;
+  --card-rgb: 255 255 255;
+  --glass-rgb: 255 255 255;
+  --border-rgb: 15 23 42;
+  --text-primary-rgb: 20 24 35;
+  --text-secondary-rgb: 71 85 105;
+  --text-tertiary-rgb: 100 116 139;
+  --bg: #f6f7fb;
+  --card: #ffffff;
+  --glass: rgba(255, 255, 255, 0.78);
+  --border: rgba(15, 23, 42, 0.12);
+  --text-primary: #141823;
+  --text-secondary: #475569;
+  --text-tertiary: #64748b;
+  --background: 220 25% 97%;
+  --foreground: 222 25% 12%;
+  --card-hsl: 0 0% 100%;
+  --card-foreground: 222 25% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 25% 12%;
+  --primary: 222 25% 12%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 18% 94%;
+  --secondary-foreground: 222 25% 12%;
+  --muted: 220 18% 94%;
+  --muted-foreground: 215 16% 47%;
+  --accent-hsl: 220 18% 94%;
+  --accent-foreground: 222 25% 12%;
+  --input: 222 20% 25% / 0.15;
+  --ring: 221 83% 53% / 0.35;
+}
+
+html[data-theme='light'] body { background: #f6f7fb; }
+html[data-theme='light'] ::selection { color: #fff; }
+html[data-theme='light'] ::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, 0.18); border-color: #f6f7fb; }
+html[data-theme='light'] ::-webkit-scrollbar-thumb:hover { background: rgba(15, 23, 42, 0.28); }
+/* Superfícies que usam preto explícito preservam contraste no escuro, mas
+   precisam virar papel/branco no modo claro. */
+html[data-theme='light'] .bg-black { background-color: #fff !important; }
+html[data-theme='light'] .bg-black\/20 { background-color: rgba(15, 23, 42, 0.04) !important; }
+html[data-theme='light'] .text-white { color: var(--text-primary) !important; }
+html[data-theme='light'] .border-white\/\[0\.08\],
+html[data-theme='light'] .border-white\/\[0\.1\],
+html[data-theme='light'] .border-white\/\[0\.12\] { border-color: rgba(15, 23, 42, 0.12) !important; }
 
 body {
   background: var(--bg);
