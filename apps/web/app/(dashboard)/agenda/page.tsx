@@ -182,10 +182,10 @@ export default function AgendaPage() {
                   className={cn(
                     'relative flex h-9 items-center justify-center rounded-lg text-xs transition-colors disabled:pointer-events-none',
                     day === null && 'invisible',
-                    day === selectedDay && daysWithEvents.has(day) ? 'bg-accent-gold text-black font-semibold' : '',
-                    day === selectedDay && !daysWithEvents.has(day) ? 'bg-accent-purple text-white font-semibold' : '',
+                    day !== null && day === selectedDay && daysWithEvents.has(day) ? 'bg-accent-gold text-black font-semibold' : '',
+                    day !== null && day === selectedDay && !daysWithEvents.has(day) ? 'bg-accent-purple text-white font-semibold' : '',
                     day !== selectedDay && day === todayDay ? 'border border-accent-purple/50 text-accent-purple' : 'text-text-secondary hover:bg-white/[0.06]',
-                    day !== selectedDay && daysWithEvents.has(day) && 'bg-accent-gold/15 font-semibold text-accent-gold'
+                    day !== null && day !== selectedDay && daysWithEvents.has(day) && 'bg-accent-gold/15 font-semibold text-accent-gold'
                   )}
                 >
                   {day ?? ''}
