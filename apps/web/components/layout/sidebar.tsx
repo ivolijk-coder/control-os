@@ -104,6 +104,65 @@ function NavGroup({
   );
 }
 
+/** Agrupa as duas inteligências sem esconder suas identidades. */
+function AgentNavGroup({
+  items,
+  pathname,
+  collapsed,
+  open,
+  onToggle,
+}: {
+  items: NavItem[];
+  pathname: string | null;
+  collapsed: boolean;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const hasActiveAgent = items.some((item) => pathname?.startsWith(item.href));
+
+  return (
+    <div className="mt-2 flex flex-col gap-1 border-t border-white/[0.06] pt-3">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-label={collapsed ? 'Abrir agentes' : 'Abrir agentes NOVA e LEGENDARY'}
+        title={collapsed ? 'Agentes' : undefined}
+        className={cn(
+          'group flex items-center gap-3 rounded-md px-2.5 py-2.5 text-sm font-medium transition-all duration-fast ease-out hover:bg-white/[0.04] hover:text-text-primary',
+          hasActiveAgent ? 'text-text-primary' : 'text-text-secondary'
+        )}
+      >
+        <ICON_MAP.Sparkles className={cn('h-4 w-4 shrink-0 text-accent-purple', hasActiveAgent && 'drop-shadow-[0_0_6px_rgba(139,92,246,0.5)]')} />
+        {!collapsed && (
+          <>
+            <span className="flex-1 text-left">Agentes</span>
+            <span aria-hidden className={cn('text-xs text-text-tertiary transition-transform duration-fast', open && 'rotate-180')}>
+              ⌄
+            </span>
+          </>
+        )}
+      </button>
+
+      <AnimatePresence initial={false}>
+        {(open || collapsed) && (
+          <motion.div
+            initial={collapsed ? false : { opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
+          >
+            <div className={cn('flex flex-col gap-1', !collapsed && 'ml-2 border-l border-white/[0.07] pl-2')}>
+              <NavGroup items={items} pathname={pathname} collapsed={collapsed} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 /**
  * Sidebar — navegação principal do CONTROL OS.
  *
@@ -119,6 +178,15 @@ export function Sidebar() {
   const mobileNavOpen = useAppStore((s) => s.mobileNavOpen);
   const setMobileNavOpen = useAppStore((s) => s.setMobileNavOpen);
   const isMobile = useMediaQuery(MOBILE_BREAKPOINT_QUERY);
+  const [agentsOpen, setAgentsOpen] = React.useState(false);
+  const primaryNavItems = React.useMemo(
+    () => MOCK_NAV_ITEMS.filter((item) => item.id !== 'nav_nova' && item.id !== 'nav_legendary'),
+    []
+  );
+  const agentNavItems = React.useMemo(
+    () => MOCK_NAV_ITEMS.filter((item) => item.id === 'nav_nova' || item.id === 'nav_legendary'),
+    []
+  );
 
   // Fecha o drawer automaticamente ao navegar para outra rota (mobile).
   // `setMobileNavOpen` é uma action do Zustand — referência estável entre
@@ -126,6 +194,14 @@ export function Sidebar() {
   React.useEffect(() => {
     setMobileNavOpen(false);
   }, [pathname, setMobileNavOpen]);
+
+  // Se a pessoa abre diretamente uma IA, a seção correspondente já vem
+  // aberta; fora disso começa compacta para deixar a navegação mais limpa.
+  React.useEffect(() => {
+    if (pathname?.startsWith('/nova') || pathname?.startsWith('/legendary')) {
+      setAgentsOpen(true);
+    }
+  }, [pathname]);
 
   // No drawer mobile não existe modo ícone-apenas — sempre mostra tudo.
   const effectiveCollapsed = isMobile ? false : collapsed;
@@ -163,7 +239,7 @@ export function Sidebar() {
           // reflexos, bordas" do glassmorphism da referência: sem isso, o
           // painel lê como uma cor sólida semitransparente; com o realce,
           // lê como uma lâmina de vidro com borda iluminada por dentro.
-          'flex h-screen flex-col border-r border-white/[0.08] bg-white/[0.02] shadow-[inset_-1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-xl',
+          'control-sidebar flex h-screen flex-col border-r border-white/[0.08] bg-white/[0.02] shadow-[inset_-1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-xl',
           isMobile ? 'fixed inset-y-0 left-0 z-50 shadow-e5' : 'relative'
         )}
       >
@@ -197,7 +273,14 @@ export function Sidebar() {
       {/* Navegação principal — lista única e plana, direto abaixo do
           cabeçalho (sem Spaces, sem grupos). */}
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
-        <NavGroup items={MOCK_NAV_ITEMS} pathname={pathname} collapsed={effectiveCollapsed} />
+        <NavGroup items={primaryNavItems} pathname={pathname} collapsed={effectiveCollapsed} />
+        <AgentNavGroup
+          items={agentNavItems}
+          pathname={pathname}
+          collapsed={effectiveCollapsed}
+          open={agentsOpen}
+          onToggle={() => setAgentsOpen((current) => !current)}
+        />
       </nav>
 
       <Separator />

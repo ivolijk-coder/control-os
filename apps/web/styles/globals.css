@@ -161,6 +161,29 @@ html[data-theme='light'] .border-white\/\[0\.08\],
 html[data-theme='light'] .border-white\/\[0\.1\],
 html[data-theme='light'] .border-white\/\[0\.12\] { border-color: rgba(15, 23, 42, 0.12) !important; }
 
+/* A navegação é a âncora visual do produto. Mesmo no modo claro ela mantém
+   a assinatura preta do CONTROL OS, para a troca não parecer outro app. */
+html[data-theme='light'] .control-sidebar {
+  --bg-rgb: 5 5 5;
+  --card-rgb: 16 16 16;
+  --glass-rgb: 255 255 255;
+  --border-rgb: 255 255 255;
+  --text-primary-rgb: 255 255 255;
+  --text-secondary-rgb: 161 161 170;
+  --text-tertiary-rgb: 113 113 122;
+  --bg: #050505;
+  --card: #101010;
+  --glass: rgba(255, 255, 255, 0.05);
+  --border: rgba(255, 255, 255, 0.08);
+  --text-primary: #fff;
+  --text-secondary: #a1a1aa;
+  --text-tertiary: #71717a;
+  background-color: #090909 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+html[data-theme='light'] .control-sidebar .text-white { color: #fff !important; }
+
 body {
   background: var(--bg);
   color: var(--text-primary);
