@@ -29,14 +29,14 @@ export function NovaCommandOverview({ onAction }: NovaCommandOverviewProps) {
       : { eyebrow: 'Próxima ação', title: 'Organize o seu dia', detail: 'Sua agenda e prioridades em um só lugar', action: 'Organize meu dia' };
 
   return (
-    <section className="w-full max-w-6xl px-1 pb-8 pt-4 sm:px-4 sm:pt-8">
-      <header className="mb-8 flex items-end justify-between gap-5">
+    <section className="w-full max-w-6xl px-1 pb-4 pt-1 sm:px-4 sm:pb-8 sm:pt-8">
+      <header className="mb-5 flex items-end justify-between gap-5 sm:mb-8">
         <div>
-          <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-accent-blue">
+          <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-accent-blue sm:mb-3 sm:text-[11px]">
             <span className="h-1.5 w-1.5 rounded-full bg-accent-blue" /> NOVA · Online
           </div>
-          <h1 className="text-3xl font-semibold tracking-[-0.04em] text-text-primary sm:text-4xl">Bom dia, {userName}.</h1>
-          <p className="mt-2 text-sm text-text-secondary">Foco no que move seu dia.</p>
+          <h1 className="text-[2rem] font-semibold leading-tight tracking-[-0.04em] text-text-primary sm:text-4xl">Bom dia, {userName}.</h1>
+          <p className="mt-1 text-sm text-text-secondary sm:mt-2">Foco no que move seu dia.</p>
         </div>
         <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border border-accent-blue/30 bg-accent-blue/10 text-sm font-semibold text-accent-blue sm:flex">
           N
@@ -48,19 +48,19 @@ export function NovaCommandOverview({ onAction }: NovaCommandOverviewProps) {
           <div className="flex items-center gap-2 text-xs font-medium text-text-tertiary">
             <Sparkles className="h-3.5 w-3.5 text-accent-blue" /> Prioridade agora
           </div>
-          <p className="mt-6 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-tertiary">{priority.eyebrow}</p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-text-primary">{priority.title}</h2>
-          <p className="mt-2 text-sm text-text-secondary">{priority.detail}</p>
+          <p className="mt-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-text-tertiary sm:mt-6 sm:text-[11px]">{priority.eyebrow}</p>
+          <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-text-primary sm:text-2xl">{priority.title}</h2>
+          <p className="mt-1 text-sm text-text-secondary sm:mt-2">{priority.detail}</p>
           <button
             type="button"
             onClick={() => onAction(priority.action)}
-            className="mt-7 inline-flex items-center gap-2 rounded-lg bg-white px-3.5 py-2.5 text-sm font-medium text-black transition-transform hover:-translate-y-0.5"
+            className="mt-5 inline-flex items-center gap-2 rounded-lg bg-white px-3.5 py-2.5 text-sm font-medium text-black transition-transform hover:-translate-y-0.5 sm:mt-7"
           >
             Ver plano <ArrowUpRight className="h-4 w-4" />
           </button>
         </section>
 
-        <aside className="rounded-2xl border border-white/[0.09] bg-white/[0.025] p-5">
+        <aside className="hidden rounded-2xl border border-white/[0.09] bg-white/[0.025] p-5 lg:block">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-tertiary">Hoje</p>
           <div className="mt-5 flex flex-col divide-y divide-white/[0.07]">
             <button type="button" onClick={() => onAction('Ver meus compromissos de hoje')} className="flex items-center gap-3 py-3 text-left">
