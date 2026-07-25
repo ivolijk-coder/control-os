@@ -39,7 +39,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }),
     });
     if (!response.ok || !response.body) {
-      return NextResponse.json({ message: 'Não foi possível gerar a voz agora.' }, { status: 502 });
+      // A voz e o chat usam produtos/modelos diferentes da OpenAI. Quando a
+      // conta tem chat ativo mas TTS sem saldo/permissão, devolver o motivo
+      // torna o diagnóstico possível sem expor nenhuma credencial.
+      const upstream = await response.json().catch(() => undefined) as { error?: { message?: unknown } } | undefined;
+      const upstreamMessage = typeof upstream?.error?.message === 'string' ? upstream.error.message : '';
+      const message = response.status === 401 || response.status === 403
+        ? 'A chave OpenAI não tem permissão para gerar voz.'
+        : response.status === 429
+          ? 'A OpenAI recusou a voz por limite ou saldo. Verifique o faturamento da API.'
+          : upstreamMessage
+            ? `A OpenAI não gerou a voz: ${upstreamMessage}`
+            : 'A OpenAI não conseguiu gerar a voz agora.';
+      return NextResponse.json({ message }, { status: 502 });
     }
 
     return new NextResponse(response.body, {
