@@ -59,16 +59,15 @@ export const MOCK_USER: User = {
  */
 export const MOCK_NAV_ITEMS: NavItem[] = [
   { id: 'nav_visao_geral', label: 'Visão geral', href: '/dashboard', icon: 'LayoutGrid' },
-  { id: 'nav_financeiro', label: 'Financeiro', href: '/financeiro', icon: 'Wallet' },
-  { id: 'nav_agenda', label: 'Agenda', href: '/agenda', icon: 'CalendarClock' },
-  { id: 'nav_metas', label: 'Metas', href: '/metas', icon: 'Trophy' },
-  { id: 'nav_habitos', label: 'Hábitos', href: '/habitos', icon: 'Repeat' },
+  { id: 'nav_financeiro_dashboard', label: 'Dashboard', href: '/financeiro', icon: 'Gauge' },
+  { id: 'nav_financeiro_transacoes', label: 'Transações', href: '/financeiro/transacoes', icon: 'ArrowLeftRight' },
+  { id: 'nav_financeiro_contas_fixas', label: 'Contas Fixas', href: '/financeiro/contas-fixas', icon: 'CalendarClock' },
+  { id: 'nav_financeiro_cartoes', label: 'Cartões', href: '/financeiro/cartoes', icon: 'CreditCard' },
+  { id: 'nav_financeiro_parcelamentos', label: 'Parcelamentos', href: '/financeiro/parcelamentos', icon: 'Layers3' },
+  { id: 'nav_financeiro_metas', label: 'Metas', href: '/financeiro/metas', icon: 'Target' },
+  { id: 'nav_relatorios', label: 'Relatórios', href: '/relatorios', icon: 'BarChart3' },
+  { id: 'nav_nova', label: 'NOVA IA', href: '/nova', icon: 'Sparkles' },
   { id: 'nav_documentos', label: 'Documentos', href: '/documentos', icon: 'FileText' },
-  { id: 'nav_patrimonio', label: 'Patrimônio', href: '/patrimonio', icon: 'Landmark' },
-  { id: 'nav_viagens', label: 'Viagens', href: '/viagens', icon: 'Plane' },
-  { id: 'nav_notas', label: 'Notas', href: '/notas', icon: 'NotebookText' },
-  { id: 'nav_nova', label: 'NOVA', href: '/nova', icon: 'Sparkles' },
-  { id: 'nav_legendary', label: 'LEGENDARY', href: '/legendary', icon: 'BookOpen' },
   { id: 'nav_configuracoes', label: 'Configurações', href: '/configuracoes', icon: 'Settings' },
 ];
 

@@ -52,7 +52,12 @@ export type IconName =
   | 'Repeat'
   | 'Landmark'
   | 'Plane'
-  | 'NotebookText';
+  | 'NotebookText'
+  | 'Gauge'
+  | 'ArrowLeftRight'
+  | 'CreditCard'
+  | 'Layers3'
+  | 'BarChart3';
 
 export type MissionStatus = 'planejamento' | 'em_andamento' | 'em_risco' | 'concluida';
 

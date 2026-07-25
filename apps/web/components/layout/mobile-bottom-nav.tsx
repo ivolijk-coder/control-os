@@ -13,10 +13,8 @@ import { PersonaIdentityMark, type PersonaIdentity } from '@/components/nova/per
 
 /**
  * MobileBottomNav — CONTROL OS: "otimização completa da experiência
- * mobile... o sistema deve parecer ter sido desenhado primeiro para
- * mobile." + "no mobile, priorize apenas o que realmente importa: IA,
- * Financeiro, Agenda, Metas, Hábitos. Todo o restante deve ficar em segundo
- * plano."
+ * mobile. Nesta versão Control Finance, a barra espelha a hierarquia da
+ * sidebar e mantém apenas os destinos financeiros de uso mais frequente.
  *
  * Antes, mobile só tinha o drawer da Sidebar (hambúrguer no topo, ver
  * `Topbar`) — uma lista plana com os 12 destinos do produto, sem hierarquia
@@ -31,8 +29,8 @@ import { PersonaIdentityMark, type PersonaIdentity } from '@/components/nova/per
  * do botão de menu do `Topbar`. Só pararam de disputar espaço aqui embaixo
  * com o que o usuário realmente abre todo dia.
  *
- * Só existe abaixo de `md` (`md:hidden`) — desktop/tablet continuam com a
- * Sidebar como única navegação, sem nenhuma barra nova.
+ * Só existe abaixo de `md` (`md:hidden`). A opção IA abre o seletor de NOVA
+ * ou LEGENDARY sem ocupar dois espaços da barra.
  */
 export function MobileBottomNav() {
   const pathname = usePathname();
@@ -86,10 +84,10 @@ export function MobileBottomNav() {
           </span>
           <span>IA</span>
         </button>
+        <MobileNavLink href="/dashboard" label="Visão" Icon={ICON_MAP.LayoutGrid} active={pathname === '/dashboard'} />
         <MobileNavLink href="/financeiro" label="Financeiro" Icon={ICON_MAP.Wallet} active={pathname?.startsWith('/financeiro') ?? false} />
-        <MobileNavLink href="/agenda" label="Agenda" Icon={ICON_MAP.CalendarClock} active={pathname?.startsWith('/agenda') ?? false} />
-        <MobileNavLink href="/metas" label="Metas" Icon={ICON_MAP.Trophy} active={pathname?.startsWith('/metas') ?? false} />
-        <MobileNavLink href="/habitos" label="Hábitos" Icon={ICON_MAP.Repeat} active={pathname?.startsWith('/habitos') ?? false} />
+        <MobileNavLink href="/relatorios" label="Relatórios" Icon={ICON_MAP.BarChart3} active={pathname?.startsWith('/relatorios') ?? false} />
+        <MobileNavLink href="/documentos" label="Documentos" Icon={ICON_MAP.FileText} active={pathname?.startsWith('/documentos') ?? false} />
       </nav>
     </>
   );

@@ -9,7 +9,9 @@ import { useAppStore } from '@/lib/store';
 import { ICON_MAP } from './icon-map';
 
 function pageTitleFromPath(pathname: string | null): string {
-  const match = MOCK_NAV_ITEMS.find((item) => pathname?.startsWith(item.href));
+  const match = [...MOCK_NAV_ITEMS]
+    .sort((a, b) => b.href.length - a.href.length)
+    .find((item) => pathname?.startsWith(item.href));
   return match?.label ?? 'CONTROL OS';
 }
 
