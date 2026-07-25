@@ -39,12 +39,10 @@ http:
         browserXssFilter: true
         frameDeny: true
         referrerPolicy: "strict-origin-when-cross-origin"
-        # Desliga por padrão as APIs de navegador que o CONTROL OS não usa
-        # (câmera, microfone só seriam usados por uma feature de voz que
-        # roda dentro do próprio app — ver services de voz em apps/web;
-        # nada aqui bloqueia isso, "self" continuaria liberado se algum
-        # dia for necessário — ajuste então).
-        permissionsPolicy: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+        # A captura de voz da NOVA/LEGENDARY usa o microfone do próprio
+        # CONTROL OS. Permitir somente a origem atual mantém iframes e
+        # terceiros bloqueados, sem quebrar a conversa por áudio.
+        permissionsPolicy: "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), interest-cohort=()"
         # CSP inicial, deliberadamente permissiva o suficiente para não
         # quebrar um app Next.js "out of the box" (sem infraestrutura de
         # nonce): 'unsafe-inline' + 'unsafe-eval' em script-src cobrem o

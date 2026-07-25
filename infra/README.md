@@ -178,6 +178,20 @@ Os dados que importam vivem em volumes nomeados (`controlos_postgres_data`, `con
 docker compose exec postgres pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > backup-controlos-$(date +%Y%m%d).sql
 ```
 
+Para a rotina mínima local (banco principal, banco da Evolution e sessões
+persistentes do WhatsApp), use o script versionado:
+
+```bash
+chmod +x scripts/backup-controlos.sh scripts/verify-backup-controlos.sh scripts/health-report.sh
+./scripts/backup-controlos.sh
+./scripts/verify-backup-controlos.sh /var/backups/controlos/AAAAMMDDTHHMMSSZ
+```
+
+O backup fica inicialmente na própria VPS — isso protege contra erro humano,
+mas **não** contra perda da VPS. Antes de receber clientes, copie os backups
+diariamente para armazenamento externo e execute uma restauração isolada
+documentada. O script não restaura nem apaga banco/volume.
+
 Mesma lógica para `evolution-postgres` com `EVOLUTION_POSTGRES_USER`/`EVOLUTION_POSTGRES_DB`. Automatize isso via `cron` — não incluído aqui de propósito (política de retenção/destino do backup é decisão operacional, não de infraestrutura).
 
 ## Atualizando a stack

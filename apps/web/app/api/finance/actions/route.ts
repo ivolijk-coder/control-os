@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { actionRegistry } from '@/services/action-engine';
+import { currentSessionUserId } from '@/services/auth/session';
 import type { ActionKind } from '@/services/control-hub';
 
 /**
@@ -46,6 +47,14 @@ function isPayload(value: unknown): value is Record<string, unknown> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  // A identidade nunca vem do payload enviado pelo navegador. Sem esta
+  // verificação, a execução cai no usuário de compatibilidade do módulo
+  // financeiro e poderia misturar dados entre pessoas.
+  const userId = currentSessionUserId();
+  if (!userId) {
+    return NextResponse.json({ success: false, message: 'Faça login para registrar ou alterar dados financeiros.' }, { status: 401 });
+  }
+
   let rawBody: unknown;
   try {
     rawBody = await request.json();
@@ -65,6 +74,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: false, message: '"payload" precisa ser um objeto.' }, { status: 400 });
   }
 
-  const [result] = await actionRegistry.execute([{ kind, payload }]);
-  return NextResponse.json(result ?? { success: false, message: 'Nenhum resultado devolvido pelo Action Engine.' });
+  try {
+    const [result] = await actionRegistry.execute([{ kind, payload }], userId);
+    return NextResponse.json(result ?? { success: false, message: 'Nenhum resultado devolvido pelo Action Engine.' });
+  } catch (error) {
+    console.error('Falha ao executar ação financeira autenticada:', error);
+    return NextResponse.json({ success: false, message: 'Não foi possível concluir a ação financeira agora.' }, { status: 500 });
+  }
 }
