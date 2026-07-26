@@ -1,4 +1,4 @@
-import type { FinanceAccountKind, FinanceEntryType, FinanceTransferDirection } from '@control-os/types';
+import type { FinanceAccountKind, FinanceAccountStatus, FinanceEntryType, FinanceTransferDirection } from '@control-os/types';
 
 /**
  * Tipos do Finance Repository (CONTROL OS — Fase 6: Persistência real;
@@ -26,7 +26,7 @@ export interface CreateFinanceTransactionInput {
   description?: string;
   category?: string;
   date?: string;
-  /** CONTROL OS — Fase 7: "cada transação deverá pertencer a uma conta" — resolvido (get-or-create) pelo `FinanceService` antes de chegar aqui; o Repository nunca resolve nome→id sozinho. */
+  /** Cada transação pertence a uma conta resolvida pelo `FinanceService`; o Repository nunca resolve nome→id sozinho. */
   accountId?: string;
   /** Só preenchido em transações que são uma perna de transferência (`type === 'transferencia'`). */
   transferGroupId?: string;
@@ -60,6 +60,34 @@ export interface FinanceSummary {
 export interface CreateFinanceAccountInput {
   name: string;
   kind?: FinanceAccountKind;
+  currency: string;
+  /** Valor exato em centavos; nunca usar float como origem do saldo inicial. */
+  initialBalanceCents: number;
+  openingBalanceDate: string;
+  source: FinanceAuditSource;
+}
+
+export type FinanceAuditSource = 'manual' | 'nova' | 'whatsapp' | 'api';
+
+export interface FinanceAuditInput {
+  operation: string;
+  source: FinanceAuditSource;
+  entityType: string;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+}
+
+export interface UpdateFinanceAccountInput {
+  id: string;
+  name?: string;
+  currency?: string;
+  source: FinanceAuditSource;
+}
+
+export interface SetFinanceAccountStatusInput {
+  id: string;
+  status: FinanceAccountStatus;
+  source: FinanceAuditSource;
 }
 
 // --- CONTROL OS — Fase 7: Categorias ----------------------------------------
@@ -76,7 +104,7 @@ export interface CreateFinanceCategoryInput {
  * (montadas por `FinanceService.createTransfer`, nunca pelo Repository —
  * "o Repository nunca decide regra de negócio, só persiste") — este tipo é
  * só o INPUT de alto nível que o Service recebe, já com as duas contas
- * resolvidas (get-or-create por nome).
+ * resolvidas pelo serviço a partir de uma conta existente.
  */
 export interface CreateFinanceTransferInput {
   fromAccountId: string;

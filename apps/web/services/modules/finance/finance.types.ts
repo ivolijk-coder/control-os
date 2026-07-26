@@ -14,10 +14,10 @@ import type { FinanceAccountBalance, FinanceCategoryBreakdownItem } from '@/serv
  * `accountId`/`accountName` — CONTROL OS Fase 7: "cada transação deverá
  * pertencer a uma conta". Quem chama (Action, chat) quase sempre só tem um
  * NOME em texto ("no Nubank", nunca um UUID) — `FinanceService` resolve
- * (get-or-create) o nome pra uma conta de verdade; `accountId` existe pra
+ * o nome para uma conta de verdade; `accountId` existe pra
  * quando o chamador já sabe o id (ex.: uma tela que lista contas antes).
- * Nenhum dos dois é obrigatório: sem os dois, cai na conta padrão
- * ("Carteira").
+ * Quando nenhum dos dois for informado, o serviço usa a única conta ativa
+ * existente; se houver zero ou mais de uma, pede que a conta seja escolhida.
  */
 export interface CreateExpenseInput {
   amount: number;
@@ -83,11 +83,10 @@ export interface FinanceSummary {
 
 /**
  * "Transferência entre contas... sem alterar patrimônio total" — as duas
- * contas são sempre por NOME (get-or-create), nunca id: a conversa
+ * contas são sempre por NOME, nunca id: a conversa
  * ("Transferi 500 para o Nubank") só tem o nome da conta de destino; a
- * origem, quando não dita, cai na conta padrão dentro de
- * `FinanceService.createTransfer` (mesma regra de `accountName` ausente
- * em `CreateExpenseInput`).
+ * origem, quando não dita, só pode ser inferida caso exista exatamente uma
+ * conta ativa; de outro modo o serviço pede a escolha explícita.
  */
 export interface CreateTransferInput {
   fromAccountName?: string;
@@ -131,6 +130,17 @@ export interface CreateRecurringInput {
 export interface CreateFinanceAccountServiceInput {
   name: string;
   kind?: FinanceAccountKind;
+  currency?: string;
+  initialBalanceCents?: number;
+  openingBalanceDate?: string;
+  source?: 'manual' | 'nova' | 'whatsapp' | 'api';
+}
+
+export interface UpdateFinanceAccountServiceInput {
+  id: string;
+  name?: string;
+  currency?: string;
+  source?: 'manual' | 'nova' | 'whatsapp' | 'api';
 }
 
 // --- CONTROL OS — Fase 7: Categorias -----------------------------------------

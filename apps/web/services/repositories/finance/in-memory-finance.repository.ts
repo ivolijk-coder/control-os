@@ -8,6 +8,8 @@ import type {
   FinanceCategoryBreakdownItem,
   FinanceSummary,
   FinanceTransactionFilter,
+  SetFinanceAccountStatusInput,
+  UpdateFinanceAccountInput,
   UpdateFinanceTransactionInput,
 } from './finance-repository.types';
 
@@ -56,6 +58,7 @@ export class InMemoryFinanceRepository implements FinanceRepository {
   private readonly entriesByUser = new Map<string, FinanceEntry[]>();
   private readonly accountsByUser = new Map<string, FinanceAccount[]>();
   private readonly categoriesByUser = new Map<string, FinanceCategory[]>();
+  private readonly auditEventsByUser = new Map<string, Array<Record<string, unknown>>>();
 
   private entriesFor(userId: string): FinanceEntry[] {
     let entries = this.entriesByUser.get(userId);
@@ -82,6 +85,37 @@ export class InMemoryFinanceRepository implements FinanceRepository {
       this.categoriesByUser.set(userId, categories);
     }
     return categories;
+  }
+
+  private audit(userId: string, event: Record<string, unknown>): void {
+    const events = this.auditEventsByUser.get(userId) ?? [];
+    events.push({ ...event, userId, actorUserId: userId, createdAt: new Date().toISOString() });
+    this.auditEventsByUser.set(userId, events);
+  }
+
+  /** Suporte exclusivo aos testes de domínio; produção usa FinanceAuditEvent no PostgreSQL. */
+  getAuditEventsForTest(userId: string): Array<Record<string, unknown>> {
+    return [...(this.auditEventsByUser.get(userId) ?? [])];
+  }
+
+  /**
+   * Preparação explícita para cenários legados de teste. Não é usada pela
+   * aplicação: em produção uma conta só nasce pelo `FinanceService`, que
+   * cria o lançamento de abertura e a auditoria de forma atômica.
+   */
+  seedAccountForTest(userId: string, name = 'Carteira'): FinanceAccount {
+    const now = new Date().toISOString();
+    const account: FinanceAccount = {
+      id: `account_${nextAccountId++}`,
+      name,
+      kind: 'outro',
+      currency: 'BRL',
+      status: 'ativa',
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.accountsFor(userId).push(account);
+    return { ...account };
   }
 
   // --- Transações -------------------------------------------------------
@@ -179,18 +213,48 @@ export class InMemoryFinanceRepository implements FinanceRepository {
   // --- Contas -------------------------------------------------------------
 
   async createAccount(userId: string, input: CreateFinanceAccountInput): Promise<FinanceAccount> {
+    const now = new Date().toISOString();
     const account: FinanceAccount = {
       id: `account_${nextAccountId++}`,
       name: input.name,
       kind: input.kind ?? 'outro',
-      createdAt: new Date().toISOString(),
+      currency: input.currency,
+      status: 'ativa',
+      createdAt: now,
+      updatedAt: now,
     };
     this.accountsFor(userId).push(account);
+    const openingEntry = input.initialBalanceCents !== 0
+      ? await this.create(userId, {
+        type: input.initialBalanceCents > 0 ? 'receita' : 'despesa',
+        amount: Math.abs(input.initialBalanceCents) / 100,
+        description: 'Saldo inicial da conta',
+        category: 'Saldo inicial',
+        date: input.openingBalanceDate,
+        accountId: account.id,
+      })
+      : undefined;
+    this.audit(userId, {
+      operation: 'account.created',
+      source: input.source,
+      entityType: 'account',
+      entityId: account.id,
+      after: { ...account, initialBalanceCents: input.initialBalanceCents, openingBalanceDate: input.openingBalanceDate },
+    });
+    if (openingEntry) {
+      this.audit(userId, {
+        operation: 'transaction.account_opening_balance.created',
+        source: input.source,
+        entityType: 'transaction',
+        entityId: openingEntry.id,
+        after: { ...openingEntry, origin: 'ACCOUNT_OPENING_BALANCE' },
+      });
+    }
     return account;
   }
 
-  async listAccounts(userId: string): Promise<FinanceAccount[]> {
-    return [...this.accountsFor(userId)];
+  async listAccounts(userId: string, options?: { includeArchived?: boolean }): Promise<FinanceAccount[]> {
+    return this.accountsFor(userId).filter((account) => options?.includeArchived || account.status === 'ativa').map((account) => ({ ...account }));
   }
 
   async findAccountById(userId: string, id: string): Promise<FinanceAccount | undefined> {
@@ -202,6 +266,39 @@ export class InMemoryFinanceRepository implements FinanceRepository {
     return this.accountsFor(userId).find((account) => account.name.trim().toLowerCase() === normalized);
   }
 
+  async updateAccount(userId: string, input: UpdateFinanceAccountInput): Promise<FinanceAccount | undefined> {
+    const account = this.accountsFor(userId).find((candidate) => candidate.id === input.id);
+    if (!account) return undefined;
+    const before = { ...account };
+    if (input.name !== undefined) account.name = input.name;
+    if (input.currency !== undefined) account.currency = input.currency;
+    account.updatedAt = new Date().toISOString();
+    this.audit(userId, { operation: 'account.updated', source: input.source, entityType: 'account', entityId: account.id, before, after: { ...account } });
+    return { ...account };
+  }
+
+  async setAccountStatus(userId: string, input: SetFinanceAccountStatusInput): Promise<FinanceAccount | undefined> {
+    const account = this.accountsFor(userId).find((candidate) => candidate.id === input.id);
+    if (!account) return undefined;
+    const before = { ...account };
+    account.status = input.status;
+    account.archivedAt = input.status === 'arquivada' ? new Date().toISOString() : undefined;
+    account.updatedAt = new Date().toISOString();
+    this.audit(userId, {
+      operation: input.status === 'arquivada' ? 'account.archived' : 'account.restored',
+      source: input.source,
+      entityType: 'account',
+      entityId: account.id,
+      before,
+      after: { ...account },
+    });
+    return { ...account };
+  }
+
+  async hasAccountMovements(userId: string, accountId: string): Promise<boolean> {
+    return this.entriesFor(userId).some((entry) => entry.accountId === accountId);
+  }
+
   async getAccountBalance(userId: string, accountId: string): Promise<number> {
     return this.entriesFor(userId)
       .filter((entry) => entry.accountId === accountId)
@@ -209,7 +306,7 @@ export class InMemoryFinanceRepository implements FinanceRepository {
   }
 
   async listAccountBalances(userId: string): Promise<FinanceAccountBalance[]> {
-    const accounts = this.accountsFor(userId);
+    const accounts = this.accountsFor(userId).filter((account) => account.status === 'ativa');
     const entries = this.entriesFor(userId);
     return accounts.map((account) => ({
       accountId: account.id,

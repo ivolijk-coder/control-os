@@ -3,6 +3,7 @@ import type { ActionResult } from '@/services/action-result.types';
 import type {
   CreateExpenseInput,
   CreateFinanceAccountServiceInput,
+  UpdateFinanceAccountServiceInput,
   CreateFinanceCategoryServiceInput,
   CreateIncomeInput,
   CreateInstallmentInput,
@@ -55,7 +56,10 @@ export interface FinanceService {
 
   // Contas (CONTROL OS — Fase 7)
   createAccount(input: CreateFinanceAccountServiceInput): Promise<ActionResult>;
-  listAccounts(): Promise<FinanceAccount[]>;
+  listAccounts(options?: { includeArchived?: boolean }): Promise<FinanceAccount[]>;
+  updateAccount(input: UpdateFinanceAccountServiceInput): Promise<ActionResult>;
+  archiveAccount(id: string, source?: 'manual' | 'nova' | 'whatsapp' | 'api'): Promise<ActionResult>;
+  restoreAccount(id: string, source?: 'manual' | 'nova' | 'whatsapp' | 'api'): Promise<ActionResult>;
 
   // Categorias (CONTROL OS — Fase 7)
   createCategory(input: CreateFinanceCategoryServiceInput): Promise<ActionResult>;

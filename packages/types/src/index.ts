@@ -120,7 +120,7 @@ export interface FinanceEntry {
   category: string;
   date: string;
   spaceId?: string;
-  /** Conta à qual este lançamento pertence (`FinanceAccount.id`). "Cada transação deverá pertencer a uma conta" — resolvida (get-or-create) pelo `FinanceService` quando o chamador não informa uma. */
+  /** Conta à qual este lançamento pertence (`FinanceAccount.id`). Quando a origem não informa a conta, o FinanceService só a infere se houver exatamente uma conta ativa; ele nunca cria uma conta automaticamente. */
   accountId?: string;
   /** Liga as DUAS pernas de uma mesma transferência (`type === 'transferencia'`). */
   transferGroupId?: string;
@@ -144,12 +144,18 @@ export interface FinanceEntry {
  * nenhuma tela ainda lê `kind` para decidir comportamento.
  */
 export type FinanceAccountKind = 'carteira' | 'conta_corrente' | 'poupanca' | 'cartao_credito' | 'outro';
+export type FinanceAccountStatus = 'ativa' | 'arquivada';
 
 export interface FinanceAccount {
   id: string;
   name: string;
   kind: FinanceAccountKind;
+  /** ISO 4217. A moeda pertence à conta, nunca ao saldo calculado. */
+  currency: string;
+  status: FinanceAccountStatus;
   createdAt: string;
+  updatedAt: string;
+  archivedAt?: string;
 }
 
 /**

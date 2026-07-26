@@ -11,9 +11,9 @@ import { getNumber, getString } from '../../payload-guards';
  * "Transferi R$ 1.000 para o Nubank" → `transfer.create` →
  * `FinanceService.createTransfer()`. `fromAccountName` é opcional de
  * propósito — a conversa raramente diz a conta de origem ("transferi PARA
- * o Nubank" não menciona de onde saiu); `FinanceService` resolve pra conta
- * padrão ("Carteira") quando ausente, mesma regra de `expense.create`
- * sem conta mencionada.
+ * o Nubank" não menciona de onde saiu); `FinanceService` só pode inferir
+ * a origem quando existe exatamente uma conta ativa. Não há conta padrão
+ * criada ou escolhida implicitamente.
  */
 export class CreateTransferAction implements ActionHandler {
   readonly kind: ActionKind = 'transfer.create';
@@ -24,7 +24,7 @@ export class CreateTransferAction implements ActionHandler {
     parameters: [
       { name: 'value', type: 'number', required: true, description: 'Valor transferido, em reais.' },
       { name: 'toAccountName', type: 'string', required: true, description: 'Nome da conta de destino (ex.: "Nubank", "Poupança").' },
-      { name: 'fromAccountName', type: 'string', required: false, description: 'Nome da conta de origem, se mencionada. Se ausente, usa a conta padrão do usuário.' },
+      { name: 'fromAccountName', type: 'string', required: false, description: 'Nome da conta de origem, se mencionada. Se ausente, só pode ser inferida quando o usuário tem uma única conta ativa.' },
       { name: 'description', type: 'string', required: false, description: 'Descrição curta da transferência.' },
       { name: 'date', type: 'string', required: false, description: 'Data da transferência (AAAA-MM-DD), se mencionada.' },
     ],

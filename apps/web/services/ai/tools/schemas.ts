@@ -73,7 +73,7 @@ export const INTENT_TOOL_SCHEMAS: ToolSchema[] = [
         toAccountName: { type: 'string', description: 'Conta de destino (ex.: "Nubank", "Poupança").' },
         fromAccountName: {
           type: 'string',
-          description: 'Conta de origem, se mencionada. Se ausente, usa a conta padrão do usuário ("Carteira").',
+          description: 'Conta de origem, se mencionada. Se ausente, só pode ser inferida quando o usuário tiver exatamente uma conta ativa.',
         },
       },
       required: ['amount', 'toAccountName'],

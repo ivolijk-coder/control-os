@@ -73,6 +73,20 @@ enum AccountKind {
   OUTRO
 }
 
+/// Ciclo de vida de uma conta. Uma conta com histórico nunca é apagada: ela
+/// pode ser arquivada e restaurada sem perder as movimentações vinculadas.
+enum AccountStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+/// Origem técnica de um lançamento. O saldo de abertura é uma movimentação
+/// financeira normal, não um campo solto da conta.
+enum TransactionOrigin {
+  MANUAL
+  ACCOUNT_OPENING_BALANCE
+}
+
 /// Entidade única de lançamento financeiro — cobre tanto receitas quanto
 /// despesas (`type`). Mapeia para `FinanceEntry` (`@control-os/types`) na
 /// borda do repositório (`PrismaFinanceRepository`) — nenhum tipo TS novo
@@ -81,6 +95,7 @@ model Transaction {
   id          String          @id @default(uuid()) @db.Uuid
   userId      String          @map("user_id") @db.Uuid
   type        TransactionType
+  origin      TransactionOrigin @default(MANUAL)
   /// `Decimal`, não `Float` — dinheiro nunca deveria acumular erro de
   /// ponto flutuante binário. Convertido para `number` (formato de
   /// `FinanceEntry.amount`) na borda do repositório via `.toNumber()`.
@@ -158,8 +173,8 @@ model Category {
 
 /// Conta financeira (ex.: "Carteira", "Nubank", "Cartão de Crédito").
 /// CONTROL OS — Fase 7: sai do status de stub ("preparado, não usado") —
-/// `FinanceRepository.createAccount`/`listAccounts`/`getOrCreateDefaultAccount`
-/// usam este model de verdade agora. `@@unique([userId, name])`: evita duas
+/// `FinanceRepository.createAccount`/`listAccounts` usam este model de
+/// verdade agora. `@@unique([userId, name])`: evita duas
 /// contas com o mesmo nome pro mesmo usuário (ex.: duas "Nubank" por engano
 /// numa criação repetida via conversa) — seguro adicionar agora porque
 /// nenhuma linha real existia antes desta fase (nada grava aqui ainda).
@@ -168,11 +183,35 @@ model Account {
   userId       String        @map("user_id") @db.Uuid
   name         String
   kind         AccountKind   @default(OUTRO)
+  currency     String        @default("BRL") @db.VarChar(3)
+  status       AccountStatus @default(ACTIVE)
+  archivedAt   DateTime?     @map("archived_at") @db.Timestamptz(3)
   transactions Transaction[]
   createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([userId, name])
   @@map("finance_accounts")
+}
+
+/// Trilho genérico e extensível de auditoria do domínio financeiro. Não tem
+/// dependência de telas ou canais: a mesma estrutura atende Manual, NOVA,
+/// WhatsApp e API, preservando o estado anterior e posterior quando houver.
+model FinanceAuditEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  actorUserId String  @map("actor_user_id") @db.Uuid
+  operation  String
+  source     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id") @db.Uuid
+  before     Json?    @map("before_state")
+  after      Json?    @map("after_state")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([userId, entityType, entityId])
+  @@index([userId, createdAt])
+  @@map("finance_audit_events")
 }
 
 /// Conta de produto do CONTROL OS. É separada da tabela histórica `users`

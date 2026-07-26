@@ -3,6 +3,8 @@ import type {
   CreateFinanceAccountInput,
   CreateFinanceCategoryInput,
   CreateFinanceTransactionInput,
+  SetFinanceAccountStatusInput,
+  UpdateFinanceAccountInput,
   FinanceAccountBalance,
   FinanceCategoryBreakdownItem,
   FinanceSummary,
@@ -71,11 +73,17 @@ export interface FinanceRepository {
   ): Promise<FinanceCategoryBreakdownItem[]>;
 
   // --- Contas (CONTROL OS — Fase 7) ------------------------------------------
+  /** Cria conta, lançamento técnico de abertura e auditoria em uma única transação. */
   createAccount(userId: string, input: CreateFinanceAccountInput): Promise<FinanceAccount>;
-  listAccounts(userId: string): Promise<FinanceAccount[]>;
+  listAccounts(userId: string, options?: { includeArchived?: boolean }): Promise<FinanceAccount[]>;
   findAccountById(userId: string, id: string): Promise<FinanceAccount | undefined>;
   /** Busca case-insensitive por nome (ex.: resolver "nubank" dito em conversa para a conta "Nubank" já existente). */
   findAccountByName(userId: string, name: string): Promise<FinanceAccount | undefined>;
+  /** Atualiza uma conta e registra estado anterior/posterior na auditoria. */
+  updateAccount(userId: string, input: UpdateFinanceAccountInput): Promise<FinanceAccount | undefined>;
+  /** Arquiva ou restaura, preservando todo o histórico financeiro. */
+  setAccountStatus(userId: string, input: SetFinanceAccountStatusInput): Promise<FinanceAccount | undefined>;
+  hasAccountMovements(userId: string, accountId: string): Promise<boolean>;
   /**
    * Saldo de UMA conta — soma com sinal: `despesa` → `-amount`, `receita` →
    * `+amount`, `transferencia` com `transferDirection: 'saida'` →

@@ -54,7 +54,12 @@ async function test(name: string, fn: () => Promise<void>): Promise<void> {
 
 /** Uma instância nova por bloco de teste — nenhum teste deve depender de estado deixado por outro. */
 function buildService(): PersistentFinanceService {
-  return new PersistentFinanceService(new InMemoryFinanceRepository(), 'usr_test');
+  const repository = new InMemoryFinanceRepository();
+  // Os testes legados exercitam receitas/despesas sem se preocupar com a
+  // criação da conta. A conta é preparada explicitamente no repositório de
+  // teste — nunca pelo serviço em produção.
+  repository.seedAccountForTest('usr_test');
+  return new PersistentFinanceService(repository, 'usr_test');
 }
 
 async function main(): Promise<void> {
@@ -172,29 +177,57 @@ async function main(): Promise<void> {
 
   // --- CONTROL OS — Fase 7: Contas ---------------------------------------
 
-  await test('createAccount/listAccounts — cria e lista contas do usuário', async () => {
-    const service = buildService();
-    const created = await service.createAccount({ name: 'Nubank', kind: 'conta_corrente' });
+  await test('createAccount/listAccounts — cria conta, saldo inicial técnico e auditoria', async () => {
+    const repository = new InMemoryFinanceRepository();
+    const service = new PersistentFinanceService(repository, 'usr_test');
+    const created = await service.createAccount({ name: 'Nubank', kind: 'conta_corrente', initialBalanceCents: 12_345, openingBalanceDate: '2026-07-01T12:00:00.000Z' });
     assert(created.success === true, `esperava sucesso, recebeu: ${created.message}`);
 
     const accounts = await service.listAccounts();
     assert(accounts.length === 1, `esperava 1 conta, recebeu ${accounts.length}`);
     assert(accounts[0]?.name === 'Nubank', `esperava conta "Nubank", recebeu "${accounts[0]?.name}"`);
+    assert(accounts[0]?.currency === 'BRL', `esperava BRL, recebeu "${accounts[0]?.currency}"`);
+    assert((await service.getAccountBalance(accounts[0]!.id)) === 123.45, 'saldo inicial precisa vir da movimentação técnica');
+    const events = repository.getAuditEventsForTest('usr_test');
+    assert(events.some((event) => event.operation === 'account.created'), 'criação da conta deve gerar auditoria');
+    assert(events.some((event) => event.operation === 'transaction.account_opening_balance.created'), 'saldo inicial deve gerar auditoria própria');
   });
 
   await test('createAccount — rejeita nome duplicado (case-insensitive)', async () => {
-    const service = buildService();
+    const service = new PersistentFinanceService(new InMemoryFinanceRepository(), 'usr_test');
     await service.createAccount({ name: 'Nubank' });
     const result = await service.createAccount({ name: 'nubank' });
     assert(result.success === false, 'esperava falha ao criar conta com nome já existente (case-insensitive)');
   });
 
-  await test('createExpense sem conta — cria automaticamente a conta padrão "Carteira"', async () => {
-    const service = buildService();
-    await service.createExpense({ amount: 50, description: 'Café' });
+  await test('updateAccount — bloqueia troca de moeda depois da primeira movimentação', async () => {
+    const repository = new InMemoryFinanceRepository();
+    const service = new PersistentFinanceService(repository, 'usr_test');
+    const created = await service.createAccount({ name: 'Nubank', initialBalanceCents: 1 });
+    const accountId = (created.data as { id: string }).id;
+    const result = await service.updateAccount({ id: accountId, currency: 'USD' });
+    assert(result.success === false, 'a moeda deve permanecer imutável depois de uma movimentação');
+  });
+
+  await test('archiveAccount/restoreAccount — preserva histórico sem exclusão física', async () => {
+    const service = new PersistentFinanceService(new InMemoryFinanceRepository(), 'usr_test');
+    const created = await service.createAccount({ name: 'Reserva', initialBalanceCents: 5_000 });
+    const accountId = (created.data as { id: string }).id;
+    assert((await service.archiveAccount(accountId)).success === true, 'esperava conseguir arquivar a conta');
+    assert((await service.listAccounts()).length === 0, 'contas arquivadas não aparecem na lista padrão');
+    const archived = await service.listAccounts({ includeArchived: true });
+    assert(archived[0]?.status === 'arquivada', 'a conta precisa permanecer disponível como arquivada');
+    assert((await service.getAccountBalance(accountId)) === 50, 'o histórico financeiro deve continuar preservado');
+    assert((await service.restoreAccount(accountId)).success === true, 'esperava conseguir restaurar a conta');
+    assert((await service.listAccounts())[0]?.status === 'ativa', 'a conta deve voltar a ficar ativa');
+  });
+
+  await test('createExpense sem conta — exige uma conta explícita, sem criar Carteira automaticamente', async () => {
+    const service = new PersistentFinanceService(new InMemoryFinanceRepository(), 'usr_without_account');
+    const result = await service.createExpense({ amount: 50, description: 'Café' });
+    assert(result.success === false, 'esperava falha sem conta bancária selecionada');
     const accounts = await service.listAccounts();
-    assert(accounts.length === 1, `esperava 1 conta criada automaticamente, recebeu ${accounts.length}`);
-    assert(accounts[0]?.name === 'Carteira', `esperava conta padrão "Carteira", recebeu "${accounts[0]?.name}"`);
+    assert(accounts.length === 0, `não devia criar conta automaticamente, recebeu ${accounts.length}`);
   });
 
   // --- CONTROL OS — Fase 7: Categorias ------------------------------------
@@ -231,6 +264,7 @@ async function main(): Promise<void> {
 
   await test('createTransfer — move saldo entre contas sem alterar o patrimônio total', async () => {
     const service = buildService();
+    await service.createAccount({ name: 'Nubank' });
     await service.createIncome({ amount: 1000, description: 'Salário', accountName: 'Carteira' });
     const balanceBefore = await service.getBalance();
 

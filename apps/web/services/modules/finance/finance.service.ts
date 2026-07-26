@@ -19,20 +19,15 @@ import type {
   FinanceDashboard,
   FinanceSummary,
   UpdateExpenseInput,
+  UpdateFinanceAccountServiceInput,
   UpdateIncomeInput,
 } from './finance.types';
 
 /**
  * CONTROL OS — Fase 6: Todo `Prisma*Repository` guarda dados por `userId`
- * (multi-tenant, ver `schema.prisma`), mas nada no pipeline atual carrega
- * um `userId` de verdade ainda — mudança de escopo maior (autenticação),
- * fora do pedido desta fase. Uma única conta fixa resolve isso sem mexer
- * em nenhuma camada de cima.
+ * (multi-tenant, ver `schema.prisma`). Toda operação persistente precisa de
+ * um usuário autenticado; não há mais usuário padrão oculto.
  */
-const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
-
-/** "Cada transação deverá pertencer a uma conta" (Fase 7) — quando nenhuma é mencionada (nem por nome, nem por id), toda transação cai aqui. */
-const DEFAULT_ACCOUNT_NAME = 'Carteira';
 
 /**
  * Catálogo de categorias PADRÃO do sistema (CONTROL OS — Fase 7, lista
@@ -128,35 +123,44 @@ function buildInstallmentLegs(params: {
 export class PersistentFinanceService implements FinanceService {
   constructor(
     private readonly repository: FinanceRepository,
-    private readonly fallbackUserId: string = DEFAULT_USER_ID
+    private readonly explicitUserId?: string
   ) {}
 
   private get userId(): string {
-    return currentFinanceUserId() ?? this.fallbackUserId;
+    const userId = currentFinanceUserId() ?? this.explicitUserId;
+    if (!userId) throw new Error('Operação financeira requer um usuário autenticado.');
+    return userId;
   }
 
   // --- Resolução de conta (CONTROL OS — Fase 7) ------------------------------
 
   /**
-   * "Cada transação deverá pertencer a uma conta" — mas quem chama (Action,
-   * chat) quase sempre só tem um NOME em texto, não um id. Get-or-create
-   * por nome (case-insensitive); sem nome nenhum, usa a conta padrão
-   * ("Carteira") — também get-or-create, então a PRIMEIRA despesa de um
-   * usuário novo já cria a Carteira automaticamente, sem passo manual.
+   * Toda transação deve apontar para uma conta existente e ativa. Para
+   * compatibilidade, uma conta única já existente pode ser usada quando a
+   * origem ainda não informar uma conta; jamais criamos uma conta implícita.
    */
-  private async resolveAccountId(accountId?: string, accountName?: string): Promise<string> {
-    if (accountId) return accountId;
-    const name = accountName?.trim() || DEFAULT_ACCOUNT_NAME;
-    const existing = await this.repository.findAccountByName(this.userId, name);
-    if (existing) return existing.id;
-    const created = await this.repository.createAccount(this.userId, { name });
-    return created.id;
+  private async resolveAccountId(accountId?: string, accountName?: string): Promise<string | undefined> {
+    if (accountId) {
+      const account = await this.repository.findAccountById(this.userId, accountId);
+      return account?.status === 'ativa' ? account.id : undefined;
+    }
+    if (accountName?.trim()) {
+      const account = await this.repository.findAccountByName(this.userId, accountName.trim());
+      return account?.status === 'ativa' ? account.id : undefined;
+    }
+    const accounts = await this.repository.listAccounts(this.userId);
+    return accounts.length === 1 ? accounts[0]?.id : undefined;
+  }
+
+  private accountRequiredResult(): ActionResult {
+    return { success: false, message: 'Selecione uma conta bancária ativa antes de registrar a movimentação.' };
   }
 
   // --- Despesas -----------------------------------------------------------
 
   async createExpense(input: CreateExpenseInput): Promise<ActionResult> {
     const accountId = await this.resolveAccountId(input.accountId, input.accountName);
+    if (!accountId) return this.accountRequiredResult();
     const entry = await this.repository.create(this.userId, {
       type: 'despesa',
       amount: input.amount,
@@ -173,6 +177,7 @@ export class PersistentFinanceService implements FinanceService {
     if (!existing.success) return existing;
 
     const accountId = input.accountId ?? (input.accountName ? await this.resolveAccountId(undefined, input.accountName) : undefined);
+    if ((input.accountId || input.accountName) && !accountId) return this.accountRequiredResult();
     const entry = await this.repository.update(this.userId, { ...input, accountId });
     if (!entry) {
       return { success: false, message: `Nenhuma despesa encontrada com o id "${input.id}".` };
@@ -199,6 +204,7 @@ export class PersistentFinanceService implements FinanceService {
 
   async createIncome(input: CreateIncomeInput): Promise<ActionResult> {
     const accountId = await this.resolveAccountId(input.accountId, input.accountName);
+    if (!accountId) return this.accountRequiredResult();
     const entry = await this.repository.create(this.userId, {
       type: 'receita',
       amount: input.amount,
@@ -215,6 +221,7 @@ export class PersistentFinanceService implements FinanceService {
     if (!existing.success) return existing;
 
     const accountId = input.accountId ?? (input.accountName ? await this.resolveAccountId(undefined, input.accountName) : undefined);
+    if ((input.accountId || input.accountName) && !accountId) return this.accountRequiredResult();
     const entry = await this.repository.update(this.userId, { ...input, accountId });
     if (!entry) {
       return { success: false, message: `Nenhuma receita encontrada com o id "${input.id}".` };
@@ -259,6 +266,7 @@ export class PersistentFinanceService implements FinanceService {
 
     const fromAccountId = await this.resolveAccountId(undefined, input.fromAccountName);
     const toAccountId = await this.resolveAccountId(undefined, toAccountName);
+    if (!fromAccountId || !toAccountId) return this.accountRequiredResult();
     if (fromAccountId === toAccountId) {
       return { success: false, message: 'A conta de origem e a de destino não podem ser a mesma.' };
     }
@@ -306,6 +314,7 @@ export class PersistentFinanceService implements FinanceService {
     }
 
     const accountId = await this.resolveAccountId(input.accountId, input.accountName);
+    if (!accountId) return this.accountRequiredResult();
     const legs = buildInstallmentLegs({
       type,
       totalAmount: input.totalAmount,
@@ -335,6 +344,7 @@ export class PersistentFinanceService implements FinanceService {
     }
 
     const accountId = await this.resolveAccountId(input.accountId, input.accountName);
+    if (!accountId) return this.accountRequiredResult();
     const entry = await this.repository.create(this.userId, {
       type,
       amount: input.amount,
@@ -363,12 +373,73 @@ export class PersistentFinanceService implements FinanceService {
     if (existing) {
       return { success: false, message: `Já existe uma conta chamada "${existing.name}".` };
     }
-    const account = await this.repository.createAccount(this.userId, { name, kind: input.kind });
+    const currency = (input.currency ?? 'BRL').trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      return { success: false, message: 'Informe uma moeda ISO válida, por exemplo BRL.' };
+    }
+    const initialBalanceCents = input.initialBalanceCents ?? 0;
+    if (!Number.isSafeInteger(initialBalanceCents)) {
+      return { success: false, message: 'O saldo inicial deve ser informado em centavos inteiros.' };
+    }
+    const openingBalanceDate = input.openingBalanceDate ?? new Date().toISOString();
+    if (Number.isNaN(new Date(openingBalanceDate).getTime())) {
+      return { success: false, message: 'A data do saldo inicial é inválida.' };
+    }
+    const account = await this.repository.createAccount(this.userId, {
+      name,
+      kind: input.kind,
+      currency,
+      initialBalanceCents,
+      openingBalanceDate,
+      source: input.source ?? 'manual',
+    });
     return { success: true, message: `Conta "${account.name}" criada.`, data: account };
   }
 
-  async listAccounts(): Promise<FinanceAccount[]> {
-    return this.repository.listAccounts(this.userId);
+  async listAccounts(options?: { includeArchived?: boolean }): Promise<FinanceAccount[]> {
+    return this.repository.listAccounts(this.userId, options);
+  }
+
+  async updateAccount(input: UpdateFinanceAccountServiceInput): Promise<ActionResult> {
+    const existing = await this.repository.findAccountById(this.userId, input.id);
+    if (!existing) return { success: false, message: 'Conta não encontrada.' };
+
+    const name = input.name?.trim();
+    if (input.name !== undefined && !name) return { success: false, message: 'O nome da conta não pode ficar vazio.' };
+    if (name && name.toLowerCase() !== existing.name.toLowerCase()) {
+      const duplicate = await this.repository.findAccountByName(this.userId, name);
+      if (duplicate && duplicate.id !== existing.id) return { success: false, message: `Já existe uma conta chamada "${duplicate.name}".` };
+    }
+
+    const currency = input.currency?.trim().toUpperCase();
+    if (currency && !/^[A-Z]{3}$/.test(currency)) return { success: false, message: 'Informe uma moeda ISO válida, por exemplo BRL.' };
+    if (currency && currency !== existing.currency && (await this.repository.hasAccountMovements(this.userId, existing.id))) {
+      return { success: false, message: 'A moeda não pode ser alterada após a primeira movimentação.' };
+    }
+
+    const account = await this.repository.updateAccount(this.userId, {
+      id: input.id,
+      name,
+      currency,
+      source: input.source ?? 'manual',
+    });
+    return account
+      ? { success: true, message: `Conta "${account.name}" atualizada.`, data: account }
+      : { success: false, message: 'Não foi possível atualizar a conta.' };
+  }
+
+  async archiveAccount(id: string, source: 'manual' | 'nova' | 'whatsapp' | 'api' = 'manual'): Promise<ActionResult> {
+    const account = await this.repository.setAccountStatus(this.userId, { id, status: 'arquivada', source });
+    return account
+      ? { success: true, message: `Conta "${account.name}" arquivada. O histórico foi preservado.`, data: account }
+      : { success: false, message: 'Conta não encontrada.' };
+  }
+
+  async restoreAccount(id: string, source: 'manual' | 'nova' | 'whatsapp' | 'api' = 'manual'): Promise<ActionResult> {
+    const account = await this.repository.setAccountStatus(this.userId, { id, status: 'ativa', source });
+    return account
+      ? { success: true, message: `Conta "${account.name}" restaurada.`, data: account }
+      : { success: false, message: 'Conta não encontrada.' };
   }
 
   // --- Categorias -------------------------------------------------------------

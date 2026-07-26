@@ -1,4 +1,4 @@
-import { AccountKind, Prisma, TransactionType, TransferDirection } from '@prisma/client';
+import { AccountKind, AccountStatus, Prisma, TransactionOrigin, TransactionType, TransferDirection } from '@prisma/client';
 import type { Account as PrismaAccountRow, Category as PrismaCategoryRow, Transaction as PrismaTransactionRow } from '@prisma/client';
 import type {
   FinanceAccount,
@@ -18,6 +18,8 @@ import type {
   FinanceCategoryBreakdownItem,
   FinanceSummary,
   FinanceTransactionFilter,
+  SetFinanceAccountStatusInput,
+  UpdateFinanceAccountInput,
   UpdateFinanceTransactionInput,
 } from './finance-repository.types';
 
@@ -162,14 +164,78 @@ export class PrismaFinanceRepository implements FinanceRepository {
   // --- Contas (CONTROL OS — Fase 7) ------------------------------------------
 
   async createAccount(userId: string, input: CreateFinanceAccountInput): Promise<FinanceAccount> {
-    const row = await prisma.account.create({
-      data: { userId, name: input.name, kind: toPersistedAccountKind(input.kind ?? 'outro') },
+    const row = await prisma.$transaction(async (tx) => {
+      const account = await tx.account.create({
+        data: {
+          userId,
+          name: input.name,
+          kind: toPersistedAccountKind(input.kind ?? 'outro'),
+          currency: input.currency,
+        },
+      });
+
+      // O saldo de abertura não é gravado em Account. Se for diferente de
+      // zero, vira um lançamento técnico normal e participa de todo cálculo.
+      const openingTransaction = input.initialBalanceCents !== 0
+        ? await tx.transaction.create({
+          data: {
+            userId,
+            accountId: account.id,
+            type: input.initialBalanceCents > 0 ? TransactionType.INCOME : TransactionType.EXPENSE,
+            origin: TransactionOrigin.ACCOUNT_OPENING_BALANCE,
+            amount: new Prisma.Decimal(Math.abs(input.initialBalanceCents) / 100),
+            description: 'Saldo inicial da conta',
+            category: 'Saldo inicial',
+            date: new Date(input.openingBalanceDate),
+          },
+        })
+        : undefined;
+
+      await tx.financeAuditEvent.create({
+        data: {
+          userId,
+          actorUserId: userId,
+          operation: 'account.created',
+          source: input.source,
+          entityType: 'account',
+          entityId: account.id,
+          after: {
+            ...accountAuditSnapshot(account),
+            initialBalanceCents: input.initialBalanceCents,
+            openingBalanceDate: input.openingBalanceDate,
+          },
+        },
+      });
+      if (openingTransaction) {
+        await tx.financeAuditEvent.create({
+          data: {
+            userId,
+            actorUserId: userId,
+            operation: 'transaction.account_opening_balance.created',
+            source: input.source,
+            entityType: 'transaction',
+            entityId: openingTransaction.id,
+            after: {
+              id: openingTransaction.id,
+              accountId: account.id,
+              type: openingTransaction.type,
+              origin: openingTransaction.origin,
+              amount: openingTransaction.amount.toNumber(),
+              date: openingTransaction.date.toISOString(),
+            },
+          },
+        });
+      }
+      return account;
     });
     return toFinanceAccount(row);
   }
 
-  async listAccounts(userId: string): Promise<FinanceAccount[]> {
-    const rows = await prisma.account.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } });
+  async listAccounts(userId: string, options?: { includeArchived?: boolean }): Promise<FinanceAccount[]> {
+    const rows = await prisma.account.findMany({
+      where: { userId, ...(options?.includeArchived ? {} : { status: AccountStatus.ACTIVE }) },
+      orderBy: { createdAt: 'asc' },
+    });
     return rows.map(toFinanceAccount);
   }
 
@@ -182,6 +248,58 @@ export class PrismaFinanceRepository implements FinanceRepository {
     // Postgres `mode: 'insensitive'` — "Nubank" e "nubank" resolvem pra mesma conta, mesmo comportamento de `InMemoryFinanceRepository` (comparação com `.toLowerCase()`).
     const row = await prisma.account.findFirst({ where: { userId, name: { equals: name, mode: 'insensitive' } } });
     return row ? toFinanceAccount(row) : undefined;
+  }
+
+  async updateAccount(userId: string, input: UpdateFinanceAccountInput): Promise<FinanceAccount | undefined> {
+    return prisma.$transaction(async (tx) => {
+      const before = await tx.account.findFirst({ where: { id: input.id, userId } });
+      if (!before) return undefined;
+      const after = await tx.account.update({
+        where: { id: input.id },
+        data: { name: input.name, currency: input.currency },
+      });
+      await tx.financeAuditEvent.create({
+        data: {
+          userId,
+          actorUserId: userId,
+          operation: 'account.updated',
+          source: input.source,
+          entityType: 'account',
+          entityId: after.id,
+          before: accountAuditSnapshot(before),
+          after: accountAuditSnapshot(after),
+        },
+      });
+      return toFinanceAccount(after);
+    });
+  }
+
+  async setAccountStatus(userId: string, input: SetFinanceAccountStatusInput): Promise<FinanceAccount | undefined> {
+    return prisma.$transaction(async (tx) => {
+      const before = await tx.account.findFirst({ where: { id: input.id, userId } });
+      if (!before) return undefined;
+      const after = await tx.account.update({
+        where: { id: input.id },
+        data: { status: input.status === 'arquivada' ? AccountStatus.ARCHIVED : AccountStatus.ACTIVE, archivedAt: input.status === 'arquivada' ? new Date() : null },
+      });
+      await tx.financeAuditEvent.create({
+        data: {
+          userId,
+          actorUserId: userId,
+          operation: input.status === 'arquivada' ? 'account.archived' : 'account.restored',
+          source: input.source,
+          entityType: 'account',
+          entityId: after.id,
+          before: accountAuditSnapshot(before),
+          after: accountAuditSnapshot(after),
+        },
+      });
+      return toFinanceAccount(after);
+    });
+  }
+
+  async hasAccountMovements(userId: string, accountId: string): Promise<boolean> {
+    return (await prisma.transaction.count({ where: { userId, accountId } })) > 0;
   }
 
   /**
@@ -206,7 +324,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
    */
   async listAccountBalances(userId: string): Promise<FinanceAccountBalance[]> {
     const [accounts, rows] = await Promise.all([
-      prisma.account.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } }),
+      prisma.account.findMany({ where: { userId, status: AccountStatus.ACTIVE }, orderBy: { createdAt: 'asc' } }),
       prisma.transaction.groupBy({
         by: ['accountId', 'type', 'transferDirection'],
         where: { userId },
@@ -291,6 +409,17 @@ function fromPersistedAccountKind(kind: AccountKind): FinanceAccountKind {
   }
 }
 
+function accountAuditSnapshot(account: PrismaAccountRow): Prisma.InputJsonObject {
+  return {
+    id: account.id,
+    name: account.name,
+    kind: String(account.kind),
+    currency: account.currency,
+    status: String(account.status),
+    archivedAt: account.archivedAt?.toISOString() ?? null,
+  };
+}
+
 /** `type`/`recurrenceFrequency` já chegam validados pelo `FinanceService` — este repositório só traduz formato, nunca decide regra de negócio (ex.: qual conta usar quando nenhuma foi informada). */
 function toCreateData(userId: string, input: CreateFinanceTransactionInput): Prisma.TransactionUncheckedCreateInput {
   return {
@@ -372,7 +501,11 @@ function toFinanceAccount(row: PrismaAccountRow): FinanceAccount {
     id: row.id,
     name: row.name,
     kind: fromPersistedAccountKind(row.kind),
+    currency: row.currency,
+    status: row.status === AccountStatus.ARCHIVED ? 'arquivada' : 'ativa',
     createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    archivedAt: row.archivedAt?.toISOString(),
   };
 }
 

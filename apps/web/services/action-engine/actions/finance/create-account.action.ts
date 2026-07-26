@@ -17,7 +17,7 @@ function toAccountKind(value: string | undefined): FinanceAccountKind | undefine
  * `account.create` — CONTROL OS Fase 7 (Financeiro completo). "Criar
  * suporte para múltiplas contas... Carteira, Conta Corrente, Poupança,
  * Nubank, Inter, Caixa, Cartão de Crédito." Na prática, a maioria das
- * contas nasce implicitamente (get-or-create por nome, ver
+ * contas nunca nascem implicitamente (ver
  * `FinanceService.resolveAccountId`) na primeira despesa/receita/transferência
  * que a menciona — esta Action existe para o caso explícito ("cria uma
  * conta chamada Inter").

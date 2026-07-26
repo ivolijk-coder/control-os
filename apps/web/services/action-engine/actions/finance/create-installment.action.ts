@@ -27,7 +27,7 @@ export class CreateInstallmentAction implements ActionHandler {
       { name: 'installments', type: 'number', required: true, description: 'Número de parcelas (ex.: 12 para "em 12x").' },
       { name: 'description', type: 'string', required: false, description: 'Descrição curta do parcelamento (ex.: "Notebook").' },
       { name: 'category', type: 'string', required: false, description: 'Categoria do parcelamento, se mencionada.' },
-      { name: 'accountName', type: 'string', required: false, description: 'Conta/cartão usado, se mencionado. Se ausente, usa a conta padrão do usuário.' },
+      { name: 'accountName', type: 'string', required: false, description: 'Conta usada, se mencionada. Se ausente, só pode ser inferida quando o usuário tem uma única conta ativa.' },
     ],
     examples: [
       'Parcela esse notebook em 12x -> {"kind":"installment.create","confidence":0.9,"parameters":{"totalAmount":3600,"installments":12,"description":"Notebook"}}',
