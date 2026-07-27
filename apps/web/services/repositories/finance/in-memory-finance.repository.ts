@@ -13,6 +13,7 @@ import type {
   UpdateFinanceAccountInput,
   UpdateFinanceCategoryInput,
   UpdateFinanceTransactionInput,
+  TransactionAuditCommand,
 } from './finance-repository.types';
 
 /**
@@ -36,6 +37,7 @@ let nextCategoryId = 1;
 function matchesFilter(entry: FinanceEntry, filter: FinanceTransactionFilter | undefined): boolean {
   if (!filter) return true;
   if (filter.type && entry.type !== filter.type) return false;
+  if (filter.status && (Array.isArray(filter.status) ? !filter.status.includes(entry.status ?? 'confirmada') : entry.status !== filter.status)) return false;
   if (filter.from && entry.date < filter.from) return false;
   if (filter.to && entry.date > filter.to) return false;
   if (filter.accountId && entry.accountId !== filter.accountId) return false;
@@ -51,6 +53,7 @@ function matchesFilter(entry: FinanceEntry, filter: FinanceTransactionFilter | u
  * de significar algo sobre o comportamento real em produção.
  */
 function signedAmount(entry: FinanceEntry): number {
+  if (entry.status && entry.status !== 'confirmada') return 0;
   if (entry.type === 'receita') return entry.amount;
   if (entry.type === 'despesa') return -entry.amount;
   return entry.transferDirection === 'entrada' ? entry.amount : -entry.amount;
@@ -147,6 +150,16 @@ export class InMemoryFinanceRepository implements FinanceRepository {
         input.recurrenceFrequency === 'mensal' || input.recurrenceFrequency === 'semanal' || input.recurrenceFrequency === 'anual'
           ? input.recurrenceFrequency
           : undefined,
+      status: input.status ?? 'confirmada',
+      source: input.source ?? 'manual',
+      competenceDate: input.competenceDate ?? input.date ?? new Date().toISOString(),
+      dueDate: input.dueDate,
+      paidAt: input.paidAt ?? ((input.status ?? 'confirmada') === 'confirmada' ? input.date ?? new Date().toISOString() : undefined),
+      confirmedAt: input.confirmedAt ?? ((input.status ?? 'confirmada') === 'confirmada' ? new Date().toISOString() : undefined),
+      canceledAt: input.canceledAt,
+      idempotencyKey: input.idempotencyKey,
+      correlationId: input.correlationId,
+      reversalOfId: input.reversalOfId,
     };
     this.entriesFor(userId).push(entry);
     return entry;
@@ -160,6 +173,49 @@ export class InMemoryFinanceRepository implements FinanceRepository {
     return created;
   }
 
+  async createWithAudit(userId: string, input: CreateFinanceTransactionInput, audit: TransactionAuditCommand): Promise<FinanceEntry> {
+    const entry = await this.create(userId, input);
+    this.audit(userId, { operation: audit.operation, source: audit.source, entityType: 'transaction', entityId: entry.id, after: { ...entry }, correlationId: audit.correlationId });
+    return entry;
+  }
+
+  async createManyWithAudit(userId: string, inputs: CreateFinanceTransactionInput[], audit: TransactionAuditCommand): Promise<FinanceEntry[]> {
+    const existing = [...this.entriesFor(userId)];
+    try {
+      const entries = await this.createMany(userId, inputs);
+      for (const entry of entries) this.audit(userId, { operation: audit.operation, source: audit.source, entityType: 'transaction', entityId: entry.id, after: { ...entry }, correlationId: audit.correlationId });
+      return entries;
+    } catch (error) { this.entriesByUser.set(userId, existing); throw error; }
+  }
+
+  async updateWithAudit(userId: string, input: UpdateFinanceTransactionInput, audit: TransactionAuditCommand): Promise<FinanceEntry | undefined> {
+    const before = await this.findById(userId, input.id);
+    const entry = await this.update(userId, input);
+    if (entry) this.audit(userId, { operation: audit.operation, source: audit.source, entityType: 'transaction', entityId: entry.id, before: before ? { ...before } : null, after: { ...entry }, correlationId: audit.correlationId });
+    return entry;
+  }
+
+  async transitionWithAudit(userId: string, id: string, status: import('@control-os/types').FinanceTransactionStatus, audit: TransactionAuditCommand): Promise<FinanceEntry | undefined> {
+    const entry = await this.findById(userId, id); if (!entry) return undefined;
+    const before = { ...entry }; entry.status = status;
+    if (status === 'confirmada') { entry.confirmedAt = new Date().toISOString(); entry.paidAt ??= entry.confirmedAt; }
+    if (status === 'cancelada') entry.canceledAt = new Date().toISOString();
+    this.audit(userId, { operation: audit.operation, source: audit.source, entityType: 'transaction', entityId: id, before, after: { ...entry }, correlationId: audit.correlationId });
+    return entry;
+  }
+
+  async reverseWithAudit(userId: string, originals: FinanceEntry[], reversals: CreateFinanceTransactionInput[], audit: TransactionAuditCommand): Promise<FinanceEntry[] | undefined> {
+    const all = this.entriesFor(userId); const snapshot = all.map((entry) => ({ ...entry }));
+    if (originals.some((original) => !all.some((entry) => entry.id === original.id))) return undefined;
+    try {
+      for (const original of originals) await this.transitionWithAudit(userId, original.id, 'estornada', audit);
+      const created = await this.createManyWithAudit(userId, reversals, { ...audit, operation: 'transaction.reversal.created' });
+      return [...originals.map((original) => all.find((entry) => entry.id === original.id)!).filter(Boolean), ...created];
+    } catch (error) { this.entriesByUser.set(userId, snapshot); throw error; }
+  }
+
+  async findByIdempotencyKey(userId: string, key: string): Promise<FinanceEntry | undefined> { return this.entriesFor(userId).find((entry) => entry.idempotencyKey === key); }
+
   async update(userId: string, input: UpdateFinanceTransactionInput): Promise<FinanceEntry | undefined> {
     const entry = this.entriesFor(userId).find((candidate) => candidate.id === input.id);
     if (!entry) return undefined;
@@ -169,6 +225,8 @@ export class InMemoryFinanceRepository implements FinanceRepository {
     if (input.categoryId !== undefined) entry.categoryId = input.categoryId;
     if (input.date !== undefined) entry.date = input.date;
     if (input.accountId !== undefined) entry.accountId = input.accountId;
+    if (input.competenceDate !== undefined) entry.competenceDate = input.competenceDate;
+    if (input.dueDate !== undefined) entry.dueDate = input.dueDate;
     return entry;
   }
 
@@ -194,8 +252,9 @@ export class InMemoryFinanceRepository implements FinanceRepository {
 
   async getSummary(userId: string, filter?: FinanceTransactionFilter): Promise<FinanceSummary> {
     const entries = await this.list(userId, filter);
-    const totalIncome = entries.filter((entry) => entry.type === 'receita').reduce((sum, entry) => sum + entry.amount, 0);
-    const totalExpenses = entries.filter((entry) => entry.type === 'despesa').reduce((sum, entry) => sum + entry.amount, 0);
+    const realized = entries.filter((entry) => !entry.status || entry.status === 'confirmada');
+    const totalIncome = realized.filter((entry) => entry.type === 'receita').reduce((sum, entry) => sum + entry.amount, 0);
+    const totalExpenses = realized.filter((entry) => entry.type === 'despesa').reduce((sum, entry) => sum + entry.amount, 0);
     return { totalIncome, totalExpenses, balance: totalIncome - totalExpenses };
   }
 
@@ -204,7 +263,7 @@ export class InMemoryFinanceRepository implements FinanceRepository {
     type: 'despesa' | 'receita',
     filter?: FinanceTransactionFilter
   ): Promise<FinanceCategoryBreakdownItem[]> {
-    const entries = (await this.list(userId, filter)).filter((entry) => entry.type === type);
+    const entries = (await this.list(userId, filter)).filter((entry) => entry.type === type && (!entry.status || entry.status === 'confirmada'));
     const totals = new Map<string, number>();
     for (const entry of entries) {
       totals.set(entry.category, (totals.get(entry.category) ?? 0) + entry.amount);

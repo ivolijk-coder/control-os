@@ -443,12 +443,12 @@ export class ConversationService {
     sessionId: string,
     persona: NovaPersona
   ): Promise<NovaTurnResult> {
-    const perItemResults = items.map((item) => {
+    const perItemResults = await Promise.all(items.map(async (item) => {
       const toolStartedAt = Date.now();
-      const results = actionExecutor.execute(ctx, item.intent, item.action);
+      const results = await actionExecutor.execute(ctx, item.intent, item.action);
       logToolExecution({ tool: item.intent.kind, elapsedMs: Date.now() - toolStartedAt, ok: results.every((result) => result.ok) ? 1 : 0 });
       return { callId: item.callId, intent: item.intent, results };
-    });
+    }));
 
     // Snapshot único, calculado depois de todas as escritas do turno — cada
     // evento publicado abaixo carrega o mesmo estado real e já atualizado,

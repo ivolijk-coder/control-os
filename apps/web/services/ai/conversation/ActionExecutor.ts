@@ -15,8 +15,8 @@ import type { Action } from '../actions';
  * lógica nem quebrar funcionalidade existente.
  */
 export class ActionExecutor {
-  execute(ctx: NovaContext, intent: NovaIntent, action: Action | undefined): NovaActionResult[] {
-    if (action) return action.execute(ctx);
+  async execute(ctx: NovaContext, intent: NovaIntent, action: Action | undefined): Promise<NovaActionResult[]> {
+    if (action) return await action.execute(ctx);
     return runIntent(ctx, intent);
   }
 }

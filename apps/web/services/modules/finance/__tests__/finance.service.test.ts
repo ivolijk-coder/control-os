@@ -62,6 +62,12 @@ function buildService(): PersistentFinanceService {
   return new PersistentFinanceService(repository, 'usr_test');
 }
 
+async function onlyAccountId(service: PersistentFinanceService): Promise<string> {
+  const [account] = await service.listAccounts();
+  if (!account) throw new Error('o cenário de teste exige uma conta preparada');
+  return account.id;
+}
+
 async function main(): Promise<void> {
   await test('createExpense — registra despesa e devolve ActionResult de sucesso', async () => {
     const service = buildService();
@@ -72,7 +78,10 @@ async function main(): Promise<void> {
 
   await test('updateExpense — edita uma despesa existente', async () => {
     const service = buildService();
-    const created = await service.createExpense({ amount: 100, description: 'Padaria', category: 'Mercado' });
+    const created = await service.createTransaction({
+      type: 'despesa', amount: 100, description: 'Padaria', categoryId: 'default:Mercado',
+      accountId: await onlyAccountId(service), status: 'pendente',
+    });
     const id = (created.data as { id: string }).id;
     const updated = await service.updateExpense({ id, amount: 120, description: 'Padaria (ajustado)' });
     assert(updated.success === true, `esperava sucesso, recebeu: ${updated.message}`);
@@ -89,14 +98,17 @@ async function main(): Promise<void> {
     assert(result.success === false, 'esperava falha ao tentar editar uma receita como se fosse despesa');
   });
 
-  await test('deleteExpense — remove uma despesa existente', async () => {
+  await test('deleteExpense — cancela uma despesa pendente sem apagar histórico', async () => {
     const service = buildService();
-    const created = await service.createExpense({ amount: 50, description: 'Farmácia', category: 'Saúde' });
+    const created = await service.createTransaction({
+      type: 'despesa', amount: 50, description: 'Farmácia', categoryId: 'default:Saúde',
+      accountId: await onlyAccountId(service), status: 'pendente',
+    });
     const id = (created.data as { id: string }).id;
     const deleted = await service.deleteExpense({ id });
     assert(deleted.success === true, `esperava sucesso, recebeu: ${deleted.message}`);
     const remaining = await service.listExpenses();
-    assert(remaining.length === 0, `esperava lista vazia após excluir, recebeu ${remaining.length} item(ns)`);
+    assert(remaining.length === 1 && remaining[0]?.status === 'cancelada', 'o cancelamento deve preservar a transação no histórico');
   });
 
   await test('deleteExpense — devolve erro claro para id inexistente', async () => {
@@ -141,8 +153,8 @@ async function main(): Promise<void> {
     assert((await service.getBalance()) === 2850, `esperava saldo 2850, recebeu ${await service.getBalance()}`);
 
     const expenseId = (expense.data as { id: string }).id;
-    await service.deleteExpense({ id: expenseId });
-    assert((await service.getBalance()) === 3200, `esperava saldo de volta a 3200 após excluir a despesa, recebeu ${await service.getBalance()}`);
+    await service.reverseTransaction(expenseId);
+    assert((await service.getBalance()) === 3200, `esperava saldo de volta a 3200 após estornar a despesa, recebeu ${await service.getBalance()}`);
   });
 
   await test('getSummary — soma receitas, despesas e saldo corretamente', async () => {
@@ -329,6 +341,85 @@ async function main(): Promise<void> {
 
     const sameAccount = await service.createTransfer({ amount: 100, toAccountName: 'Carteira', fromAccountName: 'Carteira' });
     assert(sameAccount.success === false, 'esperava falha quando origem e destino são a mesma conta');
+  });
+
+  // --- CONTROL FINANCE — Sprint 2.1: núcleo de transações -----------------
+
+  await test('transações — idempotência devolve o primeiro lançamento sem duplicar', async () => {
+    const service = buildService();
+    const input = {
+      type: 'despesa' as const, amount: 72.5, description: 'Almoço', categoryId: 'default:Alimentação',
+      accountId: await onlyAccountId(service), idempotencyKey: 'test-idempotency-expense-01', status: 'pendente' as const,
+    };
+    const first = await service.createTransaction(input);
+    const repeated = await service.createTransaction(input);
+    assert(first.success && repeated.success, 'as duas chamadas precisam retornar sucesso idempotente');
+    assert((first.data as { id: string }).id === (repeated.data as { id: string }).id, 'o retry precisa retornar a mesma transação');
+    assert((await service.listTransactions()).length === 1, 'a mesma chave não pode criar duas transações');
+  });
+
+  await test('transações — pendente não impacta realizado; confirmação passa a impactar', async () => {
+    const service = buildService();
+    const created = await service.createTransaction({
+      type: 'receita', amount: 500, description: 'Venda prevista', categoryId: 'default:Freelance',
+      accountId: await onlyAccountId(service), status: 'pendente',
+    });
+    const id = (created.data as { id: string }).id;
+    assert((await service.getBalance()) === 0, 'uma transação pendente não pode alterar o saldo realizado');
+    assert((await service.confirmTransaction(id)).success, 'a confirmação da pendência deve funcionar');
+    assert((await service.getBalance()) === 500, 'a transação confirmada deve alterar o saldo realizado');
+    assert((await service.updateTransaction({ id, amount: 600 })).success === false, 'transação confirmada não pode ser editada');
+    assert((await service.cancelTransaction(id)).success === false, 'transação confirmada não pode ser cancelada');
+  });
+
+  await test('transações — categoria arquivada preserva histórico, mas bloqueia lançamento novo', async () => {
+    const repository = new InMemoryFinanceRepository();
+    const account = repository.seedAccountForTest('usr_archived_category');
+    const service = new PersistentFinanceService(repository, 'usr_archived_category');
+    const category = await service.createCategory({ name: 'Assinaturas', kind: 'despesa' });
+    const categoryId = (category.data as { id: string }).id;
+    const historic = await service.createTransaction({ type: 'despesa', amount: 50, description: 'Ferramenta', categoryId, accountId: account.id });
+    assert(historic.success, 'a categoria ativa deve aceitar lançamento');
+    await service.archiveCategory(categoryId);
+    const blocked = await service.createTransaction({ type: 'despesa', amount: 50, description: 'Novo lançamento', categoryId, accountId: account.id });
+    assert(blocked.success === false, 'uma categoria arquivada não pode ser usada em novo lançamento');
+    assert((await service.listTransactions()).some((entry) => entry.categoryId === categoryId), 'o lançamento anterior precisa manter a referência histórica');
+  });
+
+  await test('transações — isolamento bloqueia alteração de outro usuário', async () => {
+    const repository = new InMemoryFinanceRepository();
+    const ownerAccount = repository.seedAccountForTest('usr_owner_transaction');
+    repository.seedAccountForTest('usr_other_transaction');
+    const owner = new PersistentFinanceService(repository, 'usr_owner_transaction');
+    const other = new PersistentFinanceService(repository, 'usr_other_transaction');
+    const created = await owner.createTransaction({ type: 'despesa', amount: 10, description: 'Privada', categoryId: 'default:Mercado', accountId: ownerAccount.id, status: 'pendente' });
+    const id = (created.data as { id: string }).id;
+    assert((await other.updateTransaction({ id, amount: 99 })).success === false, 'outro usuário não pode editar a transação');
+    assert((await other.cancelTransaction(id)).success === false, 'outro usuário não pode cancelar a transação');
+  });
+
+  await test('transações — estorno é único, preserva original e remove efeito do saldo', async () => {
+    const repository = new InMemoryFinanceRepository();
+    const account = repository.seedAccountForTest('usr_reversal');
+    const service = new PersistentFinanceService(repository, 'usr_reversal');
+    const created = await service.createTransaction({ type: 'despesa', amount: 100, description: 'Compra errada', categoryId: 'default:Mercado', accountId: account.id });
+    const id = (created.data as { id: string }).id;
+    assert((await service.getBalance()) === -100, 'a despesa confirmada deve impactar o saldo');
+    assert((await service.reverseTransaction(id)).success, 'o estorno da transação confirmada deve funcionar');
+    assert((await service.getBalance()) === 0, 'o estorno deve retirar o efeito da transação original do saldo');
+    assert((await service.reverseTransaction(id)).success === false, 'um lançamento já estornado não pode ser estornado novamente');
+    const original = (await service.listTransactions()).find((entry) => entry.id === id);
+    assert(original?.status === 'estornada', 'o lançamento original precisa permanecer auditável como estornado');
+    assert(repository.getAuditEventsForTest('usr_reversal').some((event) => event.operation === 'transaction.reversed'), 'o estorno deve produzir evento de auditoria');
+  });
+
+  await test('transações — transferência inválida não deixa pernas parciais', async () => {
+    const repository = new InMemoryFinanceRepository();
+    const from = repository.seedAccountForTest('usr_atomic_transfer', 'Origem');
+    const service = new PersistentFinanceService(repository, 'usr_atomic_transfer');
+    const result = await service.createTransaction({ type: 'transferencia', amount: 90, fromAccountId: from.id, toAccountId: 'conta_inexistente' });
+    assert(result.success === false, 'a transferência para conta inválida precisa falhar');
+    assert((await service.listTransactions()).length === 0, 'falha de validação não pode criar perna parcial de transferência');
   });
 
   // --- CONTROL OS — Fase 7: Parcelamentos ----------------------------------

@@ -1,4 +1,4 @@
-import type { FinanceAccountKind, FinanceAccountStatus, FinanceEntryType, FinanceTransferDirection } from '@control-os/types';
+import type { FinanceAccountKind, FinanceAccountStatus, FinanceEntryType, FinanceTransactionSource, FinanceTransactionStatus, FinanceTransferDirection } from '@control-os/types';
 
 /**
  * Tipos do Finance Repository (CONTROL OS — Fase 6: Persistência real;
@@ -18,6 +18,17 @@ export interface FinanceTransactionFilter {
   to?: string;
   /** CONTROL OS — Fase 7: restringe a uma única conta (ex.: "saldo da Carteira"). */
   accountId?: string;
+  status?: FinanceTransactionStatus;
+  source?: FinanceTransactionSource;
+  competenceDate?: string;
+  dueDate?: string;
+  paidAt?: string;
+  confirmedAt?: string;
+  canceledAt?: string;
+  idempotencyKey?: string;
+  idempotencyFingerprint?: string;
+  correlationId?: string;
+  reversalOfId?: string;
 }
 
 export interface CreateFinanceTransactionInput {
@@ -29,6 +40,20 @@ export interface CreateFinanceTransactionInput {
   date?: string;
   /** Cada transação pertence a uma conta resolvida pelo `FinanceService`; o Repository nunca resolve nome→id sozinho. */
   accountId?: string;
+  competenceDate?: string;
+  dueDate?: string;
+  paidAt?: string;
+  confirmedAt?: string;
+  canceledAt?: string;
+  status?: FinanceTransactionStatus;
+  source?: FinanceTransactionSource;
+  /** Chave estável fornecida pelo chamador para tornar reenvios idempotentes. */
+  idempotencyKey?: string;
+  idempotencyFingerprint?: string;
+  /** Agrupa as duas pernas de uma transferência e seus estornos. */
+  correlationId?: string;
+  /** Referência ao lançamento preservado que esta movimentação estorna. */
+  reversalOfId?: string;
   /** Só preenchido em transações que são uma perna de transferência (`type === 'transferencia'`). */
   transferGroupId?: string;
   transferDirection?: FinanceTransferDirection;
@@ -48,6 +73,14 @@ export interface UpdateFinanceTransactionInput {
   categoryId?: string;
   date?: string;
   accountId?: string;
+  competenceDate?: string;
+  dueDate?: string;
+}
+
+export interface TransactionAuditCommand {
+  operation: string;
+  source: FinanceAuditSource;
+  correlationId?: string;
 }
 
 /** "Resumo financeiro"/"saldo atual" — uma forma só, reaproveitada pelos dois: saldo é `getSummary` sem filtro; resumo do mês é `getSummary` com `{from, to}` do mês. Soma só `receita`/`despesa` — `transferencia` nunca entra aqui (ver doc de `TransactionType.TRANSFER`, `schema.prisma`), "transferência não altera patrimônio total" sai de graça. */

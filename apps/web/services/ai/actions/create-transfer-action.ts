@@ -24,18 +24,19 @@ export interface CreateTransferInput {
 export class CreateTransferAction implements Action {
   constructor(private readonly input: CreateTransferInput) {}
 
-  execute(_ctx: NovaContext): NovaActionResult[] {
-    postFinanceAction('transfer.create', {
+  async execute(_ctx: NovaContext): Promise<NovaActionResult[]> {
+    const result = await postFinanceAction('transfer.create', {
       amount: this.input.amount,
       toAccountName: this.input.toAccountName,
       fromAccountName: this.input.fromAccountName,
+      idempotencyKey: globalThis.crypto?.randomUUID?.() ?? `nova-transfer-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     });
 
     return [
       {
         action: { kind: 'criar_transferencia', label: 'Transferir entre contas' },
-        ok: true,
-        detail: `R$ ${this.input.amount.toFixed(2)} para ${this.input.toAccountName}`,
+        ok: result.success,
+        detail: result.message,
       },
     ];
   }

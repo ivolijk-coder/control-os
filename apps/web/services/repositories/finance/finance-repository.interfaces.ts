@@ -12,6 +12,7 @@ import type {
   UpdateFinanceTransactionInput,
   UpdateFinanceCategoryInput,
   SetFinanceCategoryStatusInput,
+  TransactionAuditCommand,
 } from './finance-repository.types';
 
 /**
@@ -46,6 +47,13 @@ export interface FinanceRepository {
    * atômico, single-threaded).
    */
   createMany(userId: string, inputs: CreateFinanceTransactionInput[]): Promise<FinanceEntry[]>;
+  /** Primitivas atômicas usadas exclusivamente pelo núcleo de transações. */
+  createWithAudit(userId: string, input: CreateFinanceTransactionInput, audit: TransactionAuditCommand): Promise<FinanceEntry>;
+  createManyWithAudit(userId: string, inputs: CreateFinanceTransactionInput[], audit: TransactionAuditCommand): Promise<FinanceEntry[]>;
+  updateWithAudit(userId: string, input: UpdateFinanceTransactionInput, audit: TransactionAuditCommand): Promise<FinanceEntry | undefined>;
+  transitionWithAudit(userId: string, id: string, status: import('@control-os/types').FinanceTransactionStatus, audit: TransactionAuditCommand): Promise<FinanceEntry | undefined>;
+  reverseWithAudit(userId: string, originals: FinanceEntry[], reversals: CreateFinanceTransactionInput[], audit: TransactionAuditCommand): Promise<FinanceEntry[] | undefined>;
+  findByIdempotencyKey(userId: string, key: string): Promise<FinanceEntry | undefined>;
   update(userId: string, input: UpdateFinanceTransactionInput): Promise<FinanceEntry | undefined>;
   delete(userId: string, id: string): Promise<FinanceEntry | undefined>;
   /**

@@ -21,6 +21,8 @@ import type {
   UpdateExpenseInput,
   UpdateFinanceAccountServiceInput,
   UpdateIncomeInput,
+  CreateTransactionServiceInput,
+  UpdateTransactionServiceInput,
 } from './finance.types';
 
 /**
@@ -148,6 +150,18 @@ export class PersistentFinanceService implements FinanceService {
     if (input.categoryId) {
       const found = await this.repository.findCategoryById(this.userId, input.categoryId);
       if (found?.status === 'ativa' && found.kind === kind) return { id: found.id, name: found.name };
+      // Categorias padrão começam como IDs virtuais. Ao serem escolhidas
+      // para um lançamento, tornam-se uma categoria real do proprietário.
+      if (input.categoryId.startsWith('default:')) {
+        const name = input.categoryId.slice('default:'.length);
+        const definition = DEFAULT_FINANCE_CATEGORIES.find(([candidate, candidateKind]) => candidate === name && candidateKind === kind);
+        if (definition) {
+          const category = await this.repository.createCategory(this.userId, {
+            name: definition[0], kind, icon: definition[2], color: definition[3],
+          });
+          return { id: category.id, name: category.name };
+        }
+      }
       return undefined;
     }
     const name = input.category?.trim() || 'Outros';
@@ -160,6 +174,118 @@ export class PersistentFinanceService implements FinanceService {
     return { id: category.id, name: category.name };
   }
 
+  // --- Núcleo de transações (Sprint 2.1) -----------------------------------
+
+  async listTransactions(): Promise<FinanceEntry[]> { return this.repository.list(this.userId); }
+
+  async createTransaction(input: CreateTransactionServiceInput): Promise<ActionResult> {
+    if (!(input.amount > 0)) return { success: false, message: 'O valor precisa ser maior que zero.' };
+    const source = input.source ?? 'manual';
+    const status = input.status ?? 'confirmada';
+    if (status !== 'pendente' && status !== 'confirmada') return { success: false, message: 'Uma transação nova só pode nascer pendente ou confirmada.' };
+    if (status === 'pendente' && input.paidAt) return { success: false, message: 'Uma transação pendente não pode possuir data de pagamento.' };
+    if (input.idempotencyKey) {
+      const previous = await this.repository.findByIdempotencyKey(this.userId, input.idempotencyKey);
+      if (previous) return { success: true, message: 'Esta operação já havia sido processada.', data: previous };
+    }
+    const competenceDate = input.competenceDate ?? new Date().toISOString();
+    if (Number.isNaN(new Date(competenceDate).getTime()) || (input.dueDate && Number.isNaN(new Date(input.dueDate).getTime()))) return { success: false, message: 'A data informada é inválida.' };
+    const correlationId = randomUUID();
+
+    if (input.type === 'transferencia') {
+      if (!input.fromAccountId || !input.toAccountId) return this.accountRequiredResult();
+      if (input.fromAccountId === input.toAccountId) return { success: false, message: 'A conta de origem e a de destino não podem ser a mesma.' };
+      const [from, to] = await Promise.all([this.resolveAccountId(input.fromAccountId), this.resolveAccountId(input.toAccountId)]);
+      if (!from || !to) return this.accountRequiredResult();
+      const group = randomUUID();
+      let entries: FinanceEntry[];
+      try {
+        entries = await this.repository.createManyWithAudit(this.userId, [
+          { type: 'transferencia', amount: input.amount, description: input.description, accountId: from, date: competenceDate, competenceDate, dueDate: input.dueDate, status, source, transferGroupId: group, transferDirection: 'saida', correlationId, idempotencyKey: input.idempotencyKey },
+          { type: 'transferencia', amount: input.amount, description: input.description, accountId: to, date: competenceDate, competenceDate, dueDate: input.dueDate, status, source, transferGroupId: group, transferDirection: 'entrada', correlationId },
+        ], { operation: 'transaction.transfer.created', source, correlationId });
+      } catch (error) {
+        const previous = input.idempotencyKey ? await this.repository.findByIdempotencyKey(this.userId, input.idempotencyKey) : undefined;
+        if (previous) return { success: true, message: 'Esta operação já havia sido processada.', data: previous };
+        throw error;
+      }
+      return { success: true, message: 'Transferência registrada.', data: { out: entries[0], in: entries[1] } };
+    }
+
+    if (!input.accountId) return this.accountRequiredResult();
+    const accountId = await this.resolveAccountId(input.accountId);
+    if (!accountId) return this.accountRequiredResult();
+    if (!input.categoryId) return { success: false, message: 'Selecione uma categoria ativa para a transação.' };
+    const category = await this.resolveCategory({ categoryId: input.categoryId }, input.type);
+    if (!category) return { success: false, message: 'Selecione uma categoria ativa compatível com a transação.' };
+    let entry: FinanceEntry;
+    try {
+      entry = await this.repository.createWithAudit(this.userId, {
+        type: input.type, amount: input.amount, description: input.description, category: category.name, categoryId: category.id, accountId,
+        date: competenceDate, competenceDate, dueDate: input.dueDate, paidAt: input.paidAt, status, source, idempotencyKey: input.idempotencyKey, correlationId,
+      }, { operation: 'transaction.created', source, correlationId });
+    } catch (error) {
+      const previous = input.idempotencyKey ? await this.repository.findByIdempotencyKey(this.userId, input.idempotencyKey) : undefined;
+      if (previous) return { success: true, message: 'Esta operação já havia sido processada.', data: previous };
+      throw error;
+    }
+    return { success: true, message: `${input.type === 'receita' ? 'Receita' : 'Despesa'} registrada.`, data: entry };
+  }
+
+  async updateTransaction(input: UpdateTransactionServiceInput): Promise<ActionResult> {
+    const existing = await this.repository.findById(this.userId, input.id);
+    if (!existing) return { success: false, message: 'Transação não encontrada.' };
+    if (existing.status !== 'pendente') return { success: false, message: 'Somente transações pendentes podem ser editadas.' };
+    if (existing.type === 'transferencia') return { success: false, message: 'Edite ou reverta uma transferência pelo fluxo próprio.' };
+    if (input.amount !== undefined && !(input.amount > 0)) return { success: false, message: 'O valor precisa ser maior que zero.' };
+    const accountId = input.accountId ? await this.resolveAccountId(input.accountId) : undefined;
+    if (input.accountId && !accountId) return this.accountRequiredResult();
+    let category: { id: string; name: string } | undefined;
+    if (input.categoryId) { category = await this.resolveCategory({ categoryId: input.categoryId }, existing.type); if (!category) return { success: false, message: 'Categoria inválida ou arquivada.' }; }
+    const source = input.source ?? 'manual'; const correlationId = randomUUID();
+    const entry = await this.repository.updateWithAudit(this.userId, { id: input.id, amount: input.amount, description: input.description, accountId, categoryId: category?.id, category: category?.name, date: input.competenceDate, competenceDate: input.competenceDate, dueDate: input.dueDate }, { operation: 'transaction.updated', source, correlationId });
+    return entry ? { success: true, message: 'Transação atualizada.', data: entry } : { success: false, message: 'Não foi possível atualizar a transação.' };
+  }
+
+  async confirmTransaction(id: string, source: 'manual' | 'nova' | 'whatsapp' | 'api' = 'manual'): Promise<ActionResult> {
+    const entry = await this.repository.findById(this.userId, id);
+    if (!entry) return { success: false, message: 'Transação não encontrada.' };
+    if (entry.status !== 'pendente') return { success: false, message: 'Somente transações pendentes podem ser confirmadas.' };
+    const changed = await this.repository.transitionWithAudit(this.userId, id, 'confirmada', { operation: 'transaction.confirmed', source, correlationId: randomUUID() });
+    return changed ? { success: true, message: 'Pagamento confirmado.', data: changed } : { success: false, message: 'Não foi possível confirmar a transação.' };
+  }
+
+  async cancelTransaction(id: string, source: 'manual' | 'nova' | 'whatsapp' | 'api' = 'manual'): Promise<ActionResult> {
+    const entry = await this.repository.findById(this.userId, id);
+    if (!entry) return { success: false, message: 'Transação não encontrada.' };
+    if (entry.status !== 'pendente') return { success: false, message: 'Somente transações pendentes podem ser canceladas.' };
+    const changed = await this.repository.transitionWithAudit(this.userId, id, 'cancelada', { operation: 'transaction.canceled', source, correlationId: randomUUID() });
+    return changed ? { success: true, message: 'Transação cancelada. O histórico foi preservado.', data: changed } : { success: false, message: 'Não foi possível cancelar a transação.' };
+  }
+
+  async reverseTransaction(id: string, source: 'manual' | 'nova' | 'whatsapp' | 'api' = 'manual'): Promise<ActionResult> {
+    const entry = await this.repository.findById(this.userId, id);
+    if (!entry) return { success: false, message: 'Transação não encontrada.' };
+    if (entry.status !== 'confirmada') return { success: false, message: 'Somente transações confirmadas podem ser estornadas.' };
+    const originals = entry.type === 'transferencia' && entry.transferGroupId
+      ? (await this.repository.list(this.userId)).filter((candidate) => candidate.transferGroupId === entry.transferGroupId)
+      : [entry];
+    if (originals.some((original) => original.status !== 'confirmada')) return { success: false, message: 'Esta transação já foi cancelada ou estornada.' };
+    const correlationId = randomUUID(); const reversalGroupId = entry.type === 'transferencia' ? randomUUID() : undefined;
+    const reversals = originals.map((original) => ({
+      type: original.type === 'receita' ? 'despesa' as const : original.type === 'despesa' ? 'receita' as const : 'transferencia' as const,
+      amount: original.amount, description: `Estorno: ${original.description}`, category: original.category, categoryId: original.categoryId, accountId: original.accountId,
+      // O lançamento inverso é um rastro técnico do estorno. O saldo volta a
+      // ser calculado sem o original (agora estornado), portanto esta perna
+      // também não pode voltar a impactar o realizado.
+      date: new Date().toISOString(), competenceDate: new Date().toISOString(), status: 'estornada' as const, source,
+      transferGroupId: reversalGroupId, transferDirection: original.type === 'transferencia' ? (original.transferDirection === 'entrada' ? 'saida' as const : 'entrada' as const) : undefined,
+      reversalOfId: original.id, correlationId,
+    }));
+    const changed = await this.repository.reverseWithAudit(this.userId, originals, reversals, { operation: 'transaction.reversed', source, correlationId });
+    return changed ? { success: true, message: 'Estorno registrado; o lançamento original foi preservado.', data: changed } : { success: false, message: 'Não foi possível estornar a transação.' };
+  }
+
   // --- Despesas -----------------------------------------------------------
 
   async createExpense(input: CreateExpenseInput): Promise<ActionResult> {
@@ -167,50 +293,24 @@ export class PersistentFinanceService implements FinanceService {
     if (!accountId) return this.accountRequiredResult();
     const category = await this.resolveCategory(input, 'despesa');
     if (!category) return { success: false, message: 'Selecione uma categoria de despesa ativa.' };
-    const entry = await this.repository.create(this.userId, {
-      type: 'despesa',
-      amount: input.amount,
-      description: input.description,
-      category: category.name, categoryId: category.id,
-      date: input.date,
-      accountId,
-    });
-    return { success: true, message: `Despesa de R$ ${entry.amount.toFixed(2)} registrada em "${entry.category}".`, data: entry };
+    return this.createTransaction({ type: 'despesa', amount: input.amount, description: input.description, categoryId: category.id, accountId, competenceDate: input.date, source: input.source ?? 'manual', idempotencyKey: input.idempotencyKey });
   }
 
   async updateExpense(input: UpdateExpenseInput): Promise<ActionResult> {
     const existing = await this.requireEntryOfType(input.id, 'despesa', 'despesa');
     if (!existing.success) return existing;
-
     const accountId = input.accountId ?? (input.accountName ? await this.resolveAccountId(undefined, input.accountName) : undefined);
     if ((input.accountId || input.accountName) && !accountId) return this.accountRequiredResult();
-    const category = input.categoryId || input.category
-      ? await this.resolveCategory(input, 'despesa')
-      : undefined;
-    if ((input.categoryId || input.category) && !category) {
-      return { success: false, message: 'Selecione uma categoria de despesa ativa.' };
-    }
-    const entry = await this.repository.update(this.userId, {
-      ...input,
-      accountId,
-      category: category?.name ?? input.category,
-      categoryId: category?.id ?? input.categoryId,
-    });
-    if (!entry) {
-      return { success: false, message: `Nenhuma despesa encontrada com o id "${input.id}".` };
-    }
-    return { success: true, message: `Despesa "${entry.description}" atualizada.`, data: entry };
+    const category = input.categoryId || input.category ? await this.resolveCategory(input, 'despesa') : undefined;
+    if ((input.categoryId || input.category) && !category) return { success: false, message: 'Selecione uma categoria de despesa ativa.' };
+    return this.updateTransaction({ id: input.id, amount: input.amount, description: input.description, accountId, categoryId: category?.id, competenceDate: input.date, source: 'manual' });
   }
 
   async deleteExpense(input: DeleteExpenseInput): Promise<ActionResult> {
     const existing = await this.requireEntryOfType(input.id, 'despesa', 'despesa');
     if (!existing.success) return existing;
 
-    const entry = await this.repository.delete(this.userId, input.id);
-    if (!entry) {
-      return { success: false, message: `Nenhuma despesa encontrada com o id "${input.id}".` };
-    }
-    return { success: true, message: `Despesa "${entry.description}" removida.`, data: entry };
+    return this.cancelTransaction(input.id, 'manual');
   }
 
   async listExpenses(): Promise<FinanceEntry[]> {
@@ -224,50 +324,24 @@ export class PersistentFinanceService implements FinanceService {
     if (!accountId) return this.accountRequiredResult();
     const category = await this.resolveCategory(input, 'receita');
     if (!category) return { success: false, message: 'Selecione uma categoria de receita ativa.' };
-    const entry = await this.repository.create(this.userId, {
-      type: 'receita',
-      amount: input.amount,
-      description: input.description,
-      category: category.name, categoryId: category.id,
-      date: input.date,
-      accountId,
-    });
-    return { success: true, message: `Receita de R$ ${entry.amount.toFixed(2)} registrada em "${entry.category}".`, data: entry };
+    return this.createTransaction({ type: 'receita', amount: input.amount, description: input.description, categoryId: category.id, accountId, competenceDate: input.date, source: input.source ?? 'manual', idempotencyKey: input.idempotencyKey });
   }
 
   async updateIncome(input: UpdateIncomeInput): Promise<ActionResult> {
     const existing = await this.requireEntryOfType(input.id, 'receita', 'receita');
     if (!existing.success) return existing;
-
     const accountId = input.accountId ?? (input.accountName ? await this.resolveAccountId(undefined, input.accountName) : undefined);
     if ((input.accountId || input.accountName) && !accountId) return this.accountRequiredResult();
-    const category = input.categoryId || input.category
-      ? await this.resolveCategory(input, 'receita')
-      : undefined;
-    if ((input.categoryId || input.category) && !category) {
-      return { success: false, message: 'Selecione uma categoria de receita ativa.' };
-    }
-    const entry = await this.repository.update(this.userId, {
-      ...input,
-      accountId,
-      category: category?.name ?? input.category,
-      categoryId: category?.id ?? input.categoryId,
-    });
-    if (!entry) {
-      return { success: false, message: `Nenhuma receita encontrada com o id "${input.id}".` };
-    }
-    return { success: true, message: `Receita "${entry.description}" atualizada.`, data: entry };
+    const category = input.categoryId || input.category ? await this.resolveCategory(input, 'receita') : undefined;
+    if ((input.categoryId || input.category) && !category) return { success: false, message: 'Selecione uma categoria de receita ativa.' };
+    return this.updateTransaction({ id: input.id, amount: input.amount, description: input.description, accountId, categoryId: category?.id, competenceDate: input.date, source: 'manual' });
   }
 
   async deleteIncome(input: DeleteIncomeInput): Promise<ActionResult> {
     const existing = await this.requireEntryOfType(input.id, 'receita', 'receita');
     if (!existing.success) return existing;
 
-    const entry = await this.repository.delete(this.userId, input.id);
-    if (!entry) {
-      return { success: false, message: `Nenhuma receita encontrada com o id "${input.id}".` };
-    }
-    return { success: true, message: `Receita "${entry.description}" removida.`, data: entry };
+    return this.cancelTransaction(input.id, 'manual');
   }
 
   async listIncome(): Promise<FinanceEntry[]> {
@@ -301,34 +375,8 @@ export class PersistentFinanceService implements FinanceService {
       return { success: false, message: 'A conta de origem e a de destino não podem ser a mesma.' };
     }
 
-    const transferGroupId = randomUUID();
     const description = input.description ?? `Transferência para ${toAccountName}`;
-    const [outEntry, inEntry] = await this.repository.createMany(this.userId, [
-      {
-        type: 'transferencia',
-        amount: input.amount,
-        description,
-        date: input.date,
-        accountId: fromAccountId,
-        transferGroupId,
-        transferDirection: 'saida',
-      },
-      {
-        type: 'transferencia',
-        amount: input.amount,
-        description,
-        date: input.date,
-        accountId: toAccountId,
-        transferGroupId,
-        transferDirection: 'entrada',
-      },
-    ]);
-
-    return {
-      success: true,
-      message: `Transferência de R$ ${input.amount.toFixed(2)} para "${toAccountName}" concluída.`,
-      data: { out: outEntry, in: inEntry },
-    };
+    return this.createTransaction({ type: 'transferencia', amount: input.amount, description, fromAccountId, toAccountId, competenceDate: input.date, source: input.source ?? 'manual', idempotencyKey: input.idempotencyKey });
   }
 
   // --- Parcelamentos (CONTROL OS — Fase 7) ------------------------------------

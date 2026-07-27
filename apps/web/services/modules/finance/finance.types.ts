@@ -1,4 +1,4 @@
-import type { FinanceAccountKind, FinanceEntry, FinanceEntryType, FinanceRecurrenceFrequency } from '@control-os/types';
+import type { FinanceAccountKind, FinanceEntry, FinanceEntryType, FinanceRecurrenceFrequency, FinanceTransactionSource, FinanceTransactionStatus } from '@control-os/types';
 import type { FinanceAccountBalance, FinanceCategoryBreakdownItem } from '@/services/repositories';
 
 /**
@@ -28,6 +28,8 @@ export interface CreateExpenseInput {
   date?: string;
   accountId?: string;
   accountName?: string;
+  source?: FinanceTransactionSource;
+  idempotencyKey?: string;
 }
 
 export interface UpdateExpenseInput {
@@ -54,6 +56,8 @@ export interface CreateIncomeInput {
   date?: string;
   accountId?: string;
   accountName?: string;
+  source?: FinanceTransactionSource;
+  idempotencyKey?: string;
 }
 
 export interface UpdateIncomeInput {
@@ -65,6 +69,36 @@ export interface UpdateIncomeInput {
   date?: string;
   accountId?: string;
   accountName?: string;
+}
+
+/** Contrato canônico da Sprint 2.1. Toda nova operação financeira entra por
+ * este formato e pelo `FinanceService`; os formatos antigos acima são só
+ * adaptadores de compatibilidade para ações já existentes. */
+export interface CreateTransactionServiceInput {
+  type: 'receita' | 'despesa' | 'transferencia';
+  amount: number;
+  description?: string;
+  categoryId?: string;
+  accountId?: string;
+  fromAccountId?: string;
+  toAccountId?: string;
+  competenceDate?: string;
+  dueDate?: string;
+  paidAt?: string;
+  status?: FinanceTransactionStatus;
+  source?: FinanceTransactionSource;
+  idempotencyKey?: string;
+}
+
+export interface UpdateTransactionServiceInput {
+  id: string;
+  amount?: number;
+  description?: string;
+  categoryId?: string;
+  accountId?: string;
+  competenceDate?: string;
+  dueDate?: string;
+  source?: FinanceTransactionSource;
 }
 
 export interface DeleteIncomeInput {
@@ -98,6 +132,8 @@ export interface CreateTransferInput {
   amount: number;
   description?: string;
   date?: string;
+  source?: FinanceTransactionSource;
+  idempotencyKey?: string;
 }
 
 // --- CONTROL OS — Fase 7: Parcelamentos -------------------------------------

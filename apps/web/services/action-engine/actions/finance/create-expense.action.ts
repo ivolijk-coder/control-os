@@ -28,6 +28,7 @@ export class CreateExpenseAction implements ActionHandler {
       { name: 'value', type: 'number', required: true, description: 'Valor da despesa, em reais.' },
       { name: 'description', type: 'string', required: false, description: 'Descrição curta da despesa.' },
       { name: 'category', type: 'string', required: false, description: 'Categoria da despesa (ex.: Mercado, Transporte).' },
+      { name: 'categoryId', type: 'string', required: false, description: 'ID da categoria. Quando ausente, usa a categoria padrão Alimentação.' },
       { name: 'date', type: 'string', required: false, description: 'Data da despesa (AAAA-MM-DD), se mencionada.' },
     ],
     examples: [
@@ -45,8 +46,15 @@ export class CreateExpenseAction implements ActionHandler {
     return this.financeService.createExpense({
       amount,
       description: getString(payload, 'description'),
-      category: getString(payload, 'category'),
+      categoryId: getString(payload, 'categoryId') ?? 'default:Alimentação',
       date: getString(payload, 'date'),
+      source: financeSource(payload),
+      idempotencyKey: getString(payload, 'idempotencyKey'),
     });
   }
+}
+
+function financeSource(payload: Record<string, unknown>): 'manual' | 'nova' | 'whatsapp' | 'api' {
+  const value = getString(payload, 'source');
+  return value === 'nova' || value === 'whatsapp' || value === 'api' ? value : 'manual';
 }

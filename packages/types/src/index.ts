@@ -98,6 +98,8 @@ export type FinanceEntryType = 'receita' | 'despesa' | 'transferencia';
 
 /** Direção de uma perna de transferência — só preenchido quando `FinanceEntry.type === 'transferencia'`. Cada transferência gera DUAS `FinanceEntry` (uma por conta), ligadas por `transferGroupId`, uma com `'saida'` (débito na conta de origem) e outra com `'entrada'` (crédito na conta de destino). */
 export type FinanceTransferDirection = 'entrada' | 'saida';
+export type FinanceTransactionStatus = 'pendente' | 'confirmada' | 'cancelada' | 'estornada';
+export type FinanceTransactionSource = 'manual' | 'nova' | 'whatsapp' | 'api';
 
 /** Frequência de uma recorrência (CONTROL OS — Fase 7). "Preparar arquitetura para geração automática futura. Ainda não criar scheduler" — só o rótulo é gravado (`FinanceEntry.recurrenceFrequency`); nenhum gerador roda ainda. */
 export type FinanceRecurrenceFrequency = 'mensal' | 'semanal' | 'anual';
@@ -136,6 +138,18 @@ export interface FinanceEntry {
   installmentTotal?: number;
   /** Presente quando este lançamento é a origem de uma recorrência (mensal/semanal/anual) — só o rótulo, sem geração automática ainda. */
   recurrenceFrequency?: FinanceRecurrenceFrequency;
+  /** Sprint 2.1: ciclo de vida e datas financeiras. `date` permanece como
+   * alias legado de competência para não quebrar consumidores antigos. */
+  status?: FinanceTransactionStatus;
+  competenceDate?: string;
+  dueDate?: string;
+  paidAt?: string;
+  confirmedAt?: string;
+  canceledAt?: string;
+  reversalOfId?: string;
+  idempotencyKey?: string;
+  correlationId?: string;
+  source?: FinanceTransactionSource;
 }
 
 /**

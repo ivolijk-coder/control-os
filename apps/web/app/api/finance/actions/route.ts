@@ -75,7 +75,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const [result] = await actionRegistry.execute([{ kind, payload }], userId);
+    const source = 'origin' in rawBody && rawBody.origin === 'nova' ? 'nova' : 'manual';
+    const [result] = await actionRegistry.execute([{ kind, payload: { ...payload, source } }], userId);
     return NextResponse.json(result ?? { success: false, message: 'Nenhum resultado devolvido pelo Action Engine.' });
   } catch (error) {
     console.error('Falha ao executar ação financeira autenticada:', error);

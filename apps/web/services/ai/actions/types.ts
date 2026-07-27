@@ -8,5 +8,5 @@ import type { NovaActionResult, NovaContext } from '@/services/nova';
  * o único jeito de escrever em `useDataStore`) e nunca o `AIProvider`.
  */
 export interface Action {
-  execute(ctx: NovaContext): NovaActionResult[];
+  execute(ctx: NovaContext): NovaActionResult[] | Promise<NovaActionResult[]>;
 }

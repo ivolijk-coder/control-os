@@ -1,4 +1,3 @@
-import { createExpense } from '@/services/nova';
 import type { NovaActionResult, NovaContext } from '@/services/nova';
 import { postFinanceAction } from '../finance-bridge';
 import type { Action } from './types';
@@ -15,27 +14,24 @@ export interface CreateExpenseInput {
  * (grava `FinanceEntry` + evento na Timeline); esta classe só empacota o
  * input num `ExpenseIntent` sintético, sem duplicar a lógica de gravação.
  *
- * CONTROL OS — Fase 7 (Financeiro completo): além da escrita síncrona em
- * `useDataStore` (inalterada — é o que a UI lê imediatamente), também
- * dispara `postFinanceAction('expense.create', ...)` (fire-and-forget, ver
- * `services/ai/finance-bridge.ts`) para persistir o MESMO lançamento de
- * verdade via Prisma. Ponte deliberadamente não-bloqueante: `execute` é
- * síncrono, então a persistência real roda em paralelo, sem atrasar a
- * resposta ao usuário.
+ * A NOVA não grava em store local nem no banco diretamente: ela chama a API
+ * autenticada, que delega ao mesmo `FinanceService` usado pela tela manual.
+ * A resposta só é considerada bem-sucedida depois que a persistência conclui.
  */
 export class CreateExpenseAction implements Action {
   constructor(private readonly input: CreateExpenseInput) {}
 
-  execute(ctx: NovaContext): NovaActionResult[] {
-    const results = createExpense(ctx, {
-      kind: 'registrar_despesa',
-      raw: this.input.description,
+  async execute(_ctx: NovaContext): Promise<NovaActionResult[]> {
+    const result = await postFinanceAction('expense.create', {
       amount: this.input.amount,
       description: this.input.description,
+      categoryId: 'default:Alimentação',
+      idempotencyKey: createIdempotencyKey(),
     });
-
-    postFinanceAction('expense.create', { amount: this.input.amount, description: this.input.description });
-
-    return results;
+    return [{ action: { kind: 'criar_despesa', label: 'Registrar despesa' }, ok: result.success, detail: result.message }];
   }
+}
+
+function createIdempotencyKey(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `nova-expense-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }

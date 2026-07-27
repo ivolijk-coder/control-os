@@ -51,6 +51,13 @@ export class CreateTransferAction implements ActionHandler {
       fromAccountName: getString(payload, 'fromAccountName') ?? getString(payload, 'from'),
       description: getString(payload, 'description'),
       date: getString(payload, 'date'),
+      source: financeSource(payload),
+      idempotencyKey: getString(payload, 'idempotencyKey'),
     });
   }
+}
+
+function financeSource(payload: Record<string, unknown>): 'manual' | 'nova' | 'whatsapp' | 'api' {
+  const value = getString(payload, 'source');
+  return value === 'nova' || value === 'whatsapp' || value === 'api' ? value : 'manual';
 }

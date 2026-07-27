@@ -21,6 +21,7 @@ export class CreateIncomeAction implements ActionHandler {
       { name: 'value', type: 'number', required: true, description: 'Valor da receita, em reais.' },
       { name: 'description', type: 'string', required: false, description: 'Descrição curta da receita.' },
       { name: 'category', type: 'string', required: false, description: 'Categoria da receita (ex.: Salário, Freelance).' },
+      { name: 'categoryId', type: 'string', required: false, description: 'ID da categoria. Quando ausente, usa a categoria padrão Salário.' },
       { name: 'date', type: 'string', required: false, description: 'Data da receita (AAAA-MM-DD), se mencionada.' },
     ],
     examples: [
@@ -38,8 +39,15 @@ export class CreateIncomeAction implements ActionHandler {
     return this.financeService.createIncome({
       amount,
       description: getString(payload, 'description'),
-      category: getString(payload, 'category'),
+      categoryId: getString(payload, 'categoryId') ?? 'default:Salário',
       date: getString(payload, 'date'),
+      source: financeSource(payload),
+      idempotencyKey: getString(payload, 'idempotencyKey'),
     });
   }
+}
+
+function financeSource(payload: Record<string, unknown>): 'manual' | 'nova' | 'whatsapp' | 'api' {
+  const value = getString(payload, 'source');
+  return value === 'nova' || value === 'whatsapp' || value === 'api' ? value : 'manual';
 }

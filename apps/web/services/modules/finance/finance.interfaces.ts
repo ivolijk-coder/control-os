@@ -19,6 +19,8 @@ import type {
   FinanceSummary,
   UpdateExpenseInput,
   UpdateIncomeInput,
+  CreateTransactionServiceInput,
+  UpdateTransactionServiceInput,
 } from './finance.types';
 
 /**
@@ -34,6 +36,13 @@ import type {
  * puro.
  */
 export interface FinanceService {
+  // Núcleo oficial de transações (Sprint 2.1)
+  createTransaction(input: CreateTransactionServiceInput): Promise<ActionResult>;
+  updateTransaction(input: UpdateTransactionServiceInput): Promise<ActionResult>;
+  confirmTransaction(id: string, source?: 'manual' | 'nova' | 'whatsapp' | 'api'): Promise<ActionResult>;
+  cancelTransaction(id: string, source?: 'manual' | 'nova' | 'whatsapp' | 'api'): Promise<ActionResult>;
+  reverseTransaction(id: string, source?: 'manual' | 'nova' | 'whatsapp' | 'api'): Promise<ActionResult>;
+  listTransactions(): Promise<FinanceEntry[]>;
   // Despesas
   createExpense(input: CreateExpenseInput): Promise<ActionResult>;
   updateExpense(input: UpdateExpenseInput): Promise<ActionResult>;

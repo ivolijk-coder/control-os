@@ -1,4 +1,4 @@
-import { AccountKind, AccountStatus, CategoryStatus, Prisma, TransactionOrigin, TransactionType, TransferDirection } from '@prisma/client';
+import { AccountKind, AccountStatus, CategoryStatus, Prisma, TransactionOrigin, TransactionSource, TransactionStatus, TransactionType, TransferDirection } from '@prisma/client';
 import type { Account as PrismaAccountRow, Category as PrismaCategoryRow, Transaction as PrismaTransactionRow } from '@prisma/client';
 import type {
   FinanceAccount,
@@ -23,6 +23,7 @@ import type {
   UpdateFinanceAccountInput,
   UpdateFinanceCategoryInput,
   UpdateFinanceTransactionInput,
+  TransactionAuditCommand,
 } from './finance-repository.types';
 
 /**
@@ -75,20 +76,86 @@ export class PrismaFinanceRepository implements FinanceRepository {
     return rows.map(toFinanceEntry);
   }
 
+  async createWithAudit(userId: string, input: CreateFinanceTransactionInput, audit: TransactionAuditCommand): Promise<FinanceEntry> {
+    const row = await prisma.$transaction(async (tx) => {
+      const created = await tx.transaction.create({ data: toCreateData(userId, input) });
+      await createTransactionAudit(tx, userId, created, audit, 'after');
+      return created;
+    });
+    return toFinanceEntry(row);
+  }
+
+  async createManyWithAudit(userId: string, inputs: CreateFinanceTransactionInput[], audit: TransactionAuditCommand): Promise<FinanceEntry[]> {
+    const rows = await prisma.$transaction(async (tx) => {
+      const created = [];
+      for (const input of inputs) created.push(await tx.transaction.create({ data: toCreateData(userId, input) }));
+      for (const row of created) await createTransactionAudit(tx, userId, row, audit, 'after');
+      return created;
+    });
+    return rows.map(toFinanceEntry);
+  }
+
+  async updateWithAudit(userId: string, input: UpdateFinanceTransactionInput, audit: TransactionAuditCommand): Promise<FinanceEntry | undefined> {
+    const row = await prisma.$transaction(async (tx) => {
+      const before = await tx.transaction.findFirst({ where: { id: input.id, userId } });
+      if (!before) return undefined;
+      const after = await tx.transaction.update({ where: { id: input.id }, data: toUpdateData(input) });
+      await createTransactionAudit(tx, userId, after, audit, 'after', before);
+      return after;
+    });
+    return row ? toFinanceEntry(row) : undefined;
+  }
+
+  async transitionWithAudit(userId: string, id: string, status: import('@control-os/types').FinanceTransactionStatus, audit: TransactionAuditCommand): Promise<FinanceEntry | undefined> {
+    const row = await prisma.$transaction(async (tx) => {
+      const before = await tx.transaction.findFirst({ where: { id, userId } });
+      if (!before) return undefined;
+      const now = new Date();
+      const after = await tx.transaction.update({ where: { id }, data: {
+        status: toPersistedStatus(status),
+        confirmedAt: status === 'confirmada' ? now : before.confirmedAt,
+        paidAt: status === 'confirmada' ? (before.paidAt ?? now) : before.paidAt,
+        canceledAt: status === 'cancelada' ? now : before.canceledAt,
+      } });
+      await createTransactionAudit(tx, userId, after, audit, 'after', before);
+      return after;
+    });
+    return row ? toFinanceEntry(row) : undefined;
+  }
+
+  async reverseWithAudit(userId: string, originals: FinanceEntry[], reversals: CreateFinanceTransactionInput[], audit: TransactionAuditCommand): Promise<FinanceEntry[] | undefined> {
+    const rows = await prisma.$transaction(async (tx) => {
+      const before = await tx.transaction.findMany({ where: { userId, id: { in: originals.map((entry) => entry.id) } } });
+      if (before.length !== originals.length) return undefined;
+      const changed = [];
+      for (const original of before) {
+        const after = await tx.transaction.update({ where: { id: original.id }, data: { status: TransactionStatus.REVERSED } });
+        await createTransactionAudit(tx, userId, after, audit, 'after', original);
+        changed.push(after);
+      }
+      const created = [];
+      for (const input of reversals) {
+        const row = await tx.transaction.create({ data: toCreateData(userId, input) });
+        await createTransactionAudit(tx, userId, row, { ...audit, operation: 'transaction.reversal.created' }, 'after');
+        created.push(row);
+      }
+      return [...changed, ...created];
+    });
+    return rows?.map(toFinanceEntry);
+  }
+
+  async findByIdempotencyKey(userId: string, key: string): Promise<FinanceEntry | undefined> {
+    const row = await prisma.transaction.findFirst({ where: { userId, idempotencyKey: key } });
+    return row ? toFinanceEntry(row) : undefined;
+  }
+
   async update(userId: string, input: UpdateFinanceTransactionInput): Promise<FinanceEntry | undefined> {
     const existing = await prisma.transaction.findFirst({ where: { id: input.id, userId } });
     if (!existing) return undefined;
 
     const row = await prisma.transaction.update({
       where: { id: input.id },
-      data: {
-        amount: input.amount !== undefined ? new Prisma.Decimal(input.amount) : undefined,
-        description: input.description,
-        category: input.category,
-        categoryId: input.categoryId,
-        date: input.date !== undefined ? new Date(input.date) : undefined,
-        accountId: input.accountId,
-      },
+      data: toUpdateData(input),
     });
     return toFinanceEntry(row);
   }
@@ -134,9 +201,11 @@ export class PrismaFinanceRepository implements FinanceRepository {
    * não altera patrimônio total" continua verdade sem filtro extra.
    */
   async getSummary(userId: string, filter?: FinanceTransactionFilter): Promise<FinanceSummary> {
+    const where = buildWhere(userId, filter);
+    where.status = TransactionStatus.CONFIRMED;
     const rows = await prisma.transaction.groupBy({
       by: ['type'],
-      where: buildWhere(userId, filter),
+      where,
       _sum: { amount: true },
     });
 
@@ -152,6 +221,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   ): Promise<FinanceCategoryBreakdownItem[]> {
     const where = buildWhere(userId, filter);
     where.type = toPersistedType(type);
+    where.status = TransactionStatus.CONFIRMED;
 
     const rows = await prisma.transaction.groupBy({
       by: ['category'],
@@ -314,7 +384,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   async getAccountBalance(userId: string, accountId: string): Promise<number> {
     const rows = await prisma.transaction.groupBy({
       by: ['type', 'transferDirection'],
-      where: { userId, accountId },
+      where: { userId, accountId, status: TransactionStatus.CONFIRMED },
       _sum: { amount: true },
     });
     return rows.reduce((sum, row) => sum + signedGroupTotal(row.type, row.transferDirection, row._sum.amount), 0);
@@ -330,7 +400,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
       prisma.account.findMany({ where: { userId, status: AccountStatus.ACTIVE }, orderBy: { createdAt: 'asc' } }),
       prisma.transaction.groupBy({
         by: ['accountId', 'type', 'transferDirection'],
-        where: { userId },
+        where: { userId, status: TransactionStatus.CONFIRMED },
         _sum: { amount: true },
       }),
     ]);
@@ -412,6 +482,22 @@ function toPersistedDirection(direction: FinanceTransferDirection): TransferDire
   return direction === 'entrada' ? TransferDirection.IN : TransferDirection.OUT;
 }
 
+function toPersistedStatus(status: import('@control-os/types').FinanceTransactionStatus): TransactionStatus {
+  return status === 'pendente' ? TransactionStatus.PENDING : status === 'confirmada' ? TransactionStatus.CONFIRMED : status === 'cancelada' ? TransactionStatus.CANCELED : TransactionStatus.REVERSED;
+}
+
+function fromPersistedStatus(status: TransactionStatus): import('@control-os/types').FinanceTransactionStatus {
+  return status === TransactionStatus.PENDING ? 'pendente' : status === TransactionStatus.CONFIRMED ? 'confirmada' : status === TransactionStatus.CANCELED ? 'cancelada' : 'estornada';
+}
+
+function toPersistedSource(source: import('@control-os/types').FinanceTransactionSource | undefined): TransactionSource {
+  return source === 'nova' ? TransactionSource.NOVA : source === 'whatsapp' ? TransactionSource.WHATSAPP : source === 'api' ? TransactionSource.API : TransactionSource.MANUAL;
+}
+
+function fromPersistedSource(source: TransactionSource): import('@control-os/types').FinanceTransactionSource {
+  return source === TransactionSource.NOVA ? 'nova' : source === TransactionSource.WHATSAPP ? 'whatsapp' : source === TransactionSource.API ? 'api' : 'manual';
+}
+
 function fromPersistedDirection(direction: TransferDirection | null): FinanceTransferDirection | undefined {
   if (direction === null) return undefined;
   return direction === TransferDirection.IN ? 'entrada' : 'saida';
@@ -468,6 +554,17 @@ function toCreateData(userId: string, input: CreateFinanceTransactionInput): Pri
     category: input.category,
     categoryId: input.categoryId,
     date: input.date ? new Date(input.date) : undefined,
+    status: toPersistedStatus(input.status ?? 'confirmada'),
+    source: toPersistedSource(input.source),
+    competenceDate: input.competenceDate ? new Date(input.competenceDate) : (input.date ? new Date(input.date) : undefined),
+    dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
+    paidAt: input.paidAt ? new Date(input.paidAt) : (input.status === 'confirmada' || !input.status ? new Date(input.date ?? Date.now()) : undefined),
+    confirmedAt: input.confirmedAt ? new Date(input.confirmedAt) : (input.status === 'confirmada' || !input.status ? new Date() : undefined),
+    canceledAt: input.canceledAt ? new Date(input.canceledAt) : undefined,
+    idempotencyKey: input.idempotencyKey,
+    idempotencyFingerprint: input.idempotencyFingerprint,
+    correlationId: input.correlationId,
+    reversalOfId: input.reversalOfId,
     accountId: input.accountId,
     transferGroupId: input.transferGroupId,
     transferDirection: input.transferDirection ? toPersistedDirection(input.transferDirection) : undefined,
@@ -475,6 +572,19 @@ function toCreateData(userId: string, input: CreateFinanceTransactionInput): Pri
     installmentNumber: input.installmentNumber,
     installmentTotal: input.installmentTotal,
     recurrenceRule: input.recurrenceFrequency,
+  };
+}
+
+function toUpdateData(input: UpdateFinanceTransactionInput): Prisma.TransactionUncheckedUpdateInput {
+  return {
+    amount: input.amount !== undefined ? new Prisma.Decimal(input.amount) : undefined,
+    description: input.description,
+    category: input.category,
+    categoryId: input.categoryId,
+    date: input.date !== undefined ? new Date(input.date) : undefined,
+    competenceDate: input.competenceDate !== undefined ? new Date(input.competenceDate) : undefined,
+    dueDate: input.dueDate !== undefined ? new Date(input.dueDate) : undefined,
+    accountId: input.accountId,
   };
 }
 
@@ -486,6 +596,9 @@ function buildWhere(userId: string, filter?: FinanceTransactionFilter): Prisma.T
   if (filter?.accountId) {
     where.accountId = filter.accountId;
   }
+  if (filter?.status) {
+    where.status = Array.isArray(filter.status) ? { in: filter.status.map(toPersistedStatus) } : toPersistedStatus(filter.status);
+  }
   if (filter?.from || filter?.to) {
     where.date = {
       ...(filter.from ? { gte: new Date(filter.from) } : {}),
@@ -493,6 +606,14 @@ function buildWhere(userId: string, filter?: FinanceTransactionFilter): Prisma.T
     };
   }
   return where;
+}
+
+function transactionAuditSnapshot(row: PrismaTransactionRow): Prisma.InputJsonObject {
+  return { id: row.id, type: String(row.type), amount: row.amount.toNumber(), accountId: row.accountId, categoryId: row.categoryId, status: String(row.status), date: row.date.toISOString(), competenceDate: row.competenceDate?.toISOString() ?? null, dueDate: row.dueDate?.toISOString() ?? null, paidAt: row.paidAt?.toISOString() ?? null, reversalOfId: row.reversalOfId, idempotencyKey: row.idempotencyKey };
+}
+
+async function createTransactionAudit(tx: Prisma.TransactionClient, userId: string, after: PrismaTransactionRow, audit: TransactionAuditCommand, state: 'after', before?: PrismaTransactionRow): Promise<void> {
+  await tx.financeAuditEvent.create({ data: { userId, actorUserId: userId, operation: audit.operation, source: audit.source, entityType: 'transaction', entityId: after.id, before: before ? transactionAuditSnapshot(before) : undefined, after: state === 'after' ? transactionAuditSnapshot(after) : undefined, correlationId: audit.correlationId } });
 }
 
 /**
@@ -533,6 +654,16 @@ function toFinanceEntry(row: PrismaTransactionRow): FinanceEntry {
       row.recurrenceRule === 'mensal' || row.recurrenceRule === 'semanal' || row.recurrenceRule === 'anual'
         ? row.recurrenceRule
         : undefined,
+    status: fromPersistedStatus(row.status),
+    competenceDate: row.competenceDate?.toISOString(),
+    dueDate: row.dueDate?.toISOString(),
+    paidAt: row.paidAt?.toISOString(),
+    confirmedAt: row.confirmedAt?.toISOString(),
+    canceledAt: row.canceledAt?.toISOString(),
+    reversalOfId: row.reversalOfId ?? undefined,
+    idempotencyKey: row.idempotencyKey ?? undefined,
+    correlationId: row.correlationId ?? undefined,
+    source: fromPersistedSource(row.source),
   };
 }
 
