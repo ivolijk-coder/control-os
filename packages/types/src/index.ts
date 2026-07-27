@@ -118,6 +118,8 @@ export interface FinanceEntry {
   description: string;
   amount: number;
   category: string;
+  /** Categoria persistida que originou o rótulo. Mantém o texto legado para compatibilidade. */
+  categoryId?: string;
   date: string;
   spaceId?: string;
   /** Conta à qual este lançamento pertence (`FinanceAccount.id`). Quando a origem não informa a conta, o FinanceService só a infere se houver exatamente uma conta ativa; ele nunca cria uma conta automaticamente. */
@@ -159,18 +161,25 @@ export interface FinanceAccount {
 }
 
 /**
- * Categoria financeira (CONTROL OS — Fase 7). "Permitir categorias
- * personalizadas" — `FinanceEntry.category` continua sendo uma `string`
- * livre (nenhuma FK obrigatória criada nesta fase); `FinanceCategory` é só
- * o catálogo (padrão do sistema + personalizado do usuário) usado para
- * sugerir/validar nomes, não uma restrição.
+ * Categoria financeira. Lançamentos novos guardam `categoryId` apontando
+ * para este catálogo; o texto `FinanceEntry.category` fica como snapshot
+ * histórico para preservar relatórios após uma categoria ser renomeada.
  */
 export interface FinanceCategory {
   id: string;
   name: string;
   kind?: FinanceEntryType;
+  icon: string;
+  color: string;
+  status: 'ativa' | 'arquivada';
+  /** Menor valor aparece primeiro dentro do mesmo grupo. */
+  sortOrder: number;
+  /** Atalho de seleção; não altera a natureza financeira da categoria. */
+  isFavorite: boolean;
   createdAt: string;
-  /** `true` para as categorias padrão do sistema (não persistidas — id sintético `default:<nome>`), `false`/ausente para categorias personalizadas do usuário (persistidas de verdade). */
+  updatedAt?: string;
+  archivedAt?: string;
+  /** `true` para um modelo padrão ainda não materializado no catálogo do usuário. */
   isDefault?: boolean;
 }
 

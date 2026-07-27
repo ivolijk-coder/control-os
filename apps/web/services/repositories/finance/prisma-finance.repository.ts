@@ -1,4 +1,4 @@
-import { AccountKind, AccountStatus, Prisma, TransactionOrigin, TransactionType, TransferDirection } from '@prisma/client';
+import { AccountKind, AccountStatus, CategoryStatus, Prisma, TransactionOrigin, TransactionType, TransferDirection } from '@prisma/client';
 import type { Account as PrismaAccountRow, Category as PrismaCategoryRow, Transaction as PrismaTransactionRow } from '@prisma/client';
 import type {
   FinanceAccount,
@@ -19,7 +19,9 @@ import type {
   FinanceSummary,
   FinanceTransactionFilter,
   SetFinanceAccountStatusInput,
+  SetFinanceCategoryStatusInput,
   UpdateFinanceAccountInput,
+  UpdateFinanceCategoryInput,
   UpdateFinanceTransactionInput,
 } from './finance-repository.types';
 
@@ -83,6 +85,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
         amount: input.amount !== undefined ? new Prisma.Decimal(input.amount) : undefined,
         description: input.description,
         category: input.category,
+        categoryId: input.categoryId,
         date: input.date !== undefined ? new Date(input.date) : undefined,
         accountId: input.accountId,
       },
@@ -344,15 +347,50 @@ export class PrismaFinanceRepository implements FinanceRepository {
   // --- Categorias -------------------------------------------------------------
 
   async createCategory(userId: string, input: CreateFinanceCategoryInput): Promise<FinanceCategory> {
-    const row = await prisma.category.create({
-      data: { userId, name: input.name, kind: input.kind ? toPersistedType(input.kind) : undefined },
+    return prisma.$transaction(async (tx) => {
+      const row = await tx.category.create({ data: { userId, name: input.name, kind: toPersistedType(input.kind), icon: input.icon, color: input.color, sortOrder: input.sortOrder ?? 0, isFavorite: input.isFavorite ?? false } });
+      await tx.financeAuditEvent.create({ data: { userId, actorUserId: userId, operation: 'category.created', source: 'manual', entityType: 'category', entityId: row.id, after: categoryAuditSnapshot(row) } });
+      return toFinanceCategory(row);
     });
-    return toFinanceCategory(row);
   }
 
-  async listCategories(userId: string): Promise<FinanceCategory[]> {
-    const rows = await prisma.category.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } });
+  async listCategories(userId: string, options?: { includeArchived?: boolean }): Promise<FinanceCategory[]> {
+    const rows = await prisma.category.findMany({ where: { userId, ...(options?.includeArchived ? {} : { status: CategoryStatus.ACTIVE }) }, orderBy: [{ status: 'asc' }, { isFavorite: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }] });
     return rows.map(toFinanceCategory);
+  }
+
+  async findCategoryById(userId: string, id: string): Promise<FinanceCategory | undefined> {
+    const row = await prisma.category.findFirst({ where: { id, userId } });
+    return row ? toFinanceCategory(row) : undefined;
+  }
+
+  async findCategoryByName(userId: string, name: string): Promise<FinanceCategory | undefined> {
+    const row = await prisma.category.findFirst({ where: { userId, name: { equals: name, mode: 'insensitive' } } });
+    return row ? toFinanceCategory(row) : undefined;
+  }
+
+  async updateCategory(userId: string, input: UpdateFinanceCategoryInput): Promise<FinanceCategory | undefined> {
+    return prisma.$transaction(async (tx) => {
+      const before = await tx.category.findFirst({ where: { id: input.id, userId } });
+      if (!before) return undefined;
+      const after = await tx.category.update({ where: { id: input.id }, data: { name: input.name, icon: input.icon, color: input.color, sortOrder: input.sortOrder, isFavorite: input.isFavorite } });
+      await tx.financeAuditEvent.create({ data: { userId, actorUserId: userId, operation: 'category.updated', source: input.source, entityType: 'category', entityId: after.id, before: categoryAuditSnapshot(before), after: categoryAuditSnapshot(after) } });
+      return toFinanceCategory(after);
+    });
+  }
+
+  async setCategoryStatus(userId: string, input: SetFinanceCategoryStatusInput): Promise<FinanceCategory | undefined> {
+    return prisma.$transaction(async (tx) => {
+      const before = await tx.category.findFirst({ where: { id: input.id, userId } });
+      if (!before) return undefined;
+      const after = await tx.category.update({ where: { id: input.id }, data: { status: input.status === 'arquivada' ? CategoryStatus.ARCHIVED : CategoryStatus.ACTIVE, archivedAt: input.status === 'arquivada' ? new Date() : null } });
+      await tx.financeAuditEvent.create({ data: { userId, actorUserId: userId, operation: input.status === 'arquivada' ? 'category.archived' : 'category.restored', source: input.source, entityType: 'category', entityId: after.id, before: categoryAuditSnapshot(before), after: categoryAuditSnapshot(after) } });
+      return toFinanceCategory(after);
+    });
+  }
+
+  async hasCategoryTransactions(userId: string, categoryId: string): Promise<boolean> {
+    return (await prisma.transaction.count({ where: { userId, categoryId } })) > 0;
   }
 }
 
@@ -428,6 +466,7 @@ function toCreateData(userId: string, input: CreateFinanceTransactionInput): Pri
     amount: new Prisma.Decimal(input.amount),
     description: input.description,
     category: input.category,
+    categoryId: input.categoryId,
     date: input.date ? new Date(input.date) : undefined,
     accountId: input.accountId,
     transferGroupId: input.transferGroupId,
@@ -482,6 +521,7 @@ function toFinanceEntry(row: PrismaTransactionRow): FinanceEntry {
     description: row.description ?? '',
     amount: row.amount.toNumber(),
     category: row.category ?? 'Outros',
+    categoryId: row.categoryId ?? undefined,
     date: row.date.toISOString(),
     accountId: row.accountId ?? undefined,
     transferGroupId: row.transferGroupId ?? undefined,
@@ -514,6 +554,17 @@ function toFinanceCategory(row: PrismaCategoryRow): FinanceCategory {
     id: row.id,
     name: row.name,
     kind: row.kind ? fromPersistedType(row.kind) : undefined,
+    icon: row.icon,
+    color: row.color,
+    status: row.status === CategoryStatus.ARCHIVED ? 'arquivada' : 'ativa',
+    sortOrder: row.sortOrder,
+    isFavorite: row.isFavorite,
     createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    archivedAt: row.archivedAt?.toISOString(),
   };
+}
+
+function categoryAuditSnapshot(row: PrismaCategoryRow): Prisma.InputJsonObject {
+  return { id: row.id, name: row.name, kind: row.kind, icon: row.icon, color: row.color, status: row.status, sortOrder: row.sortOrder, isFavorite: row.isFavorite, archivedAt: row.archivedAt?.toISOString() ?? null };
 }

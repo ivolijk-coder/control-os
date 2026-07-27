@@ -30,31 +30,14 @@ import type {
  */
 
 /**
- * Catálogo de categorias PADRÃO do sistema (CONTROL OS — Fase 7, lista
- * literal do pedido original). NÃO são linhas de `finance_categories` —
- * `listCategories()` as devolve como entradas sintéticas (`isDefault:
- * true`, id `default:<nome>`) somadas às categorias personalizadas
- * (persistidas, `FinanceRepository.listCategories`). Evita ter que
- * semear/migrar dados só para um catálogo que nunca muda por usuário.
+ * Catálogo de categorias padrão do sistema. Ele aparece para todo usuário e
+ * é materializado no banco quando usado ou personalizado, permitindo que um
+ * lançamento sempre guarde uma FK real para `finance_categories`.
  */
-const DEFAULT_FINANCE_CATEGORIES: readonly string[] = [
-  'Alimentação',
-  'Mercado',
-  'Combustível',
-  'Saúde',
-  'Educação',
-  'Trabalho',
-  'Moradia',
-  'Internet',
-  'Energia',
-  'Água',
-  'Investimentos',
-  'Salário',
-  'Freelance',
-];
+const DEFAULT_FINANCE_CATEGORIES = [
+  ['Alimentação', 'despesa', 'utensils', '#F97316'], ['Mercado', 'despesa', 'shopping-basket', '#22C55E'], ['Combustível', 'despesa', 'fuel', '#EAB308'], ['Saúde', 'despesa', 'heart-pulse', '#EF4444'], ['Educação', 'despesa', 'graduation-cap', '#8B5CF6'], ['Trabalho', 'despesa', 'briefcase', '#3B82F6'], ['Moradia', 'despesa', 'house', '#06B6D4'], ['Internet', 'despesa', 'wifi', '#0EA5E9'], ['Energia', 'despesa', 'zap', '#F59E0B'], ['Água', 'despesa', 'droplets', '#38BDF8'], ['Investimentos', 'receita', 'trending-up', '#10B981'], ['Salário', 'receita', 'wallet-cards', '#22C55E'], ['Freelance', 'receita', 'rocket', '#6366F1'],
+] as const;
 
-/** Sentinela de data pras categorias padrão (sintéticas, nunca persistidas — não têm um `createdAt` real). */
-const EPOCH_ISO = new Date(0).toISOString();
 
 /** Primeiro e último instante de um mês (fuso local) — usado por `getMonthlyExpenses`/`getMonthlyIncome`/`getSummary(reference)`/`getExpensesByCategory`/`getIncomeByCategory`/`getCashFlow`. */
 function monthRange(reference: Date): { from: string; to: string } {
@@ -78,10 +61,11 @@ function buildInstallmentLegs(params: {
   installments: number;
   description?: string;
   category?: string;
+  categoryId?: string;
   accountId: string;
   startDate?: string;
 }): CreateFinanceTransactionInput[] {
-  const { type, totalAmount, installments, description, category, accountId, startDate } = params;
+  const { type, totalAmount, installments, description, category, categoryId, accountId, startDate } = params;
   const installmentGroupId = randomUUID();
   const totalCents = Math.round(totalAmount * 100);
   const baseCents = Math.floor(totalCents / installments);
@@ -98,6 +82,7 @@ function buildInstallmentLegs(params: {
       amount: cents / 100,
       description: `${baseDescription} (${index + 1}/${installments})`,
       category,
+      categoryId,
       date: date.toISOString(),
       accountId,
       installmentGroupId,
@@ -156,16 +141,37 @@ export class PersistentFinanceService implements FinanceService {
     return { success: false, message: 'Selecione uma conta bancária ativa antes de registrar a movimentação.' };
   }
 
+  /** Resolve e materializa categorias padrão no catálogo pessoal antes de
+   * persistir um lançamento. Assim todo lançamento novo tem FK real, sem
+   * quebrar os textos e transações legadas já existentes. */
+  private async resolveCategory(input: { category?: string; categoryId?: string }, kind: 'receita' | 'despesa'): Promise<{ id: string; name: string } | undefined> {
+    if (input.categoryId) {
+      const found = await this.repository.findCategoryById(this.userId, input.categoryId);
+      if (found?.status === 'ativa' && found.kind === kind) return { id: found.id, name: found.name };
+      return undefined;
+    }
+    const name = input.category?.trim() || 'Outros';
+    const existing = await this.repository.findCategoryByName(this.userId, name);
+    if (existing?.status === 'ativa' && (!existing.kind || existing.kind === kind)) return { id: existing.id, name: existing.name };
+    const definition = DEFAULT_FINANCE_CATEGORIES.find(([candidate, candidateKind]) => candidate.toLowerCase() === name.toLowerCase() && candidateKind === kind);
+    const category = await this.repository.createCategory(this.userId, definition
+      ? { name: definition[0], kind, icon: definition[2], color: definition[3] }
+      : { name, kind, icon: 'tag', color: '#6366F1' });
+    return { id: category.id, name: category.name };
+  }
+
   // --- Despesas -----------------------------------------------------------
 
   async createExpense(input: CreateExpenseInput): Promise<ActionResult> {
     const accountId = await this.resolveAccountId(input.accountId, input.accountName);
     if (!accountId) return this.accountRequiredResult();
+    const category = await this.resolveCategory(input, 'despesa');
+    if (!category) return { success: false, message: 'Selecione uma categoria de despesa ativa.' };
     const entry = await this.repository.create(this.userId, {
       type: 'despesa',
       amount: input.amount,
       description: input.description,
-      category: input.category,
+      category: category.name, categoryId: category.id,
       date: input.date,
       accountId,
     });
@@ -178,7 +184,18 @@ export class PersistentFinanceService implements FinanceService {
 
     const accountId = input.accountId ?? (input.accountName ? await this.resolveAccountId(undefined, input.accountName) : undefined);
     if ((input.accountId || input.accountName) && !accountId) return this.accountRequiredResult();
-    const entry = await this.repository.update(this.userId, { ...input, accountId });
+    const category = input.categoryId || input.category
+      ? await this.resolveCategory(input, 'despesa')
+      : undefined;
+    if ((input.categoryId || input.category) && !category) {
+      return { success: false, message: 'Selecione uma categoria de despesa ativa.' };
+    }
+    const entry = await this.repository.update(this.userId, {
+      ...input,
+      accountId,
+      category: category?.name ?? input.category,
+      categoryId: category?.id ?? input.categoryId,
+    });
     if (!entry) {
       return { success: false, message: `Nenhuma despesa encontrada com o id "${input.id}".` };
     }
@@ -205,11 +222,13 @@ export class PersistentFinanceService implements FinanceService {
   async createIncome(input: CreateIncomeInput): Promise<ActionResult> {
     const accountId = await this.resolveAccountId(input.accountId, input.accountName);
     if (!accountId) return this.accountRequiredResult();
+    const category = await this.resolveCategory(input, 'receita');
+    if (!category) return { success: false, message: 'Selecione uma categoria de receita ativa.' };
     const entry = await this.repository.create(this.userId, {
       type: 'receita',
       amount: input.amount,
       description: input.description,
-      category: input.category,
+      category: category.name, categoryId: category.id,
       date: input.date,
       accountId,
     });
@@ -222,7 +241,18 @@ export class PersistentFinanceService implements FinanceService {
 
     const accountId = input.accountId ?? (input.accountName ? await this.resolveAccountId(undefined, input.accountName) : undefined);
     if ((input.accountId || input.accountName) && !accountId) return this.accountRequiredResult();
-    const entry = await this.repository.update(this.userId, { ...input, accountId });
+    const category = input.categoryId || input.category
+      ? await this.resolveCategory(input, 'receita')
+      : undefined;
+    if ((input.categoryId || input.category) && !category) {
+      return { success: false, message: 'Selecione uma categoria de receita ativa.' };
+    }
+    const entry = await this.repository.update(this.userId, {
+      ...input,
+      accountId,
+      category: category?.name ?? input.category,
+      categoryId: category?.id ?? input.categoryId,
+    });
     if (!entry) {
       return { success: false, message: `Nenhuma receita encontrada com o id "${input.id}".` };
     }
@@ -315,12 +345,15 @@ export class PersistentFinanceService implements FinanceService {
 
     const accountId = await this.resolveAccountId(input.accountId, input.accountName);
     if (!accountId) return this.accountRequiredResult();
+    const category = await this.resolveCategory(input, type);
+    if (!category) return { success: false, message: 'Selecione uma categoria ativa compatível com o parcelamento.' };
     const legs = buildInstallmentLegs({
       type,
       totalAmount: input.totalAmount,
       installments: input.installments,
       description: input.description,
-      category: input.category,
+      category: category.name,
+      categoryId: category.id,
       accountId,
       startDate: input.startDate,
     });
@@ -345,11 +378,14 @@ export class PersistentFinanceService implements FinanceService {
 
     const accountId = await this.resolveAccountId(input.accountId, input.accountName);
     if (!accountId) return this.accountRequiredResult();
+    const category = await this.resolveCategory(input, type);
+    if (!category) return { success: false, message: 'Selecione uma categoria ativa compatível com a recorrência.' };
     const entry = await this.repository.create(this.userId, {
       type,
       amount: input.amount,
       description: input.description,
-      category: input.category,
+      category: category.name,
+      categoryId: category.id,
       date: input.date,
       accountId,
       recurrenceFrequency: input.frequency,
@@ -449,29 +485,61 @@ export class PersistentFinanceService implements FinanceService {
     if (!name) {
       return { success: false, message: 'Preciso de um nome para criar a categoria.' };
     }
-    const clashesWithDefault = DEFAULT_FINANCE_CATEGORIES.some((candidate) => candidate.toLowerCase() === name.toLowerCase());
-    if (clashesWithDefault) {
-      return { success: false, message: `"${name}" já é uma categoria padrão do sistema.` };
-    }
     const existingCustom = (await this.repository.listCategories(this.userId)).find(
       (candidate) => candidate.name.toLowerCase() === name.toLowerCase()
     );
     if (existingCustom) {
       return { success: false, message: `Já existe uma categoria personalizada chamada "${existingCustom.name}".` };
     }
-    const category = await this.repository.createCategory(this.userId, { name, kind: input.kind });
+    const category = await this.repository.createCategory(this.userId, {
+      name,
+      kind: input.kind,
+      icon: input.icon?.trim() || 'tag',
+      color: input.color?.trim() || '#6366F1',
+      sortOrder: Math.max(0, Math.trunc(input.sortOrder ?? 0)),
+      isFavorite: input.isFavorite ?? false,
+    });
     return { success: true, message: `Categoria "${category.name}" criada.`, data: category };
   }
 
-  async listCategories(): Promise<FinanceCategory[]> {
-    const defaults: FinanceCategory[] = DEFAULT_FINANCE_CATEGORIES.map((name) => ({
-      id: `default:${name}`,
-      name,
-      isDefault: true,
-      createdAt: EPOCH_ISO,
-    }));
-    const custom = await this.repository.listCategories(this.userId);
-    return [...defaults, ...custom];
+  async listCategories(options?: { includeArchived?: boolean }): Promise<FinanceCategory[]> {
+    const persisted = await this.repository.listCategories(this.userId, { includeArchived: true });
+    const visible = options?.includeArchived
+      ? persisted
+      : persisted.filter((category) => category.status === 'ativa');
+    const materializedNames = new Set(persisted.map((category) => category.name.toLocaleLowerCase('pt-BR')));
+    const defaults = DEFAULT_FINANCE_CATEGORIES
+      .filter(([name]) => !materializedNames.has(name.toLocaleLowerCase('pt-BR')))
+      .map(([name, kind, icon, color]) => ({
+        id: `default:${name.toLocaleLowerCase('pt-BR')}`,
+        name,
+        kind,
+        icon,
+        color,
+        status: 'ativa' as const,
+        sortOrder: 0,
+        isFavorite: false,
+        createdAt: new Date(0).toISOString(),
+        isDefault: true,
+      }));
+    return [...defaults, ...visible].sort((left, right) => Number(right.isFavorite) - Number(left.isFavorite) || left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, 'pt-BR'));
+  }
+
+  async updateCategory(input: import('./finance.types').UpdateFinanceCategoryServiceInput): Promise<ActionResult> {
+    const name = input.name?.trim(); if (input.name !== undefined && !name) return { success: false, message: 'O nome da categoria não pode ficar vazio.' };
+    if (name) { const duplicate = await this.repository.findCategoryByName(this.userId, name); if (duplicate && duplicate.id !== input.id) return { success: false, message: `Já existe uma categoria chamada "${duplicate.name}".` }; }
+    if (input.sortOrder !== undefined && (!Number.isInteger(input.sortOrder) || input.sortOrder < 0)) return { success: false, message: 'A ordem precisa ser um número inteiro igual ou maior que zero.' };
+    const category = await this.repository.updateCategory(this.userId, { id: input.id, name, icon: input.icon?.trim(), color: input.color?.trim(), sortOrder: input.sortOrder, isFavorite: input.isFavorite, source: input.source ?? 'manual' });
+    return category ? { success: true, message: `Categoria "${category.name}" atualizada.`, data: category } : { success: false, message: 'Categoria não encontrada.' };
+  }
+
+  async archiveCategory(id: string, source: 'manual' | 'nova' | 'whatsapp' | 'api' = 'manual'): Promise<ActionResult> {
+    const category = await this.repository.setCategoryStatus(this.userId, { id, status: 'arquivada', source });
+    return category ? { success: true, message: `Categoria "${category.name}" arquivada. O histórico foi preservado.`, data: category } : { success: false, message: 'Categoria não encontrada.' };
+  }
+  async restoreCategory(id: string, source: 'manual' | 'nova' | 'whatsapp' | 'api' = 'manual'): Promise<ActionResult> {
+    const category = await this.repository.setCategoryStatus(this.userId, { id, status: 'ativa', source });
+    return category ? { success: true, message: `Categoria "${category.name}" restaurada.`, data: category } : { success: false, message: 'Categoria não encontrada.' };
   }
 
   // --- Consultas ------------------------------------------------------------

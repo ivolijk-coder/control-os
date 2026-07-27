@@ -5,6 +5,7 @@ import type {
   CreateFinanceAccountServiceInput,
   UpdateFinanceAccountServiceInput,
   CreateFinanceCategoryServiceInput,
+  UpdateFinanceCategoryServiceInput,
   CreateIncomeInput,
   CreateInstallmentInput,
   CreateRecurringInput,
@@ -63,7 +64,10 @@ export interface FinanceService {
 
   // Categorias (CONTROL OS — Fase 7)
   createCategory(input: CreateFinanceCategoryServiceInput): Promise<ActionResult>;
-  listCategories(): Promise<FinanceCategory[]>;
+  listCategories(options?: { includeArchived?: boolean }): Promise<FinanceCategory[]>;
+  updateCategory(input: UpdateFinanceCategoryServiceInput): Promise<ActionResult>;
+  archiveCategory(id: string, source?: 'manual' | 'nova' | 'whatsapp' | 'api'): Promise<ActionResult>;
+  restoreCategory(id: string, source?: 'manual' | 'nova' | 'whatsapp' | 'api'): Promise<ActionResult>;
 
   // Consultas
   getBalance(): Promise<number>;

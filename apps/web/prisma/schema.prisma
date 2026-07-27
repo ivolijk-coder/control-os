@@ -87,6 +87,11 @@ enum TransactionOrigin {
   ACCOUNT_OPENING_BALANCE
 }
 
+enum CategoryStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 /// Entidade única de lançamento financeiro — cobre tanto receitas quanto
 /// despesas (`type`). Mapeia para `FinanceEntry` (`@control-os/types`) na
 /// borda do repositório (`PrismaFinanceRepository`) — nenhum tipo TS novo
@@ -154,20 +159,27 @@ model Transaction {
 /// `FinanceRepository.createCategory`/`listCategories` usam este model de
 /// verdade agora (catálogo de categorias personalizadas do usuário,
 /// somado às categorias padrão do sistema — que não são linhas desta
-/// tabela, ver `DEFAULT_FINANCE_CATEGORIES`). `Transaction.categoryId`/
-/// `categoryRef` continuam SEM uso nesta fase — `FinanceEntry.category`
-/// continua sendo uma `String` livre (nenhuma FK obrigatória entre uma
-/// transação e seu catálogo de categoria), "expand-and-contract" adiado
-/// pra uma fase futura.
+/// tabela, ver `DEFAULT_FINANCE_CATEGORIES`). `Transaction.categoryId` é a
+/// referência persistente para o catálogo; `FinanceEntry.category` segue como
+/// snapshot textual histórico, preservando relatórios após renomeações.
 model Category {
   id           String            @id @default(uuid()) @db.Uuid
   userId       String            @map("user_id") @db.Uuid
   name         String
   kind         TransactionType?
+  icon         String            @default("tag") @db.VarChar(40)
+  color        String            @default("#6366F1") @db.VarChar(16)
+  status       CategoryStatus    @default(ACTIVE)
+  sortOrder    Int               @default(0) @map("sort_order")
+  isFavorite   Boolean           @default(false) @map("is_favorite")
+  archivedAt   DateTime?         @map("archived_at") @db.Timestamptz(3)
   transactions Transaction[]
   createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([userId, name])
+  @@index([userId, status])
+  @@index([userId, status, isFavorite, sortOrder])
   @@map("finance_categories")
 }
 

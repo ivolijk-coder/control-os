@@ -1,4 +1,3 @@
-import type { FinanceEntryType } from '@control-os/types';
 import type { FinanceService } from '@/services/modules';
 import { financeService as defaultFinanceService } from '@/services/modules';
 import type { ActionKind } from '@/services/control-hub';
@@ -7,8 +6,8 @@ import type { Capability } from '@/services/capability.types';
 import type { ActionHandler } from '../../action.interfaces';
 import { getString } from '../../payload-guards';
 
-function toEntryType(value: string | undefined): FinanceEntryType | undefined {
-  return value === 'receita' || value === 'despesa' || value === 'transferencia' ? value : undefined;
+function toCategoryKind(value: string | undefined): 'receita' | 'despesa' {
+  return value === 'receita' ? 'receita' : 'despesa';
 }
 
 /**
@@ -25,7 +24,7 @@ export class CreateCategoryAction implements ActionHandler {
     description: 'Cria uma categoria financeira personalizada do usuário, além das categorias padrão do sistema.',
     parameters: [
       { name: 'name', type: 'string', required: true, description: 'Nome da categoria (ex.: "Pet", "Assinaturas").' },
-      { name: 'kind', type: 'string', required: false, description: '"despesa" ou "receita", se a categoria for específica de um tipo. Se ausente, serve para os dois.' },
+      { name: 'kind', type: 'string', required: false, description: '"despesa" ou "receita". Se ausente, a categoria é criada como despesa.' },
     ],
     examples: ['Cria uma categoria chamada Pet -> {"kind":"category.create","confidence":0.8,"parameters":{"name":"Pet"}}'],
   };
@@ -37,6 +36,6 @@ export class CreateCategoryAction implements ActionHandler {
     if (!name) {
       return { success: false, message: 'Preciso de um "name" para criar a categoria.' };
     }
-    return this.financeService.createCategory({ name, kind: toEntryType(getString(payload, 'kind')) });
+    return this.financeService.createCategory({ name, kind: toCategoryKind(getString(payload, 'kind')) });
   }
 }

@@ -10,6 +10,8 @@ import type {
   FinanceSummary,
   FinanceTransactionFilter,
   UpdateFinanceTransactionInput,
+  UpdateFinanceCategoryInput,
+  SetFinanceCategoryStatusInput,
 } from './finance-repository.types';
 
 /**
@@ -96,7 +98,12 @@ export interface FinanceRepository {
   listAccountBalances(userId: string): Promise<FinanceAccountBalance[]>;
 
   // --- Categorias (CONTROL OS — Fase 7) --------------------------------------
-  /** Categorias personalizadas do usuário (persistidas) — as categorias PADRÃO do sistema não são linhas desta tabela, ver `DEFAULT_FINANCE_CATEGORIES` em `services/modules/finance`. */
+  /** Categorias pessoais e categorias padrão materializadas para o usuário. */
   createCategory(userId: string, input: CreateFinanceCategoryInput): Promise<FinanceCategory>;
-  listCategories(userId: string): Promise<FinanceCategory[]>;
+  listCategories(userId: string, options?: { includeArchived?: boolean }): Promise<FinanceCategory[]>;
+  findCategoryById(userId: string, id: string): Promise<FinanceCategory | undefined>;
+  findCategoryByName(userId: string, name: string): Promise<FinanceCategory | undefined>;
+  updateCategory(userId: string, input: UpdateFinanceCategoryInput): Promise<FinanceCategory | undefined>;
+  setCategoryStatus(userId: string, input: SetFinanceCategoryStatusInput): Promise<FinanceCategory | undefined>;
+  hasCategoryTransactions(userId: string, categoryId: string): Promise<boolean>;
 }

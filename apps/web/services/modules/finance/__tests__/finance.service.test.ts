@@ -246,18 +246,59 @@ async function main(): Promise<void> {
     );
   });
 
-  await test('createCategory — soma ao catálogo padrão (nunca substitui)', async () => {
+  await test('createCategory — persiste categoria personalizada sem substituir o catálogo padrão', async () => {
     const service = buildService();
-    const created = await service.createCategory({ name: 'Pet' });
+    const created = await service.createCategory({ name: 'Pet', kind: 'despesa', color: '#F97316' });
     assert(created.success === true, `esperava sucesso, recebeu: ${created.message}`);
     const categories = await service.listCategories();
     assert(categories.length === 14, `esperava 13 padrão + 1 personalizada = 14, recebeu ${categories.length}`);
+    const pet = categories.find((category) => category.name === 'Pet');
+    assert(pet?.isDefault !== true && pet?.kind === 'despesa' && pet?.color === '#F97316', 'a categoria personalizada deve ter dados persistentes');
   });
 
-  await test('createCategory — rejeita nome que colide com uma categoria padrão', async () => {
+  await test('createCategory — materializa uma categoria padrão ao personalizá-la', async () => {
     const service = buildService();
-    const result = await service.createCategory({ name: 'mercado' });
-    assert(result.success === false, 'esperava falha ao criar categoria com nome de categoria padrão (case-insensitive)');
+    const result = await service.createCategory({ name: 'Mercado', kind: 'despesa', icon: 'shopping-basket', color: '#22C55E' });
+    assert(result.success === true, `esperava materializar Mercado, recebeu: ${result.message}`);
+    const category = (await service.listCategories()).find((item) => item.name === 'Mercado');
+    assert(category?.isDefault !== true && category?.status === 'ativa', 'Mercado deve se tornar categoria persistida do usuário');
+  });
+
+  await test('categorias — vínculo real, arquivamento e auditoria preservam o histórico', async () => {
+    const repository = new InMemoryFinanceRepository();
+    repository.seedAccountForTest('usr_categories');
+    const service = new PersistentFinanceService(repository, 'usr_categories');
+    const created = await service.createCategory({ name: 'Assinaturas', kind: 'despesa' });
+    const categoryId = (created.data as { id: string }).id;
+    const expense = await service.createExpense({ amount: 49.9, categoryId, description: 'Ferramenta' });
+    assert(expense.success === true, `esperava registrar despesa: ${expense.message}`);
+    assert((await service.listExpenses())[0]?.categoryId === categoryId, 'a transação deve guardar a FK da categoria');
+    assert((await service.archiveCategory(categoryId)).success === true, 'a categoria deve ser arquivada, nunca excluída');
+    assert(!(await service.listCategories()).some((item) => item.id === categoryId), 'categoria arquivada não aparece na lista ativa');
+    assert((await service.listExpenses())[0]?.categoryId === categoryId, 'arquivar não pode apagar o vínculo histórico');
+    assert((await service.restoreCategory(categoryId)).success === true, 'deve restaurar a categoria arquivada');
+    assert(repository.getAuditEventsForTest('usr_categories').some((event) => event.operation === 'category.archived'), 'arquivamento deve gerar auditoria');
+  });
+
+  await test('categorias — edição, favoritos, ordenação e isolamento preservam a FK', async () => {
+    const repository = new InMemoryFinanceRepository();
+    repository.seedAccountForTest('usr_categories_a');
+    repository.seedAccountForTest('usr_categories_b');
+    const owner = new PersistentFinanceService(repository, 'usr_categories_a');
+    const otherUser = new PersistentFinanceService(repository, 'usr_categories_b');
+    const created = await owner.createCategory({ name: 'Cursos', kind: 'despesa', icon: 'briefcase', color: '#0EA5E9', sortOrder: 3, isFavorite: true });
+    const categoryId = (created.data as { id: string }).id;
+    await owner.createExpense({ amount: 100, description: 'Curso', categoryId });
+    const updated = await owner.updateCategory({ id: categoryId, name: 'Educação', icon: 'heart-pulse', color: '#10B981', sortOrder: 1, isFavorite: false });
+    assert(updated.success === true, `esperava atualizar categoria: ${updated.message}`);
+    const category = (await owner.listCategories()).find((item) => item.id === categoryId);
+    assert(category?.name === 'Educação' && category.icon === 'heart-pulse' && category.color === '#10B981' && category.sortOrder === 1 && category.isFavorite === false, 'edição deve persistir dados de apresentação');
+    assert((await owner.listExpenses())[0]?.categoryId === categoryId, 'renomear categoria não pode quebrar o vínculo existente');
+    assert(!(await otherUser.listCategories()).some((item) => item.id === categoryId), 'outro usuário não pode visualizar categoria privada');
+    const foreignUpdate = await otherUser.updateCategory({ id: categoryId, name: 'Tentativa' });
+    assert(foreignUpdate.success === false, 'outro usuário não pode alterar categoria privada');
+    const auditOperations = repository.getAuditEventsForTest('usr_categories_a').map((event) => event.operation);
+    assert(auditOperations.includes('category.created') && auditOperations.includes('category.updated'), 'criação e edição devem gerar auditoria');
   });
 
   // --- CONTROL OS — Fase 7: Transferências ---------------------------------

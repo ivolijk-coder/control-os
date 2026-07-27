@@ -25,6 +25,7 @@ export interface CreateFinanceTransactionInput {
   amount: number;
   description?: string;
   category?: string;
+  categoryId?: string;
   date?: string;
   /** Cada transação pertence a uma conta resolvida pelo `FinanceService`; o Repository nunca resolve nome→id sozinho. */
   accountId?: string;
@@ -44,6 +45,7 @@ export interface UpdateFinanceTransactionInput {
   amount?: number;
   description?: string;
   category?: string;
+  categoryId?: string;
   date?: string;
   accountId?: string;
 }
@@ -94,7 +96,27 @@ export interface SetFinanceAccountStatusInput {
 
 export interface CreateFinanceCategoryInput {
   name: string;
-  kind?: FinanceEntryType;
+  kind: 'receita' | 'despesa';
+  icon: string;
+  color: string;
+  sortOrder?: number;
+  isFavorite?: boolean;
+}
+
+export interface UpdateFinanceCategoryInput {
+  id: string;
+  name?: string;
+  icon?: string;
+  color?: string;
+  sortOrder?: number;
+  isFavorite?: boolean;
+  source: FinanceAuditSource;
+}
+
+export interface SetFinanceCategoryStatusInput {
+  id: string;
+  status: 'ativa' | 'arquivada';
+  source: FinanceAuditSource;
 }
 
 // --- CONTROL OS — Fase 7: Transferências e parcelamentos --------------------

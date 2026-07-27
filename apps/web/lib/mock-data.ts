@@ -61,6 +61,7 @@ export const MOCK_NAV_ITEMS: NavItem[] = [
   { id: 'nav_visao_geral', label: 'Visão geral', href: '/dashboard', icon: 'LayoutGrid' },
   { id: 'nav_financeiro_dashboard', label: 'Dashboard', href: '/financeiro', icon: 'Gauge' },
   { id: 'nav_financeiro_contas', label: 'Contas bancárias', href: '/financeiro/contas', icon: 'Landmark' },
+  { id: 'nav_financeiro_categorias', label: 'Categorias', href: '/financeiro/categorias', icon: 'Layers3' },
   { id: 'nav_financeiro_transacoes', label: 'Transações', href: '/financeiro/transacoes', icon: 'ArrowLeftRight' },
   { id: 'nav_financeiro_contas_fixas', label: 'Contas Fixas', href: '/financeiro/contas-fixas', icon: 'CalendarClock' },
   { id: 'nav_financeiro_cartoes', label: 'Cartões', href: '/financeiro/cartoes', icon: 'CreditCard' },

@@ -23,6 +23,7 @@ export interface CreateExpenseInput {
   amount: number;
   description?: string;
   category?: string;
+  categoryId?: string;
   /** ISO (`YYYY-MM-DD` ou timestamp completo) — quando ausente, a implementação ativa usa o momento da chamada. */
   date?: string;
   accountId?: string;
@@ -34,6 +35,7 @@ export interface UpdateExpenseInput {
   amount?: number;
   description?: string;
   category?: string;
+  categoryId?: string;
   date?: string;
   accountId?: string;
   accountName?: string;
@@ -48,6 +50,7 @@ export interface CreateIncomeInput {
   amount: number;
   description?: string;
   category?: string;
+  categoryId?: string;
   date?: string;
   accountId?: string;
   accountName?: string;
@@ -58,6 +61,7 @@ export interface UpdateIncomeInput {
   amount?: number;
   description?: string;
   category?: string;
+  categoryId?: string;
   date?: string;
   accountId?: string;
   accountName?: string;
@@ -147,7 +151,21 @@ export interface UpdateFinanceAccountServiceInput {
 
 export interface CreateFinanceCategoryServiceInput {
   name: string;
-  kind?: FinanceEntryType;
+  kind: 'receita' | 'despesa';
+  icon?: string;
+  color?: string;
+  sortOrder?: number;
+  isFavorite?: boolean;
+}
+
+export interface UpdateFinanceCategoryServiceInput {
+  id: string;
+  name?: string;
+  icon?: string;
+  color?: string;
+  sortOrder?: number;
+  isFavorite?: boolean;
+  source?: 'manual' | 'nova' | 'whatsapp' | 'api';
 }
 
 // --- CONTROL OS — Fase 7: Dashboard ------------------------------------------

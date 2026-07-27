@@ -9,7 +9,9 @@ import type {
   FinanceSummary,
   FinanceTransactionFilter,
   SetFinanceAccountStatusInput,
+  SetFinanceCategoryStatusInput,
   UpdateFinanceAccountInput,
+  UpdateFinanceCategoryInput,
   UpdateFinanceTransactionInput,
 } from './finance-repository.types';
 
@@ -133,6 +135,7 @@ export class InMemoryFinanceRepository implements FinanceRepository {
             : 'Receita registrada'),
       amount: input.amount,
       category: input.category ?? 'Outros',
+      categoryId: input.categoryId,
       date: input.date ?? new Date().toISOString(),
       accountId: input.accountId,
       transferGroupId: input.transferGroupId,
@@ -163,6 +166,7 @@ export class InMemoryFinanceRepository implements FinanceRepository {
     if (input.amount !== undefined) entry.amount = input.amount;
     if (input.description !== undefined) entry.description = input.description;
     if (input.category !== undefined) entry.category = input.category;
+    if (input.categoryId !== undefined) entry.categoryId = input.categoryId;
     if (input.date !== undefined) entry.date = input.date;
     if (input.accountId !== undefined) entry.accountId = input.accountId;
     return entry;
@@ -322,13 +326,55 @@ export class InMemoryFinanceRepository implements FinanceRepository {
       id: `category_${nextCategoryId++}`,
       name: input.name,
       kind: input.kind,
+      icon: input.icon,
+      color: input.color,
+      status: 'ativa',
+      sortOrder: input.sortOrder ?? 0,
+      isFavorite: input.isFavorite ?? false,
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
     this.categoriesFor(userId).push(category);
     return category;
   }
 
-  async listCategories(userId: string): Promise<FinanceCategory[]> {
-    return [...this.categoriesFor(userId)];
+  async listCategories(userId: string, options?: { includeArchived?: boolean }): Promise<FinanceCategory[]> {
+    return this.categoriesFor(userId)
+      .filter((category) => options?.includeArchived || category.status === 'ativa')
+      .sort((left, right) => Number(right.isFavorite) - Number(left.isFavorite) || left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, 'pt-BR'))
+      .map((category) => ({ ...category }));
+  }
+
+  async findCategoryById(userId: string, id: string): Promise<FinanceCategory | undefined> {
+    return this.categoriesFor(userId).find((category) => category.id === id);
+  }
+  async findCategoryByName(userId: string, name: string): Promise<FinanceCategory | undefined> {
+    return this.categoriesFor(userId).find((category) => category.name.toLowerCase() === name.toLowerCase());
+  }
+  async updateCategory(userId: string, input: UpdateFinanceCategoryInput): Promise<FinanceCategory | undefined> {
+    const category = this.categoriesFor(userId).find((candidate) => candidate.id === input.id);
+    if (!category) return undefined;
+    const before = { ...category };
+    if (input.name !== undefined) category.name = input.name;
+    if (input.icon !== undefined) category.icon = input.icon;
+    if (input.color !== undefined) category.color = input.color;
+    if (input.sortOrder !== undefined) category.sortOrder = input.sortOrder;
+    if (input.isFavorite !== undefined) category.isFavorite = input.isFavorite;
+    category.updatedAt = new Date().toISOString();
+    this.audit(userId, { operation: 'category.updated', source: input.source, entityType: 'category', entityId: category.id, before, after: { ...category } });
+    return { ...category };
+  }
+  async setCategoryStatus(userId: string, input: SetFinanceCategoryStatusInput): Promise<FinanceCategory | undefined> {
+    const category = this.categoriesFor(userId).find((candidate) => candidate.id === input.id);
+    if (!category) return undefined;
+    const before = { ...category };
+    category.status = input.status;
+    category.archivedAt = input.status === 'arquivada' ? new Date().toISOString() : undefined;
+    category.updatedAt = new Date().toISOString();
+    this.audit(userId, { operation: input.status === 'arquivada' ? 'category.archived' : 'category.restored', source: input.source, entityType: 'category', entityId: category.id, before, after: { ...category } });
+    return { ...category };
+  }
+  async hasCategoryTransactions(userId: string, categoryId: string): Promise<boolean> {
+    return this.entriesFor(userId).some((entry) => entry.categoryId === categoryId);
   }
 }
