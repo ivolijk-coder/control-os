@@ -66,6 +66,8 @@ export type NovaIntentKind =
   | 'criar_nota'
   | 'consultar_dividas'
   | 'consultar_dia'
+  | 'pagar_conta_fixa'
+  | 'consultar_contas_vencendo'
   | 'desconhecido';
 
 interface NovaIntentBase {
@@ -214,6 +216,18 @@ export interface ConsultDayPlanIntent extends NovaIntentBase {
   kind: 'consultar_dia';
 }
 
+/** Baixa uma ocorrência existente; a confirmação é obrigatória antes da execução. */
+export interface PayFixedAccountIntent extends NovaIntentBase {
+  kind: 'pagar_conta_fixa';
+  name: string;
+}
+
+/** Consulta contas pendentes cujo vencimento está próximo, sem alterar dados. */
+export interface ConsultFixedAccountDueIntent extends NovaIntentBase {
+  kind: 'consultar_contas_vencendo';
+  period: 'amanha' | 'semana';
+}
+
 export interface UnknownIntent extends NovaIntentBase {
   kind: 'desconhecido';
 }
@@ -237,6 +251,8 @@ export type NovaIntent =
   | NoteIntent
   | ConsultDebtsIntent
   | ConsultDayPlanIntent
+  | PayFixedAccountIntent
+  | ConsultFixedAccountDueIntent
   | UnknownIntent;
 
 export type NovaActionKind =
@@ -248,6 +264,8 @@ export type NovaActionKind =
   // — ver `CreateTransferAction`/`CreateInstallmentAction` em `services/ai/actions`.
   | 'criar_transferencia'
   | 'criar_parcelamento'
+  | 'pagar_conta_fixa'
+  | 'consultar_contas_vencendo'
   | 'criar_missao'
   | 'criar_evento_agenda'
   | 'excluir_evento_agenda'

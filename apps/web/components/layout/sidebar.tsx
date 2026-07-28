@@ -22,6 +22,7 @@ const FINANCE_ITEM_IDS = new Set([
   'nav_financeiro_categorias',
   'nav_financeiro_transacoes',
   'nav_financeiro_contas_fixas',
+  'nav_financeiro_contas_do_mes',
   'nav_financeiro_cartoes',
   'nav_financeiro_parcelamentos',
   'nav_financeiro_metas',

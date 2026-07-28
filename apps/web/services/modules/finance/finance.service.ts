@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { FinanceAccount, FinanceCategory, FinanceEntry } from '@control-os/types';
 import type { ActionResult } from '@/services/action-result.types';
 import type { CreateFinanceTransactionInput, FinanceRepository } from '@/services/repositories';
+import type { FinanceAuditSource } from '@/services/repositories/finance/finance-repository.types';
 import type { FinanceService } from './finance.interfaces';
 import { currentFinanceUserId } from './finance-user-context';
 import type {
@@ -23,7 +24,12 @@ import type {
   UpdateIncomeInput,
   CreateTransactionServiceInput,
   UpdateTransactionServiceInput,
+  CreateFixedAccountInput,
+  UpdateFixedAccountInput,
+  FixedAccountOccurrenceQuery,
+  PayFixedAccountOccurrenceInput,
 } from './finance.types';
+import { FixedAccountGenerationService } from './fixed-account-generation.service';
 
 /**
  * CONTROL OS — Fase 6: Todo `Prisma*Repository` guarda dados por `userId`
@@ -177,6 +183,77 @@ export class PersistentFinanceService implements FinanceService {
   // --- Núcleo de transações (Sprint 2.1) -----------------------------------
 
   async listTransactions(): Promise<FinanceEntry[]> { return this.repository.list(this.userId); }
+
+  // --- Contas fixas e ocorrências (Sprint 3.0) ----------------------------
+  async createFixedAccount(input: CreateFixedAccountInput): Promise<ActionResult> {
+    if (!input.name.trim() || !(input.amount > 0) || !Number.isInteger(input.dueDay) || input.dueDay < 1 || input.dueDay > 31) return { success: false, message: 'Informe nome, valor e dia de vencimento válidos.' };
+    // A regra de origem/destino existe, mas uma conta fixa pode nascer sem
+    // conta bancária (boleto, dinheiro ou uma futura fatura de cartão). A
+    // baixa só é permitida quando a ocorrência tiver uma conta compatível.
+    if (input.paymentMethod === 'conta_bancaria' && input.type === 'despesa' && !input.sourceAccountId) return { success: false, message: 'Selecione a conta de origem da despesa recorrente.' };
+    if (input.paymentMethod === 'conta_bancaria' && input.type === 'receita' && !input.destinationAccountId) return { success: false, message: 'Selecione a conta de destino da receita recorrente.' };
+    const category = await this.resolveCategory({ categoryId: input.categoryId }, input.type);
+    if (!category) return { success: false, message: 'Selecione uma categoria ativa compatível.' };
+    const accountId = input.type === 'despesa' ? input.sourceAccountId : input.destinationAccountId;
+    if (accountId && !await this.resolveAccountId(accountId)) return this.accountRequiredResult();
+    const created = await this.repository.createFixedAccount(this.userId, { ...input, recurrence: input.recurrence ?? 'mensal', categoryId: category.id, source: input.source ?? 'manual' });
+    await this.generateFixedAccountOccurrences(new Date(new Date().getFullYear(), new Date().getMonth() + 3, 0).toISOString());
+    return { success: true, message: 'Conta fixa criada.', data: created };
+  }
+  async listFixedAccounts(options?: { includeArchived?: boolean }) { return this.repository.listFixedAccounts(this.userId, options); }
+  async updateFixedAccount(input: UpdateFixedAccountInput): Promise<ActionResult> {
+    const current = await this.repository.findFixedAccountById(this.userId, input.id);
+    if (!current) return { success: false, message: 'Conta fixa não encontrada.' };
+    const type = input.type ?? current.type;
+    const sourceAccountId = input.sourceAccountId ?? current.sourceAccountId;
+    const destinationAccountId = input.destinationAccountId ?? current.destinationAccountId;
+    const paymentMethod = input.paymentMethod ?? current.paymentMethod;
+    if (paymentMethod === 'conta_bancaria' && type === 'despesa' && !sourceAccountId) return { success: false, message: 'Selecione a conta de origem da despesa recorrente.' };
+    if (paymentMethod === 'conta_bancaria' && type === 'receita' && !destinationAccountId) return { success: false, message: 'Selecione a conta de destino da receita recorrente.' };
+    const accountId = type === 'despesa' ? sourceAccountId : destinationAccountId;
+    if (accountId && !await this.resolveAccountId(accountId)) return this.accountRequiredResult();
+    const categoryId = input.categoryId ?? current.categoryId;
+    const category = await this.resolveCategory({ categoryId }, type);
+    if (!category) return { success: false, message: 'Categoria inválida.' };
+    const updated = await this.repository.updateFixedAccount(this.userId, {
+      ...input,
+      description: input.description ?? undefined,
+      // `undefined` significa "não alterar"; `null` limpa explicitamente o
+      // vínculo para as novas ocorrências. Snapshots antigos são imutáveis.
+      sourceAccountId: input.sourceAccountId === undefined ? current.sourceAccountId : input.sourceAccountId ?? undefined,
+      destinationAccountId: input.destinationAccountId === undefined ? current.destinationAccountId : input.destinationAccountId ?? undefined,
+      endDate: input.endDate ?? undefined,
+      customIntervalDays: input.customIntervalDays ?? undefined,
+      categoryId: category.id,
+      source: input.source ?? 'manual',
+    });
+    return updated ? { success: true, message: 'Conta fixa atualizada. Ocorrências já criadas foram preservadas.', data: updated } : { success: false, message: 'Conta fixa não encontrada.' };
+  }
+  async archiveFixedAccount(id: string, source: FinanceAuditSource = 'manual'): Promise<ActionResult> { const item = await this.repository.setFixedAccountArchived(this.userId, id, true, source); return item ? { success: true, message: 'Conta fixa arquivada.', data: item } : { success: false, message: 'Conta fixa não encontrada.' }; }
+  async restoreFixedAccount(id: string, source: FinanceAuditSource = 'manual'): Promise<ActionResult> { const item = await this.repository.setFixedAccountArchived(this.userId, id, false, source); return item ? { success: true, message: 'Conta fixa restaurada.', data: item } : { success: false, message: 'Conta fixa não encontrada.' }; }
+  async generateFixedAccountOccurrences(until?: Date | string): Promise<ActionResult> {
+    const limit = until ? new Date(until) : new Date(new Date().getFullYear(), new Date().getMonth() + 3, 0);
+    if (Number.isNaN(limit.getTime())) return { success: false, message: 'Data final inválida.' };
+    const generator = new FixedAccountGenerationService(); const accounts = await this.repository.listFixedAccounts(this.userId);
+    const generated = [];
+    for (const account of accounts) generated.push(...await this.repository.createFixedAccountOccurrences(this.userId, generator.build(account, limit), 'system'));
+    return { success: true, message: `${generated.length} ocorrência(s) gerada(s).`, data: generated };
+  }
+  async listFixedAccountOccurrences(query?: FixedAccountOccurrenceQuery) { await this.generateFixedAccountOccurrences(); return this.repository.listFixedAccountOccurrences(this.userId, query); }
+  async payFixedAccountOccurrence(input: PayFixedAccountOccurrenceInput): Promise<ActionResult> {
+    const occurrence = await this.repository.findFixedAccountOccurrenceById(this.userId, input.id);
+    if (!occurrence) return { success: false, message: 'Ocorrência não encontrada.' };
+    if (occurrence.status === 'cancelada' || occurrence.status === 'paga') return { success: false, message: 'Esta ocorrência não pode mais ser paga.' };
+    const accountId = occurrence.type === 'despesa' ? occurrence.sourceAccountId : occurrence.destinationAccountId;
+    if (!accountId) return { success: false, message: 'Esta ocorrência não possui uma conta bancária para baixa. Configure a conta fixa antes de pagar novas ocorrências.' };
+    const amount = input.amount ?? occurrence.amount - occurrence.paidAmount;
+    if (!(amount > 0)) return { success: false, message: 'Informe um valor de pagamento válido.' };
+    const paidAt = input.paidAt ?? new Date().toISOString();
+    if (Number.isNaN(new Date(paidAt).getTime())) return { success: false, message: 'Data de pagamento inválida.' };
+    const result = await this.repository.recordFixedAccountOccurrencePayment(this.userId, { occurrenceId: occurrence.id, amount, source: input.source ?? 'manual', idempotencyKey: input.idempotencyKey, transaction: { type: occurrence.type, amount, description: occurrence.name, categoryId: occurrence.categoryId, accountId, competenceDate: occurrence.dueDate, dueDate: occurrence.dueDate, paidAt, status: 'confirmada', source: input.source ?? 'manual', idempotencyKey: input.idempotencyKey } });
+    return result ? { success: true, message: result.occurrence.status === 'paga' ? 'Conta marcada como paga.' : 'Pagamento parcial registrado.', data: result } : { success: false, message: 'Não foi possível baixar esta ocorrência.' };
+  }
+  async cancelFixedAccountOccurrence(id: string, source: FinanceAuditSource = 'manual'): Promise<ActionResult> { const item = await this.repository.cancelFixedAccountOccurrence(this.userId, id, source); return item ? { success: true, message: 'Ocorrência cancelada.', data: item } : { success: false, message: 'Somente ocorrências pendentes podem ser canceladas.' }; }
 
   async createTransaction(input: CreateTransactionServiceInput): Promise<ActionResult> {
     if (!(input.amount > 0)) return { success: false, message: 'O valor precisa ser maior que zero.' };

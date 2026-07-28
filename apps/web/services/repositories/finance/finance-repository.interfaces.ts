@@ -1,4 +1,4 @@
-import type { FinanceAccount, FinanceCategory, FinanceEntry } from '@control-os/types';
+import type { FinanceAccount, FinanceCategory, FinanceEntry, FixedAccount, FixedAccountOccurrence } from '@control-os/types';
 import type {
   CreateFinanceAccountInput,
   CreateFinanceCategoryInput,
@@ -13,6 +13,11 @@ import type {
   UpdateFinanceCategoryInput,
   SetFinanceCategoryStatusInput,
   TransactionAuditCommand,
+  CreateFixedAccountRepositoryInput,
+  UpdateFixedAccountRepositoryInput,
+  FixedAccountOccurrenceFilter,
+  CreateFixedAccountOccurrenceInput,
+  FinanceAuditSource,
 } from './finance-repository.types';
 
 /**
@@ -114,4 +119,16 @@ export interface FinanceRepository {
   updateCategory(userId: string, input: UpdateFinanceCategoryInput): Promise<FinanceCategory | undefined>;
   setCategoryStatus(userId: string, input: SetFinanceCategoryStatusInput): Promise<FinanceCategory | undefined>;
   hasCategoryTransactions(userId: string, categoryId: string): Promise<boolean>;
+
+  // --- Contas fixas e ocorrências (Sprint 3.0) -----------------------------
+  createFixedAccount(userId: string, input: CreateFixedAccountRepositoryInput): Promise<FixedAccount>;
+  listFixedAccounts(userId: string, options?: { includeArchived?: boolean }): Promise<FixedAccount[]>;
+  findFixedAccountById(userId: string, id: string): Promise<FixedAccount | undefined>;
+  updateFixedAccount(userId: string, input: UpdateFixedAccountRepositoryInput): Promise<FixedAccount | undefined>;
+  setFixedAccountArchived(userId: string, id: string, archived: boolean, source: FinanceAuditSource): Promise<FixedAccount | undefined>;
+  createFixedAccountOccurrences(userId: string, rows: CreateFixedAccountOccurrenceInput[], source: FinanceAuditSource): Promise<FixedAccountOccurrence[]>;
+  listFixedAccountOccurrences(userId: string, filter?: FixedAccountOccurrenceFilter): Promise<FixedAccountOccurrence[]>;
+  findFixedAccountOccurrenceById(userId: string, id: string): Promise<FixedAccountOccurrence | undefined>;
+  recordFixedAccountOccurrencePayment(userId: string, input: import('./finance-repository.types').FixedAccountOccurrenceSettlementInput): Promise<{ occurrence: FixedAccountOccurrence; transaction: FinanceEntry } | undefined>;
+  cancelFixedAccountOccurrence(userId: string, id: string, source: FinanceAuditSource): Promise<FixedAccountOccurrence | undefined>;
 }

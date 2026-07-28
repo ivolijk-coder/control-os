@@ -46,6 +46,8 @@ export type ActionKind =
   | 'recurring.create'
   | 'account.create'
   | 'category.create'
+  | 'fixed-occurrence.pay'
+  | 'fixed-occurrence.list_due'
   | 'task.create'
   | 'note.create'
   | 'habit.update'

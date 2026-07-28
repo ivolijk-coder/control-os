@@ -254,4 +254,22 @@ export const INTENT_TOOL_SCHEMAS: ToolSchema[] = [
       required: ['title', 'content'],
     },
   },
+  {
+    name: 'pagar_conta_fixa',
+    description: 'Propor a baixa de uma conta fixa já cadastrada. A aplicação sempre pedirá confirmação antes de pagar.',
+    parameters: {
+      type: 'object',
+      properties: { name: { type: 'string', description: 'Nome exato ou mais próximo da conta fixa paga.' } },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'consultar_contas_vencendo',
+    description: 'Consultar contas fixas pendentes que vencem amanhã ou nesta semana.',
+    parameters: {
+      type: 'object',
+      properties: { period: { type: 'string', description: 'Use "amanha" ou "semana".' } },
+      required: ['period'],
+    },
+  },
 ];

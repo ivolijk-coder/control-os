@@ -13,8 +13,10 @@ import {
 import { MiniSparkline } from '@/components/dashboard/mini-charts';
 import { NovaWorkspace } from '@/components/nova/nova-workspace';
 import { useDataStore } from '@/lib/data-store';
-import { financeEntrySign, formatCurrency } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 import { toLocalDateString } from '@/services/nova';
+import type { FixedAccountOccurrence } from '@control-os/types';
+import type { FinanceDashboard } from '@/services/modules/finance/finance.types';
 
 /**
  * Visão geral do CONTROL OS.
@@ -25,8 +27,6 @@ import { toLocalDateString } from '@/services/nova';
  * principal; os dados entram como contexto e cada item leva à sua área
  * completa, sem duplicar tabelas ou formulários na Home.
  */
-
-const CURRENT_MONTH_PREFIX = () => toLocalDateString(new Date()).slice(0, 7);
 
 function formatShortDate(date: string): string {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(new Date(`${date}T00:00:00`));
@@ -48,35 +48,33 @@ const TONE_STYLES: Record<PriorityItem['tone'], string> = {
 };
 
 export default function DashboardPage() {
-  const financeEntries = useDataStore((state) => state.financeEntries);
-  const debts = useDataStore((state) => state.debts);
   const agendaEvents = useDataStore((state) => state.agendaEvents);
   const missions = useDataStore((state) => state.missions);
+  const [financialDashboard, setFinancialDashboard] = React.useState<FinanceDashboard | null>(null);
+  const [fixedAccounts, setFixedAccounts] = React.useState<{ overdue: FixedAccountOccurrence[]; dueToday: FixedAccountOccurrence[]; dueTomorrow: FixedAccountOccurrence[]; paidThisMonth: FixedAccountOccurrence[]; plannedThisMonth: FixedAccountOccurrence[] }>({ overdue: [], dueToday: [], dueTomorrow: [], paidThisMonth: [], plannedThisMonth: [] });
+
+  React.useEffect(() => {
+    let active = true;
+    void fetch('/api/finance/dashboard')
+      .then(async (response) => response.ok ? response.json() : Promise.reject(new Error('dashboard indisponível')))
+      .then((payload) => {
+        if (!active || !payload.success) return;
+        setFinancialDashboard(payload.dashboard);
+        setFixedAccounts(payload.fixedAccounts);
+      })
+      .catch(() => { /* A home continua utilizável mesmo se a área financeira estiver indisponível. */ });
+    return () => { active = false; };
+  }, []);
 
   const financialSnapshot = React.useMemo(() => {
-    const monthPrefix = CURRENT_MONTH_PREFIX();
-    const currentMonthEntries = financeEntries.filter((entry) => entry.date.startsWith(monthPrefix));
-    const income = currentMonthEntries
-      .filter((entry) => entry.type === 'receita')
-      .reduce((total, entry) => total + entry.amount, 0);
-    const expenses = currentMonthEntries
-      .filter((entry) => entry.type === 'despesa')
-      .reduce((total, entry) => total + entry.amount, 0);
-
-    const chronological = [...financeEntries].sort((a, b) => a.date.localeCompare(b.date));
-    let runningBalance = 0;
-    const flowValues = chronological.map((entry) => {
-      runningBalance += financeEntrySign(entry) * entry.amount;
-      return runningBalance;
-    });
-
-    return { income, expenses, available: income - expenses, flowValues };
-  }, [financeEntries]);
-
-  const openDebts = React.useMemo(
-    () => debts.filter((debt) => debt.installmentsPaid < debt.installmentsTotal).sort((a, b) => b.remainingAmount - a.remainingAmount),
-    [debts]
-  );
+    if (!financialDashboard) return { income: 0, expenses: 0, available: 0, flowValues: [] as number[] };
+    return {
+      income: financialDashboard.monthIncome,
+      expenses: financialDashboard.monthExpenses,
+      available: financialDashboard.currentBalance,
+      flowValues: financialDashboard.monthlyEvolution.map((point) => point.balance),
+    };
+  }, [financialDashboard]);
 
   const todayEvents = React.useMemo(() => {
     const today = toLocalDateString(new Date());
@@ -100,15 +98,25 @@ export default function DashboardPage() {
   const priorities = React.useMemo<PriorityItem[]>(() => {
     const items: PriorityItem[] = [];
 
-    if (openDebts.length > 0) {
-      const totalOpen = openDebts.reduce((total, debt) => total + debt.remainingAmount, 0);
+    if (fixedAccounts.overdue.length > 0) {
+      const totalOpen = fixedAccounts.overdue.reduce((total, occurrence) => total + (occurrence.amount - occurrence.paidAmount), 0);
       items.push({
-        id: 'debts',
-        title: `${openDebts.length} compromisso${openDebts.length > 1 ? 's' : ''} financeiro${openDebts.length > 1 ? 's' : ''} em aberto`,
+        id: 'overdue-fixed-accounts',
+        title: `${fixedAccounts.overdue.length} conta${fixedAccounts.overdue.length > 1 ? 's' : ''} em atraso`,
         detail: `${formatCurrency(totalOpen)} para organizar`,
-        href: '/financeiro',
+        href: '/financeiro/contas-do-mes?status=atrasada',
         tone: 'attention',
         icon: CircleAlert,
+      });
+    } else if (fixedAccounts.dueToday.length + fixedAccounts.dueTomorrow.length > 0) {
+      const upcoming = [...fixedAccounts.dueToday, ...fixedAccounts.dueTomorrow];
+      items.push({
+        id: 'upcoming-fixed-accounts',
+        title: `${upcoming.length} conta${upcoming.length > 1 ? 's' : ''} vence${upcoming.length > 1 ? 'm' : ''} em breve`,
+        detail: fixedAccounts.dueToday.length > 0 ? 'Há conta para pagar hoje.' : 'Há conta para pagar amanhã.',
+        href: '/financeiro/contas-do-mes',
+        tone: 'neutral',
+        icon: Wallet,
       });
     }
 
@@ -156,7 +164,7 @@ export default function DashboardPage() {
     }
 
     return items.slice(0, 3);
-  }, [atRiskMission, nextEvent, openDebts, todayEvents]);
+  }, [atRiskMission, fixedAccounts, nextEvent, todayEvents]);
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-5 py-7 sm:px-8 lg:py-9">

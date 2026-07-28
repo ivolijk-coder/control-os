@@ -36,6 +36,8 @@ const FINANCE_ACTION_KINDS: readonly ActionKind[] = [
   'recurring.create',
   'account.create',
   'category.create',
+  'fixed-occurrence.pay',
+  'fixed-occurrence.list_due',
 ];
 
 function isFinanceActionKind(value: unknown): value is ActionKind {

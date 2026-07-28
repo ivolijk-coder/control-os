@@ -1,4 +1,4 @@
-import type { FinanceAccount, FinanceCategory, FinanceEntry } from '@control-os/types';
+import type { FinanceAccount, FinanceCategory, FinanceEntry, FixedAccount, FixedAccountOccurrence } from '@control-os/types';
 import type { ActionResult } from '@/services/action-result.types';
 import type {
   CreateExpenseInput,
@@ -21,6 +21,10 @@ import type {
   UpdateIncomeInput,
   CreateTransactionServiceInput,
   UpdateTransactionServiceInput,
+  CreateFixedAccountInput,
+  UpdateFixedAccountInput,
+  FixedAccountOccurrenceQuery,
+  PayFixedAccountOccurrenceInput,
 } from './finance.types';
 
 /**
@@ -77,6 +81,17 @@ export interface FinanceService {
   updateCategory(input: UpdateFinanceCategoryServiceInput): Promise<ActionResult>;
   archiveCategory(id: string, source?: 'manual' | 'nova' | 'whatsapp' | 'api'): Promise<ActionResult>;
   restoreCategory(id: string, source?: 'manual' | 'nova' | 'whatsapp' | 'api'): Promise<ActionResult>;
+
+  // Contas fixas e ocorrências (Sprint 3.0)
+  createFixedAccount(input: CreateFixedAccountInput): Promise<ActionResult>;
+  listFixedAccounts(options?: { includeArchived?: boolean }): Promise<FixedAccount[]>;
+  updateFixedAccount(input: UpdateFixedAccountInput): Promise<ActionResult>;
+  archiveFixedAccount(id: string, source?: 'manual' | 'nova' | 'whatsapp' | 'api'): Promise<ActionResult>;
+  restoreFixedAccount(id: string, source?: 'manual' | 'nova' | 'whatsapp' | 'api'): Promise<ActionResult>;
+  generateFixedAccountOccurrences(until?: Date | string): Promise<ActionResult>;
+  listFixedAccountOccurrences(query?: FixedAccountOccurrenceQuery): Promise<FixedAccountOccurrence[]>;
+  payFixedAccountOccurrence(input: PayFixedAccountOccurrenceInput): Promise<ActionResult>;
+  cancelFixedAccountOccurrence(id: string, source?: 'manual' | 'nova' | 'whatsapp' | 'api'): Promise<ActionResult>;
 
   // Consultas
   getBalance(): Promise<number>;

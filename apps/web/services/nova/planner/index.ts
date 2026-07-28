@@ -82,6 +82,10 @@ export function buildPlan(intent: NovaIntent): NovaAction[] {
         { kind: 'criar_nota', label: 'Criar nota' },
         { kind: 'registrar_timeline', label: 'Adicionar ao histórico' },
       ];
+    case 'pagar_conta_fixa':
+      return [{ kind: 'pagar_conta_fixa', label: 'Registrar pagamento da conta fixa' }];
+    case 'consultar_contas_vencendo':
+      return [{ kind: 'consultar_contas_vencendo', label: 'Consultar contas a vencer' }];
     case 'consultar_dividas':
     case 'consultar_dia':
       // Leitura, não gera checklist de execução — tratada direto em `conversation/`.

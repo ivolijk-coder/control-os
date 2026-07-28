@@ -15,6 +15,8 @@ import { CreateInstallmentAction } from './actions/finance/create-installment.ac
 import { CreateRecurringAction } from './actions/finance/create-recurring.action';
 import { CreateAccountAction } from './actions/finance/create-account.action';
 import { CreateCategoryAction } from './actions/finance/create-category.action';
+import { PayFixedAccountOccurrenceAction } from './actions/finance/pay-fixed-account-occurrence.action';
+import { ListFixedAccountOccurrencesAction } from './actions/finance/list-fixed-account-occurrences.action';
 import { CreateTaskAction } from './actions/tasks/create-task.action';
 import { CreateNoteAction } from './actions/notes/create-note.action';
 import { UpdateHabitAction } from './actions/habits/update-habit.action';
@@ -53,6 +55,8 @@ export const DEFAULT_ACTION_HANDLERS: ActionHandler[] = [
   new CreateRecurringAction(),
   new CreateAccountAction(),
   new CreateCategoryAction(),
+  new PayFixedAccountOccurrenceAction(),
+  new ListFixedAccountOccurrencesAction(),
   new CreateTaskAction(),
   new CreateNoteAction(),
   new UpdateHabitAction(),

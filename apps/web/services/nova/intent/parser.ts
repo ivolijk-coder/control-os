@@ -39,6 +39,9 @@ const DEBT_PATTERN = /\b(tenho uma d[íi]vida|financiei|parcelei)\b|\bdevo\b\s*(
 const INSTALLMENTS_PATTERN = /(\d{1,2})\s*(?:x\b|vezes)/i;
 const DAY_PLAN_PATTERN =
   /\b(o que (eu )?preciso fazer hoje|organize meu dia|como est[áa] meu dia|plano do dia|meu dia hoje)\b/;
+const FIXED_ACCOUNT_PAYMENT_PATTERN = /^paguei\s+(?:a|o)?\s*([a-zà-ÿ][a-zà-ÿ0-9\s-]*)[.!?]*$/i;
+const FIXED_ACCOUNT_DUE_TOMORROW_PATTERN = /\b(quais?\s+contas?\s+vencem\s+amanh[ãa]|contas?\s+de\s+amanh[ãa])\b/i;
+const FIXED_ACCOUNT_DUE_WEEK_PATTERN = /\b(quanto\s+tenho\s+para\s+pagar\s+(?:esta|nessa)\s+semana|contas?\s+(?:desta|dessa)\s+semana)\b/i;
 // Só considera saudação quando é A mensagem inteira (ex.: "oi", "bom dia!")
 // — evita engolir o resto do intent de uma frase como "boa tarde, gastei 50".
 const GREETING_PATTERN = /^(oi+|ol[áa]|bom dia|boa tarde|boa noite|e a[íi]|hey|hello)[\s,!.]*$/i;
@@ -112,6 +115,22 @@ export function parseIntent(text: string): NovaIntent {
 
   if (GREETING_PATTERN.test(raw) || DAY_PLAN_PATTERN.test(lower)) {
     return { kind: 'consultar_dia', raw };
+  }
+
+  if (FIXED_ACCOUNT_DUE_TOMORROW_PATTERN.test(lower)) {
+    return { kind: 'consultar_contas_vencendo', raw, period: 'amanha' };
+  }
+
+  if (FIXED_ACCOUNT_DUE_WEEK_PATTERN.test(lower)) {
+    return { kind: 'consultar_contas_vencendo', raw, period: 'semana' };
+  }
+
+  // Antes de interpretar "paguei" como despesa, detecta a baixa de uma
+  // conta recorrente sem valor explícito. Valores continuam no fluxo normal
+  // de despesa ("paguei 50 de internet").
+  const fixedAccountPayment = FIXED_ACCOUNT_PAYMENT_PATTERN.exec(raw);
+  if (fixedAccountPayment?.[1]) {
+    return { kind: 'pagar_conta_fixa', raw, name: describeEntry(fixedAccountPayment[1]) };
   }
 
   if (EXPENSE_PATTERN.test(lower)) {

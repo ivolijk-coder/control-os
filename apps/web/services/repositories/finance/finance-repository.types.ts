@@ -1,4 +1,4 @@
-import type { FinanceAccountKind, FinanceAccountStatus, FinanceEntryType, FinanceTransactionSource, FinanceTransactionStatus, FinanceTransferDirection } from '@control-os/types';
+import type { FinanceAccountKind, FinanceAccountStatus, FinanceEntryType, FinanceTransactionSource, FinanceTransactionStatus, FinanceTransferDirection, FixedAccountPaymentMethod, FixedAccountRecurrence } from '@control-os/types';
 
 /**
  * Tipos do Finance Repository (CONTROL OS — Fase 6: Persistência real;
@@ -102,7 +102,7 @@ export interface CreateFinanceAccountInput {
   source: FinanceAuditSource;
 }
 
-export type FinanceAuditSource = 'manual' | 'nova' | 'whatsapp' | 'api';
+export type FinanceAuditSource = 'manual' | 'nova' | 'whatsapp' | 'api' | 'system';
 
 export interface FinanceAuditInput {
   operation: string;
@@ -199,4 +199,61 @@ export interface FinanceAccountBalance {
   accountId: string;
   accountName: string;
   balance: number;
+}
+
+// --- Sprint 3.0: regras recorrentes e fatos de ocorrência -----------------
+
+export interface CreateFixedAccountRepositoryInput {
+  name: string;
+  description?: string;
+  type: 'receita' | 'despesa';
+  categoryId: string;
+  sourceAccountId?: string;
+  destinationAccountId?: string;
+  paymentMethod: FixedAccountPaymentMethod;
+  amount: number;
+  recurrence: FixedAccountRecurrence;
+  customIntervalDays?: number;
+  dueDay: number;
+  startDate: string;
+  endDate?: string;
+  source: FinanceAuditSource;
+}
+
+export interface UpdateFixedAccountRepositoryInput extends Omit<Partial<CreateFixedAccountRepositoryInput>, 'source'> {
+  id: string;
+  active?: boolean;
+  source: FinanceAuditSource;
+}
+
+export interface FixedAccountOccurrenceFilter {
+  competence?: string;
+  status?: 'pendente' | 'paga' | 'parcial' | 'cancelada' | 'atrasada';
+  from?: string;
+  to?: string;
+  fixedAccountId?: string;
+}
+
+export interface CreateFixedAccountOccurrenceInput {
+  fixedAccountId: string;
+  competenceMonth: number;
+  competenceYear: number;
+  referencePeriod: string;
+  dueDate: string;
+  name: string;
+  description?: string;
+  type: 'receita' | 'despesa';
+  categoryId: string;
+  paymentMethod: FixedAccountPaymentMethod;
+  sourceAccountId?: string;
+  destinationAccountId?: string;
+  amount: number;
+}
+
+export interface FixedAccountOccurrenceSettlementInput {
+  occurrenceId: string;
+  amount: number;
+  source: FinanceAuditSource;
+  idempotencyKey?: string;
+  transaction: CreateFinanceTransactionInput;
 }

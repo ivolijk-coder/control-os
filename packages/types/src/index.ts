@@ -197,6 +197,66 @@ export interface FinanceCategory {
   isDefault?: boolean;
 }
 
+/** Regra recorrente do financeiro. A regra não é uma movimentação: ela só
+ * materializa ocorrências imutáveis que, quando liquidadas, passam pelo
+ * núcleo oficial de transações. */
+export type FixedAccountRecurrence = 'mensal' | 'semanal' | 'anual' | 'personalizada';
+export type FixedAccountPaymentMethod = 'conta_bancaria' | 'cartao_credito' | 'dinheiro' | 'pix' | 'boleto' | 'outro';
+export type FixedAccountOccurrenceStatus = 'pendente' | 'paga' | 'parcial' | 'cancelada';
+export type FixedAccountOccurrenceDisplayStatus = FixedAccountOccurrenceStatus | 'atrasada';
+
+export interface FixedAccount {
+  id: string;
+  name: string;
+  description?: string;
+  type: 'receita' | 'despesa';
+  categoryId: string;
+  sourceAccountId?: string;
+  destinationAccountId?: string;
+  paymentMethod: FixedAccountPaymentMethod;
+  amount: number;
+  recurrence: FixedAccountRecurrence;
+  customIntervalDays?: number;
+  dueDay: number;
+  startDate: string;
+  endDate?: string;
+  active: boolean;
+  archivedAt?: string;
+  lastGeneratedCompetence?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Fotografia da regra no instante da geração. Estes campos nunca devem ser
+ * reescritos quando o cadastro recorrente mudar no futuro. */
+export interface FixedAccountOccurrence {
+  id: string;
+  fixedAccountId: string;
+  competenceMonth: number;
+  competenceYear: number;
+  referencePeriod: string;
+  dueDate: string;
+  name: string;
+  description?: string;
+  /** Tipo fotografado no instante da geração; nunca inferir por conta. */
+  type: 'receita' | 'despesa';
+  categoryId: string;
+  paymentMethod: FixedAccountPaymentMethod;
+  sourceAccountId?: string;
+  destinationAccountId?: string;
+  amount: number;
+  status: FixedAccountOccurrenceStatus;
+  /** Estado de exibição; atraso é derivado, nunca persistido. */
+  displayStatus: FixedAccountOccurrenceDisplayStatus;
+  paidAmount: number;
+  transactionId?: string;
+  paidAt?: string;
+  reconciliationStatus?: 'nao_conciliada' | 'conciliada' | 'revisar';
+  externalReferenceId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /**
  * Dívida (CONTROL OS — Etapa 3, Financeiro avançado). Diferente de
  * `FinanceEntry` (um lançamento pontual), uma dívida tem ciclo de vida

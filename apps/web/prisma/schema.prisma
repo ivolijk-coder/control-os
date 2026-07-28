@@ -110,6 +110,42 @@ enum CategoryStatus {
   ARCHIVED
 }
 
+/// A regra recorrente suporta os ciclos que o domínio financeiro prevê. A
+/// interface inicial pode expor apenas mensal, mas o banco não precisará ser
+/// redesenhado quando semanal, anual ou personalizado forem habilitados.
+enum FixedAccountRecurrence {
+  MONTHLY
+  WEEKLY
+  YEARLY
+  CUSTOM
+}
+
+enum FixedAccountPaymentMethod {
+  BANK_ACCOUNT
+  CREDIT_CARD
+  CASH
+  PIX
+  BOLETO
+  OTHER
+}
+
+/// OVERDUE não é persistido: é derivado em leitura quando PENDING e a data de
+/// vencimento já passou. Isso evita jobs apenas para trocar estados.
+enum FixedAccountOccurrenceStatus {
+  PENDING
+  PAID
+  PARTIAL
+  CANCELLED
+}
+
+/// Preparação para conciliação por Open Finance. Nulo significa que ainda não
+/// houve tentativa de conciliação; portanto a integração futura não exigirá
+/// nova migração estrutural.
+enum FixedAccountReconciliationStatus {
+  MATCHED
+  REVIEW_REQUIRED
+}
+
 /// Entidade única de lançamento financeiro — cobre tanto receitas quanto
 /// despesas (`type`). Mapeia para `FinanceEntry` (`@control-os/types`) na
 /// borda do repositório (`PrismaFinanceRepository`) — nenhum tipo TS novo
@@ -175,6 +211,7 @@ model Transaction {
   installmentTotal   Int?    @map("installment_total")
 
   attachments Attachment[]
+  fixedAccountOccurrencePayments FixedAccountOccurrencePayment[]
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -208,6 +245,8 @@ model Category {
   isFavorite   Boolean           @default(false) @map("is_favorite")
   archivedAt   DateTime?         @map("archived_at") @db.Timestamptz(3)
   transactions Transaction[]
+  fixedAccounts FixedAccount[]
+  occurrenceSnapshots FixedAccountOccurrence[]
   createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -233,11 +272,100 @@ model Account {
   status       AccountStatus @default(ACTIVE)
   archivedAt   DateTime?     @map("archived_at") @db.Timestamptz(3)
   transactions Transaction[]
+  fixedAccountsAsSource FixedAccount[] @relation("FixedAccountSource")
+  fixedAccountsAsDestination FixedAccount[] @relation("FixedAccountDestination")
+  occurrenceSnapshotsAsSource FixedAccountOccurrence[] @relation("OccurrenceSourceAccount")
+  occurrenceSnapshotsAsDestination FixedAccountOccurrence[] @relation("OccurrenceDestinationAccount")
   createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([userId, name])
   @@map("finance_accounts")
+}
+
+/// Cadastro permanente de uma obrigação/receita recorrente. Não carrega saldo
+/// e não é uma transação: somente gera ocorrências com snapshot imutável.
+model FixedAccount {
+  id                      String                 @id @default(uuid()) @db.Uuid
+  userId                  String                 @map("user_id") @db.Uuid
+  name                    String
+  description             String?
+  type                    TransactionType
+  categoryId              String                 @map("category_id") @db.Uuid
+  sourceAccountId         String?                @map("source_account_id") @db.Uuid
+  destinationAccountId    String?                @map("destination_account_id") @db.Uuid
+  paymentMethod           FixedAccountPaymentMethod @map("payment_method")
+  amount                  Decimal                @db.Decimal(12, 2)
+  recurrence              FixedAccountRecurrence
+  customIntervalDays      Int?                   @map("custom_interval_days")
+  dueDay                  Int                    @map("due_day")
+  startDate               DateTime               @map("start_date") @db.Timestamptz(3)
+  endDate                 DateTime?              @map("end_date") @db.Timestamptz(3)
+  active                  Boolean                @default(true)
+  archivedAt              DateTime?              @map("archived_at") @db.Timestamptz(3)
+  lastGeneratedCompetence String?                @map("last_generated_competence") @db.VarChar(32)
+  category                Category               @relation(fields: [categoryId], references: [id])
+  sourceAccount           Account?               @relation("FixedAccountSource", fields: [sourceAccountId], references: [id])
+  destinationAccount      Account?               @relation("FixedAccountDestination", fields: [destinationAccountId], references: [id])
+  occurrences             FixedAccountOccurrence[]
+  createdAt               DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([userId, active, archivedAt])
+  @@index([userId, lastGeneratedCompetence])
+  @@index([categoryId])
+  @@map("finance_fixed_accounts")
+}
+
+/// Fato mensal (ou semanal/anual) criado a partir de uma regra. Os campos da
+/// regra são copiados para preservar fielmente a configuração daquele período.
+model FixedAccountOccurrence {
+  id                     String                    @id @default(uuid()) @db.Uuid
+  fixedAccountId         String                    @map("fixed_account_id") @db.Uuid
+  competenceMonth        Int                       @map("competence_month")
+  competenceYear         Int                       @map("competence_year")
+  referencePeriod        String                    @map("reference_period") @db.VarChar(32)
+  dueDate                DateTime                  @map("due_date") @db.Timestamptz(3)
+  name                   String
+  description            String?
+  type                   TransactionType
+  categoryId             String                    @map("category_id") @db.Uuid
+  paymentMethod          FixedAccountPaymentMethod @map("payment_method")
+  sourceAccountId        String?                   @map("source_account_id") @db.Uuid
+  destinationAccountId   String?                   @map("destination_account_id") @db.Uuid
+  amount                 Decimal                   @db.Decimal(12, 2)
+  status                 FixedAccountOccurrenceStatus @default(PENDING)
+  transactionId          String?                   @map("transaction_id") @db.Uuid
+  paidAt                 DateTime?                 @map("paid_at") @db.Timestamptz(3)
+  reconciliationStatus   FixedAccountReconciliationStatus? @map("reconciliation_status")
+  externalReferenceId    String?                   @map("external_reference_id")
+  fixedAccount           FixedAccount              @relation(fields: [fixedAccountId], references: [id])
+  category               Category                  @relation(fields: [categoryId], references: [id])
+  sourceAccount          Account?                  @relation("OccurrenceSourceAccount", fields: [sourceAccountId], references: [id])
+  destinationAccount     Account?                  @relation("OccurrenceDestinationAccount", fields: [destinationAccountId], references: [id])
+  payments               FixedAccountOccurrencePayment[]
+  createdAt              DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([fixedAccountId, referencePeriod])
+  @@index([competenceYear, competenceMonth, dueDate])
+  @@index([status, dueDate])
+  @@map("finance_fixed_account_occurrences")
+}
+
+/// Cada baixa parcial é ligada a uma transação real. Isso elimina saldo
+/// paralelo e permite que uma ocorrência seja concluída por várias baixas.
+model FixedAccountOccurrencePayment {
+  id          String                 @id @default(uuid()) @db.Uuid
+  occurrenceId String                @map("occurrence_id") @db.Uuid
+  transactionId String               @unique @map("transaction_id") @db.Uuid
+  amount      Decimal                @db.Decimal(12, 2)
+  occurrence  FixedAccountOccurrence @relation(fields: [occurrenceId], references: [id])
+  transaction Transaction            @relation(fields: [transactionId], references: [id])
+  createdAt   DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([occurrenceId])
+  @@map("finance_fixed_account_occurrence_payments")
 }
 
 /// Trilho genérico e extensível de auditoria do domínio financeiro. Não tem

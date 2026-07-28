@@ -41,6 +41,8 @@ export function runIntent(ctx: NovaContext, intent: NovaIntent): NovaActionResul
     case 'criar_nota':
     case 'transferir_conta':
     case 'parcelar_despesa':
+    case 'pagar_conta_fixa':
+    case 'consultar_contas_vencendo':
       // Nunca alcançado em runtime — `IntentResolver` (services/ai) sempre
       // resolve uma Action dedicada pra esses kinds (CONTROL OS — Etapa 5 /
       // Fase 7), então `ActionExecutor` nunca cai neste fallback legado pra

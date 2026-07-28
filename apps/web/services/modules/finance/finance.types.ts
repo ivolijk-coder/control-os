@@ -1,4 +1,4 @@
-import type { FinanceAccountKind, FinanceEntry, FinanceEntryType, FinanceRecurrenceFrequency, FinanceTransactionSource, FinanceTransactionStatus } from '@control-os/types';
+import type { FinanceAccountKind, FinanceEntry, FinanceEntryType, FinanceRecurrenceFrequency, FinanceTransactionSource, FinanceTransactionStatus, FixedAccountPaymentMethod, FixedAccountRecurrence } from '@control-os/types';
 import type { FinanceAccountBalance, FinanceCategoryBreakdownItem } from '@/services/repositories';
 
 /**
@@ -202,6 +202,60 @@ export interface UpdateFinanceCategoryServiceInput {
   sortOrder?: number;
   isFavorite?: boolean;
   source?: 'manual' | 'nova' | 'whatsapp' | 'api';
+}
+
+// --- Sprint 3.0: Contas fixas e ocorrências -------------------------------
+
+export interface CreateFixedAccountInput {
+  name: string;
+  description?: string;
+  type: 'receita' | 'despesa';
+  categoryId: string;
+  sourceAccountId?: string;
+  destinationAccountId?: string;
+  paymentMethod: FixedAccountPaymentMethod;
+  amount: number;
+  recurrence?: FixedAccountRecurrence;
+  customIntervalDays?: number;
+  dueDay: number;
+  startDate: string;
+  endDate?: string;
+  source?: FinanceTransactionSource;
+}
+
+export interface UpdateFixedAccountInput {
+  id: string;
+  type?: 'receita' | 'despesa';
+  name?: string;
+  description?: string | null;
+  categoryId?: string;
+  sourceAccountId?: string | null;
+  destinationAccountId?: string | null;
+  paymentMethod?: FixedAccountPaymentMethod;
+  amount?: number;
+  recurrence?: FixedAccountRecurrence;
+  customIntervalDays?: number | null;
+  dueDay?: number;
+  startDate?: string;
+  endDate?: string | null;
+  active?: boolean;
+  source?: FinanceTransactionSource;
+}
+
+export interface FixedAccountOccurrenceQuery {
+  competence?: string;
+  status?: 'pendente' | 'paga' | 'parcial' | 'cancelada' | 'atrasada';
+  from?: string;
+  to?: string;
+  fixedAccountId?: string;
+}
+
+export interface PayFixedAccountOccurrenceInput {
+  id: string;
+  amount?: number;
+  paidAt?: string;
+  source?: FinanceTransactionSource;
+  idempotencyKey?: string;
 }
 
 // --- CONTROL OS — Fase 7: Dashboard ------------------------------------------

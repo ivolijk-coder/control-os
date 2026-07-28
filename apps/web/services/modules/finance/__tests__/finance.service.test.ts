@@ -422,6 +422,79 @@ async function main(): Promise<void> {
     assert((await service.listTransactions()).length === 0, 'falha de validação não pode criar perna parcial de transferência');
   });
 
+  // --- CONTROL FINANCE — Sprint 3.0: Contas fixas e ocorrências ---------
+
+  await test('contas fixas — gera ocorrências idempotentes com snapshot imutável', async () => {
+    const repository = new InMemoryFinanceRepository();
+    const account = repository.seedAccountForTest('usr_fixed_account');
+    const service = new PersistentFinanceService(repository, 'usr_fixed_account');
+    const category = await service.createCategory({ name: 'Internet residencial', kind: 'despesa' });
+    const categoryId = (category.data as { id: string }).id;
+    const created = await service.createFixedAccount({
+      name: 'Internet', description: 'Plano inicial', type: 'despesa', categoryId,
+      sourceAccountId: account.id, paymentMethod: 'conta_bancaria', amount: 119.9,
+      recurrence: 'mensal', dueDay: 10, startDate: new Date().toISOString(),
+    });
+    assert(created.success, `esperava criar conta fixa: ${created.message}`);
+    const fixedId = (created.data as { id: string }).id;
+    const before = await service.listFixedAccountOccurrences({ fixedAccountId: fixedId });
+    assert(before.length === 3, `esperava horizonte inicial de 3 ocorrências, recebeu ${before.length}`);
+    const original = before[0]!;
+    assert(original.name === 'Internet' && original.amount === 119.9 && original.categoryId === categoryId, 'a ocorrência precisa carregar o snapshot financeiro da criação');
+    await service.generateFixedAccountOccurrences();
+    assert((await service.listFixedAccountOccurrences({ fixedAccountId: fixedId })).length === before.length, 'geração repetida não pode duplicar a mesma competência');
+
+    await service.updateFixedAccount({ id: fixedId, name: 'Internet fibra', amount: 149.9, description: 'Novo plano' });
+    const future = new Date(); future.setMonth(future.getMonth() + 6);
+    await service.generateFixedAccountOccurrences(future);
+    const after = await service.listFixedAccountOccurrences({ fixedAccountId: fixedId });
+    const persistedOriginal = after.find((item) => item.id === original.id);
+    const newest = after[after.length - 1];
+    assert(persistedOriginal?.name === 'Internet' && persistedOriginal.amount === 119.9, 'alterar a conta fixa não pode reescrever um mês já gerado');
+    assert(newest?.name === 'Internet fibra' && newest.amount === 149.9, 'novas competências precisam usar a configuração atualizada');
+    assert(repository.getAuditEventsForTest('usr_fixed_account').some((event) => event.operation === 'OCCURRENCE_GENERATED'), 'a geração precisa deixar auditoria própria');
+  });
+
+  await test('contas fixas — baixa cria transação pelo núcleo, suporta parcial e é idempotente', async () => {
+    const repository = new InMemoryFinanceRepository();
+    const account = repository.seedAccountForTest('usr_fixed_payment');
+    const service = new PersistentFinanceService(repository, 'usr_fixed_payment');
+    const category = await service.createCategory({ name: 'Aluguel', kind: 'despesa' });
+    const fixed = await service.createFixedAccount({
+      name: 'Aluguel', type: 'despesa', categoryId: (category.data as { id: string }).id,
+      sourceAccountId: account.id, paymentMethod: 'conta_bancaria', amount: 1000,
+      recurrence: 'mensal', dueDay: 5, startDate: new Date().toISOString(),
+    });
+    const occurrence = (await service.listFixedAccountOccurrences({ fixedAccountId: (fixed.data as { id: string }).id }))[0]!;
+    const partial = await service.payFixedAccountOccurrence({ id: occurrence.id, amount: 400, idempotencyKey: 'fixed-partial-1' });
+    assert(partial.success, `esperava pagamento parcial: ${partial.message}`);
+    let updated = (await service.listFixedAccountOccurrences({ fixedAccountId: occurrence.fixedAccountId }))[0]!;
+    assert(updated.status === 'parcial' && updated.paidAmount === 400, 'a ocorrência deve indicar pagamento parcial sem mudar o valor original');
+    const repeated = await service.payFixedAccountOccurrence({ id: occurrence.id, amount: 400, idempotencyKey: 'fixed-partial-1' });
+    assert(repeated.success, 'o retry com a mesma chave precisa retornar sucesso');
+    assert((await service.listTransactions()).length === 1, 'retry de baixa não pode duplicar a transação financeira');
+    const full = await service.payFixedAccountOccurrence({ id: occurrence.id });
+    assert(full.success, `esperava quitar saldo restante: ${full.message}`);
+    updated = (await service.listFixedAccountOccurrences({ fixedAccountId: occurrence.fixedAccountId }))[0]!;
+    assert(updated.status === 'paga' && updated.paidAmount === 1000 && Boolean(updated.transactionId), 'quitação precisa vincular a ocorrência à transação real');
+    assert((await service.getBalance()) === -1000, 'somente as transações confirmadas do núcleo devem afetar o saldo');
+  });
+
+  await test('contas fixas — cancelamento preserva histórico e só aceita pendência do próprio usuário', async () => {
+    const repository = new InMemoryFinanceRepository();
+    const account = repository.seedAccountForTest('usr_fixed_owner');
+    const owner = new PersistentFinanceService(repository, 'usr_fixed_owner');
+    const other = new PersistentFinanceService(repository, 'usr_fixed_other');
+    const category = await owner.createCategory({ name: 'Condomínio', kind: 'despesa' });
+    const fixed = await owner.createFixedAccount({ name: 'Condomínio', type: 'despesa', categoryId: (category.data as { id: string }).id, sourceAccountId: account.id, paymentMethod: 'conta_bancaria', amount: 300, recurrence: 'mensal', dueDay: 8, startDate: new Date().toISOString() });
+    const occurrence = (await owner.listFixedAccountOccurrences({ fixedAccountId: (fixed.data as { id: string }).id }))[0]!;
+    assert((await other.cancelFixedAccountOccurrence(occurrence.id)).success === false, 'outro usuário não pode cancelar ocorrência privada');
+    assert((await owner.cancelFixedAccountOccurrence(occurrence.id)).success, 'o proprietário deve conseguir cancelar uma pendência');
+    const cancelled = (await owner.listFixedAccountOccurrences({ fixedAccountId: occurrence.fixedAccountId }))[0];
+    assert(cancelled?.status === 'cancelada', 'cancelamento não pode apagar a ocorrência');
+    assert(repository.getAuditEventsForTest('usr_fixed_owner').some((event) => event.operation === 'OCCURRENCE_CANCELLED'), 'cancelamento deve gerar auditoria');
+  });
+
   // --- CONTROL OS — Fase 7: Parcelamentos ----------------------------------
 
   await test('createInstallment — divide em N parcelas ligadas, sem deriva de ponto flutuante', async () => {

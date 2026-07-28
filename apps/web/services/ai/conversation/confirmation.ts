@@ -19,7 +19,7 @@ import type { NovaIntent } from '@/services/nova';
  * confirmação já pronto em `ConversationService`.
  */
 export function isSensitiveIntent(intent: NovaIntent): boolean {
-  return intent.kind === 'excluir_agenda';
+  return intent.kind === 'excluir_agenda' || intent.kind === 'pagar_conta_fixa';
 }
 
 /** "sim", "s", "confirma", "pode", "ok", "beleza", "isso" — variações comuns de confirmação em pt-BR. */
@@ -39,6 +39,8 @@ export function buildConfirmationPreview(intent: NovaIntent): string {
       return `Vou registrar uma dívida de R$ ${intent.totalAmount.toFixed(2)} em ${intent.installments}x (${intent.description}). Confirma?`;
     case 'excluir_agenda':
       return `Vou excluir o compromisso "${intent.title}" da agenda. Confirma?`;
+    case 'pagar_conta_fixa':
+      return `Vou marcar a conta "${intent.name}" como paga e registrar a movimentação financeira. Confirma?`;
     default:
       // Nunca alcançado em runtime — só chega aqui um `intent` que `isSensitiveIntent` já aprovou.
       return 'Confirma essa ação?';
@@ -86,6 +88,10 @@ function describeIntentForBatch(intent: NovaIntent): string {
       return `registrar o bem "${intent.name}"`;
     case 'criar_nota':
       return `criar a nota "${intent.title}"`;
+    case 'pagar_conta_fixa':
+      return `marcar a conta "${intent.name}" como paga`;
+    case 'consultar_contas_vencendo':
+      return `consultar as contas que vencem ${intent.period === 'amanha' ? 'amanhã' : 'esta semana'}`;
     case 'consultar_dividas':
     case 'consultar_dia':
     case 'desconhecido':

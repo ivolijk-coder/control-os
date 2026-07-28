@@ -288,6 +288,16 @@ function mapToolCallToIntent(toolCall: NovaAIToolCall, raw: string): NovaIntent 
       if (title === undefined || content === undefined) break;
       return { kind: 'criar_nota', raw, title, content, category: requireString(args, 'category') };
     }
+    case 'pagar_conta_fixa': {
+      const name = requireString(args, 'name');
+      if (name === undefined) break;
+      return { kind: 'pagar_conta_fixa', raw, name };
+    }
+    case 'consultar_contas_vencendo': {
+      const period = requireString(args, 'period');
+      if (period !== 'amanha' && period !== 'semana') break;
+      return { kind: 'consultar_contas_vencendo', raw, period };
+    }
   }
 
   // Tool desconhecida ou argumentos incompletos — não inventa dado faltando.

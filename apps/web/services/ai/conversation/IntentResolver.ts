@@ -12,6 +12,8 @@ import {
   CreateReminderAction,
   CreateTransferAction,
   CreateTripAction,
+  ListFixedAccountOccurrencesAction,
+  PayFixedAccountOccurrenceAction,
   type Action,
 } from '../actions';
 
@@ -77,6 +79,10 @@ export class IntentResolver {
         return new CreateAssetAction({ name: intent.name, estimatedValue: intent.estimatedValue, category: intent.category });
       case 'criar_nota':
         return new CreateNoteAction({ title: intent.title, content: intent.content, category: intent.category });
+      case 'pagar_conta_fixa':
+        return new PayFixedAccountOccurrenceAction(intent.name);
+      case 'consultar_contas_vencendo':
+        return new ListFixedAccountOccurrencesAction(intent.period);
       case 'criar_projeto':
       case 'registrar_divida':
       case 'excluir_agenda':

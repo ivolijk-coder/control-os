@@ -21,3 +21,5 @@ export { CreateAssetAction } from './create-asset-action';
 export type { CreateAssetInput } from './create-asset-action';
 export { CreateNoteAction } from './create-note-action';
 export type { CreateNoteInput } from './create-note-action';
+export { PayFixedAccountOccurrenceAction } from './pay-fixed-account-occurrence-action';
+export { ListFixedAccountOccurrencesAction } from './list-fixed-account-occurrences-action';

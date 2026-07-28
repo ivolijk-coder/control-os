@@ -51,6 +51,10 @@ export function buildReply(intent: NovaIntent, ok: boolean): string {
       return `Feito. Registrei o bem "${intent.name}" em Patrimônio.`;
     case 'criar_nota':
       return `Feito. Criei a nota "${intent.title}".`;
+    case 'pagar_conta_fixa':
+      return `Prontinho. Marquei "${intent.name}" como paga e registrei a movimentação financeira.`;
+    case 'consultar_contas_vencendo':
+      return FALLBACK_REPLY;
     case 'consultar_dividas':
     case 'consultar_dia':
       // Nunca alcançado em runtime — `processNovaTurn` responde direto via `buildDebtsSummary`/`buildDailyCheckIn`, sem passar por `runIntent`/`buildReply`.
@@ -91,6 +95,11 @@ export async function processNovaTurn(text: string, ctx: NovaContext): Promise<N
     await rememberTurn(text);
     const reply = buildDailyCheckIn(ctx.missions, ctx.agendaEvents, ctx.financeEntries, ctx.habits, ctx.userName);
     return { status: 'concluido', reply, checklist: [], results: [] };
+  }
+
+  if (intent.kind === 'consultar_contas_vencendo') {
+    await rememberTurn(text);
+    return { status: 'concluido', reply: 'Abra Contas do Mês para consultar vencimentos reais. Essa consulta também está disponível pela NOVA no painel principal.', checklist: [], results: [] };
   }
 
   const results = runIntent(ctx, intent);

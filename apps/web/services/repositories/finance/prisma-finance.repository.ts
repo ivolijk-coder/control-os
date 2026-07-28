@@ -1,10 +1,10 @@
-import { AccountKind, AccountStatus, CategoryStatus, Prisma, TransactionOrigin, TransactionSource, TransactionStatus, TransactionType, TransferDirection } from '@prisma/client';
-import type { Account as PrismaAccountRow, Category as PrismaCategoryRow, Transaction as PrismaTransactionRow } from '@prisma/client';
+import { AccountKind, AccountStatus, CategoryStatus, FixedAccountOccurrenceStatus, FixedAccountPaymentMethod, FixedAccountRecurrence, Prisma, TransactionOrigin, TransactionSource, TransactionStatus, TransactionType, TransferDirection } from '@prisma/client';
+import type { Account as PrismaAccountRow, Category as PrismaCategoryRow, FixedAccount as PrismaFixedAccountRow, FixedAccountOccurrence as PrismaFixedOccurrenceRow, Transaction as PrismaTransactionRow } from '@prisma/client';
 import type {
   FinanceAccount,
   FinanceAccountKind,
   FinanceCategory,
-  FinanceEntry,
+  FinanceEntry, FixedAccount, FixedAccountOccurrence,
   FinanceEntryType,
   FinanceTransferDirection,
 } from '@control-os/types';
@@ -24,6 +24,10 @@ import type {
   UpdateFinanceCategoryInput,
   UpdateFinanceTransactionInput,
   TransactionAuditCommand,
+  CreateFixedAccountRepositoryInput, UpdateFixedAccountRepositoryInput,
+  FixedAccountOccurrenceFilter, CreateFixedAccountOccurrenceInput,
+  FixedAccountOccurrenceSettlementInput,
+  FinanceAuditSource,
 } from './finance-repository.types';
 
 /**
@@ -462,6 +466,108 @@ export class PrismaFinanceRepository implements FinanceRepository {
   async hasCategoryTransactions(userId: string, categoryId: string): Promise<boolean> {
     return (await prisma.transaction.count({ where: { userId, categoryId } })) > 0;
   }
+
+  async createFixedAccount(userId: string, input: CreateFixedAccountRepositoryInput): Promise<FixedAccount> {
+    const row = await prisma.$transaction(async (tx) => {
+      const created = await tx.fixedAccount.create({ data: fixedAccountData(userId, input) });
+      await tx.financeAuditEvent.create({ data: { userId, actorUserId: userId, operation: 'fixed_account.created', source: input.source, entityType: 'fixed_account', entityId: created.id, after: fixedAccountSnapshot(created) } });
+      return created;
+    });
+    return toFixedAccount(row);
+  }
+
+  async listFixedAccounts(userId: string, options?: { includeArchived?: boolean }): Promise<FixedAccount[]> {
+    const rows = await prisma.fixedAccount.findMany({ where: { userId, ...(options?.includeArchived ? {} : { archivedAt: null }) }, orderBy: [{ active: 'desc' }, { name: 'asc' }] });
+    return rows.map(toFixedAccount);
+  }
+
+  async findFixedAccountById(userId: string, id: string): Promise<FixedAccount | undefined> {
+    const row = await prisma.fixedAccount.findFirst({ where: { id, userId } });
+    return row ? toFixedAccount(row) : undefined;
+  }
+
+  async updateFixedAccount(userId: string, input: UpdateFixedAccountRepositoryInput): Promise<FixedAccount | undefined> {
+    const row = await prisma.$transaction(async (tx) => {
+      const before = await tx.fixedAccount.findFirst({ where: { id: input.id, userId } });
+      if (!before) return undefined;
+      const after = await tx.fixedAccount.update({ where: { id: input.id }, data: fixedAccountUpdateData(input) });
+      await tx.financeAuditEvent.create({ data: { userId, actorUserId: userId, operation: 'fixed_account.updated', source: input.source, entityType: 'fixed_account', entityId: after.id, before: fixedAccountSnapshot(before), after: fixedAccountSnapshot(after) } });
+      return after;
+    });
+    return row ? toFixedAccount(row) : undefined;
+  }
+
+  async setFixedAccountArchived(userId: string, id: string, archived: boolean, source: FinanceAuditSource): Promise<FixedAccount | undefined> {
+    const row = await prisma.$transaction(async (tx) => {
+      const before = await tx.fixedAccount.findFirst({ where: { id, userId } });
+      if (!before) return undefined;
+      const after = await tx.fixedAccount.update({ where: { id }, data: { active: archived ? false : true, archivedAt: archived ? new Date() : null } });
+      await tx.financeAuditEvent.create({ data: { userId, actorUserId: userId, operation: archived ? 'fixed_account.archived' : 'fixed_account.restored', source, entityType: 'fixed_account', entityId: id, before: fixedAccountSnapshot(before), after: fixedAccountSnapshot(after) } });
+      return after;
+    });
+    return row ? toFixedAccount(row) : undefined;
+  }
+
+  async createFixedAccountOccurrences(userId: string, rows: CreateFixedAccountOccurrenceInput[], source: FinanceAuditSource): Promise<FixedAccountOccurrence[]> {
+    if (!rows.length) return [];
+    return prisma.$transaction(async (tx) => {
+      const created: PrismaFixedOccurrenceRow[] = [];
+      for (const input of rows) {
+        try {
+          const row = await tx.fixedAccountOccurrence.create({ data: occurrenceData(input) });
+          created.push(row);
+          await tx.financeAuditEvent.create({ data: { userId, actorUserId: userId, operation: 'OCCURRENCE_GENERATED', source, entityType: 'fixed_account_occurrence', entityId: row.id, after: occurrenceSnapshot(row) } });
+        } catch (error) {
+          if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') throw error;
+        }
+      }
+      const fixedAccountId = rows[0]?.fixedAccountId;
+      if (created.length && fixedAccountId) await tx.fixedAccount.updateMany({ where: { id: fixedAccountId, userId }, data: { lastGeneratedCompetence: created.map((row) => row.referencePeriod).sort().at(-1) } });
+      return created.map((row) => toFixedAccountOccurrence(row));
+    });
+  }
+
+  async listFixedAccountOccurrences(userId: string, filter?: FixedAccountOccurrenceFilter): Promise<FixedAccountOccurrence[]> {
+    const now = new Date();
+    const rows = await prisma.fixedAccountOccurrence.findMany({ where: { fixedAccount: { userId }, ...(filter?.fixedAccountId ? { fixedAccountId: filter.fixedAccountId } : {}), ...(filter?.competence ? (() => { const [year, month] = filter.competence.split('-').map(Number); return { competenceYear: year, competenceMonth: month }; })() : {}), ...(filter?.from || filter?.to ? { dueDate: { ...(filter.from ? { gte: new Date(filter.from) } : {}), ...(filter.to ? { lte: new Date(filter.to) } : {}) } } : {}) }, include: { payments: true }, orderBy: { dueDate: 'asc' } });
+    return rows.map((row) => toFixedAccountOccurrence(row, now)).filter((row) => !filter?.status || row.displayStatus === filter.status);
+  }
+
+  async findFixedAccountOccurrenceById(userId: string, id: string): Promise<FixedAccountOccurrence | undefined> {
+    const row = await prisma.fixedAccountOccurrence.findFirst({ where: { id, fixedAccount: { userId } }, include: { payments: true } });
+    return row ? toFixedAccountOccurrence(row) : undefined;
+  }
+
+  async recordFixedAccountOccurrencePayment(userId: string, input: FixedAccountOccurrenceSettlementInput): Promise<{ occurrence: FixedAccountOccurrence; transaction: FinanceEntry } | undefined> {
+    return prisma.$transaction(async (tx) => {
+      const occurrence = await tx.fixedAccountOccurrence.findFirst({ where: { id: input.occurrenceId, fixedAccount: { userId } }, include: { payments: true } });
+      if (!occurrence || occurrence.status === FixedAccountOccurrenceStatus.CANCELLED || occurrence.status === FixedAccountOccurrenceStatus.PAID) return undefined;
+      if (input.idempotencyKey) {
+        const existing = await tx.transaction.findFirst({ where: { userId, idempotencyKey: input.idempotencyKey } });
+        if (existing) return { occurrence: toFixedAccountOccurrence(occurrence), transaction: toFinanceEntry(existing) };
+      }
+      const paid = occurrence.payments.reduce((sum, payment) => sum + payment.amount.toNumber(), 0);
+      if (input.amount <= 0 || input.amount > occurrence.amount.toNumber() - paid + 0.00001) throw new Error('Valor de pagamento inválido para esta ocorrência.');
+      const transaction = await tx.transaction.create({ data: toCreateData(userId, input.transaction) });
+      await tx.fixedAccountOccurrencePayment.create({ data: { occurrenceId: occurrence.id, transactionId: transaction.id, amount: new Prisma.Decimal(input.amount) } });
+      const total = paid + input.amount;
+      const fullyPaid = total >= occurrence.amount.toNumber() - 0.00001;
+      const updated = await tx.fixedAccountOccurrence.update({ where: { id: occurrence.id }, data: { status: fullyPaid ? FixedAccountOccurrenceStatus.PAID : FixedAccountOccurrenceStatus.PARTIAL, paidAt: fullyPaid ? new Date() : null, transactionId: transaction.id } });
+      await createTransactionAudit(tx, userId, transaction, { operation: 'transaction.created_from_fixed_occurrence', source: input.source }, 'after');
+      await tx.financeAuditEvent.create({ data: { userId, actorUserId: userId, operation: fullyPaid ? 'OCCURRENCE_PAID' : 'OCCURRENCE_PARTIAL_PAID', source: input.source, entityType: 'fixed_account_occurrence', entityId: updated.id, before: occurrenceSnapshot(occurrence), after: occurrenceSnapshot(updated) } });
+      return { occurrence: toFixedAccountOccurrence(updated), transaction: toFinanceEntry(transaction) };
+    });
+  }
+
+  async cancelFixedAccountOccurrence(userId: string, id: string, source: FinanceAuditSource): Promise<FixedAccountOccurrence | undefined> {
+    return prisma.$transaction(async (tx) => {
+      const before = await tx.fixedAccountOccurrence.findFirst({ where: { id, fixedAccount: { userId } } });
+      if (!before || before.status !== FixedAccountOccurrenceStatus.PENDING) return undefined;
+      const after = await tx.fixedAccountOccurrence.update({ where: { id }, data: { status: FixedAccountOccurrenceStatus.CANCELLED } });
+      await tx.financeAuditEvent.create({ data: { userId, actorUserId: userId, operation: 'OCCURRENCE_CANCELLED', source, entityType: 'fixed_account_occurrence', entityId: id, before: occurrenceSnapshot(before), after: occurrenceSnapshot(after) } });
+      return toFixedAccountOccurrence(after);
+    });
+  }
 }
 
 // --- Conversões domínio ↔ Prisma --------------------------------------------
@@ -699,3 +805,38 @@ function toFinanceCategory(row: PrismaCategoryRow): FinanceCategory {
 function categoryAuditSnapshot(row: PrismaCategoryRow): Prisma.InputJsonObject {
   return { id: row.id, name: row.name, kind: row.kind, icon: row.icon, color: row.color, status: row.status, sortOrder: row.sortOrder, isFavorite: row.isFavorite, archivedAt: row.archivedAt?.toISOString() ?? null };
 }
+
+function toFixedAccount(row: PrismaFixedAccountRow): FixedAccount {
+  return { id: row.id, name: row.name, description: row.description ?? undefined, type: row.type === TransactionType.INCOME ? 'receita' : 'despesa', categoryId: row.categoryId, sourceAccountId: row.sourceAccountId ?? undefined, destinationAccountId: row.destinationAccountId ?? undefined, paymentMethod: fromFixedPaymentMethod(row.paymentMethod), amount: row.amount.toNumber(), recurrence: fromFixedRecurrence(row.recurrence), customIntervalDays: row.customIntervalDays ?? undefined, dueDay: row.dueDay, startDate: row.startDate.toISOString(), endDate: row.endDate?.toISOString(), active: row.active, archivedAt: row.archivedAt?.toISOString(), lastGeneratedCompetence: row.lastGeneratedCompetence ?? undefined, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+}
+
+function toFixedAccountOccurrence(row: PrismaFixedOccurrenceRow & { payments?: Array<{ amount: Prisma.Decimal }> }, now = new Date()): FixedAccountOccurrence {
+  const status = row.status === FixedAccountOccurrenceStatus.PAID ? 'paga' : row.status === FixedAccountOccurrenceStatus.PARTIAL ? 'parcial' : row.status === FixedAccountOccurrenceStatus.CANCELLED ? 'cancelada' : 'pendente';
+  const displayStatus = status === 'pendente' && row.dueDate < now ? 'atrasada' : status;
+  return { id: row.id, fixedAccountId: row.fixedAccountId, competenceMonth: row.competenceMonth, competenceYear: row.competenceYear, referencePeriod: row.referencePeriod, dueDate: row.dueDate.toISOString(), name: row.name, description: row.description ?? undefined, type: row.type === TransactionType.INCOME ? 'receita' : 'despesa', categoryId: row.categoryId, paymentMethod: fromFixedPaymentMethod(row.paymentMethod), sourceAccountId: row.sourceAccountId ?? undefined, destinationAccountId: row.destinationAccountId ?? undefined, amount: row.amount.toNumber(), status, displayStatus, paidAmount: row.payments?.reduce((sum, payment) => sum + payment.amount.toNumber(), 0) ?? (status === 'paga' ? row.amount.toNumber() : 0), transactionId: row.transactionId ?? undefined, paidAt: row.paidAt?.toISOString(), reconciliationStatus: row.reconciliationStatus === 'MATCHED' ? 'conciliada' : row.reconciliationStatus === 'REVIEW_REQUIRED' ? 'revisar' : undefined, externalReferenceId: row.externalReferenceId ?? undefined, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+}
+
+function fixedAccountData(userId: string, input: CreateFixedAccountRepositoryInput): Prisma.FixedAccountUncheckedCreateInput {
+  return { userId, name: input.name.trim(), description: input.description?.trim() || null, type: input.type === 'receita' ? TransactionType.INCOME : TransactionType.EXPENSE, categoryId: input.categoryId, sourceAccountId: input.sourceAccountId ?? null, destinationAccountId: input.destinationAccountId ?? null, paymentMethod: toFixedPaymentMethod(input.paymentMethod), amount: new Prisma.Decimal(input.amount), recurrence: toFixedRecurrence(input.recurrence), customIntervalDays: input.customIntervalDays ?? null, dueDay: input.dueDay, startDate: new Date(input.startDate), endDate: input.endDate ? new Date(input.endDate) : null };
+}
+
+function fixedAccountUpdateData(input: UpdateFixedAccountRepositoryInput): Prisma.FixedAccountUncheckedUpdateInput {
+  if (input.type !== undefined) {
+    return {
+      ...fixedAccountUpdateData({ ...input, type: undefined }),
+      type: input.type === 'receita' ? TransactionType.INCOME : TransactionType.EXPENSE,
+    };
+  }
+  return { ...(input.name !== undefined ? { name: input.name.trim() } : {}), ...(input.description !== undefined ? { description: input.description?.trim() || null } : {}), ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}), ...(input.sourceAccountId !== undefined ? { sourceAccountId: input.sourceAccountId ?? null } : {}), ...(input.destinationAccountId !== undefined ? { destinationAccountId: input.destinationAccountId ?? null } : {}), ...(input.paymentMethod !== undefined ? { paymentMethod: toFixedPaymentMethod(input.paymentMethod) } : {}), ...(input.amount !== undefined ? { amount: new Prisma.Decimal(input.amount) } : {}), ...(input.recurrence !== undefined ? { recurrence: toFixedRecurrence(input.recurrence) } : {}), ...(input.customIntervalDays !== undefined ? { customIntervalDays: input.customIntervalDays ?? null } : {}), ...(input.dueDay !== undefined ? { dueDay: input.dueDay } : {}), ...(input.startDate !== undefined ? { startDate: new Date(input.startDate) } : {}), ...(input.endDate !== undefined ? { endDate: input.endDate ? new Date(input.endDate) : null } : {}), ...(input.active !== undefined ? { active: input.active } : {}) };
+}
+
+function occurrenceData(input: CreateFixedAccountOccurrenceInput): Prisma.FixedAccountOccurrenceUncheckedCreateInput {
+  return { fixedAccountId: input.fixedAccountId, competenceMonth: input.competenceMonth, competenceYear: input.competenceYear, referencePeriod: input.referencePeriod, dueDate: new Date(input.dueDate), name: input.name, description: input.description ?? null, type: input.type === 'receita' ? TransactionType.INCOME : TransactionType.EXPENSE, categoryId: input.categoryId, paymentMethod: toFixedPaymentMethod(input.paymentMethod), sourceAccountId: input.sourceAccountId ?? null, destinationAccountId: input.destinationAccountId ?? null, amount: new Prisma.Decimal(input.amount) };
+}
+
+function fixedAccountSnapshot(row: PrismaFixedAccountRow): Prisma.InputJsonObject { return { ...toFixedAccount(row) } as Prisma.InputJsonObject; }
+function occurrenceSnapshot(row: PrismaFixedOccurrenceRow): Prisma.InputJsonObject { return { id: row.id, fixedAccountId: row.fixedAccountId, referencePeriod: row.referencePeriod, amount: row.amount.toString(), status: row.status, dueDate: row.dueDate.toISOString(), transactionId: row.transactionId ?? null }; }
+function toFixedRecurrence(value: import('@control-os/types').FixedAccountRecurrence): FixedAccountRecurrence { return value === 'mensal' ? FixedAccountRecurrence.MONTHLY : value === 'semanal' ? FixedAccountRecurrence.WEEKLY : value === 'anual' ? FixedAccountRecurrence.YEARLY : FixedAccountRecurrence.CUSTOM; }
+function fromFixedRecurrence(value: FixedAccountRecurrence): import('@control-os/types').FixedAccountRecurrence { return value === FixedAccountRecurrence.MONTHLY ? 'mensal' : value === FixedAccountRecurrence.WEEKLY ? 'semanal' : value === FixedAccountRecurrence.YEARLY ? 'anual' : 'personalizada'; }
+function toFixedPaymentMethod(value: import('@control-os/types').FixedAccountPaymentMethod): FixedAccountPaymentMethod { return value === 'conta_bancaria' ? FixedAccountPaymentMethod.BANK_ACCOUNT : value === 'cartao_credito' ? FixedAccountPaymentMethod.CREDIT_CARD : value === 'dinheiro' ? FixedAccountPaymentMethod.CASH : value === 'pix' ? FixedAccountPaymentMethod.PIX : value === 'boleto' ? FixedAccountPaymentMethod.BOLETO : FixedAccountPaymentMethod.OTHER; }
+function fromFixedPaymentMethod(value: FixedAccountPaymentMethod): import('@control-os/types').FixedAccountPaymentMethod { return value === FixedAccountPaymentMethod.BANK_ACCOUNT ? 'conta_bancaria' : value === FixedAccountPaymentMethod.CREDIT_CARD ? 'cartao_credito' : value === FixedAccountPaymentMethod.CASH ? 'dinheiro' : value === FixedAccountPaymentMethod.PIX ? 'pix' : value === FixedAccountPaymentMethod.BOLETO ? 'boleto' : 'outro'; }

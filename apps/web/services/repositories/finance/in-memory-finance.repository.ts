@@ -1,4 +1,4 @@
-import type { FinanceAccount, FinanceCategory, FinanceEntry } from '@control-os/types';
+import type { FinanceAccount, FinanceCategory, FinanceEntry, FixedAccount, FixedAccountOccurrence } from '@control-os/types';
 import type { FinanceRepository } from './finance-repository.interfaces';
 import type {
   CreateFinanceAccountInput,
@@ -14,6 +14,7 @@ import type {
   UpdateFinanceCategoryInput,
   UpdateFinanceTransactionInput,
   TransactionAuditCommand,
+  CreateFixedAccountRepositoryInput, UpdateFixedAccountRepositoryInput, FixedAccountOccurrenceFilter, CreateFixedAccountOccurrenceInput, FixedAccountOccurrenceSettlementInput, FinanceAuditSource,
 } from './finance-repository.types';
 
 /**
@@ -33,6 +34,8 @@ import type {
 let nextTransactionId = 1;
 let nextAccountId = 1;
 let nextCategoryId = 1;
+let nextFixedAccountId = 1;
+let nextOccurrenceId = 1;
 
 function matchesFilter(entry: FinanceEntry, filter: FinanceTransactionFilter | undefined): boolean {
   if (!filter) return true;
@@ -64,6 +67,8 @@ export class InMemoryFinanceRepository implements FinanceRepository {
   private readonly accountsByUser = new Map<string, FinanceAccount[]>();
   private readonly categoriesByUser = new Map<string, FinanceCategory[]>();
   private readonly auditEventsByUser = new Map<string, Array<Record<string, unknown>>>();
+  private readonly fixedAccountsByUser = new Map<string, FixedAccount[]>();
+  private readonly occurrencesByUser = new Map<string, FixedAccountOccurrence[]>();
 
   private entriesFor(userId: string): FinanceEntry[] {
     let entries = this.entriesByUser.get(userId);
@@ -91,6 +96,9 @@ export class InMemoryFinanceRepository implements FinanceRepository {
     }
     return categories;
   }
+
+  private fixedAccountsFor(userId: string): FixedAccount[] { const rows = this.fixedAccountsByUser.get(userId) ?? []; this.fixedAccountsByUser.set(userId, rows); return rows; }
+  private occurrencesFor(userId: string): FixedAccountOccurrence[] { const rows = this.occurrencesByUser.get(userId) ?? []; this.occurrencesByUser.set(userId, rows); return rows; }
 
   private audit(userId: string, event: Record<string, unknown>): void {
     const events = this.auditEventsByUser.get(userId) ?? [];
@@ -436,4 +444,18 @@ export class InMemoryFinanceRepository implements FinanceRepository {
   async hasCategoryTransactions(userId: string, categoryId: string): Promise<boolean> {
     return this.entriesFor(userId).some((entry) => entry.categoryId === categoryId);
   }
+
+  async createFixedAccount(userId: string, input: CreateFixedAccountRepositoryInput): Promise<FixedAccount> {
+    const now = new Date().toISOString(); const row: FixedAccount = { id: `fixed_${nextFixedAccountId++}`, ...input, description: input.description, sourceAccountId: input.sourceAccountId, destinationAccountId: input.destinationAccountId, customIntervalDays: input.customIntervalDays, endDate: input.endDate, active: true, createdAt: now, updatedAt: now };
+    this.fixedAccountsFor(userId).push(row); this.audit(userId, { operation: 'fixed_account.created', source: input.source, entityType: 'fixed_account', entityId: row.id, after: row }); return { ...row };
+  }
+  async listFixedAccounts(userId: string, options?: { includeArchived?: boolean }): Promise<FixedAccount[]> { return this.fixedAccountsFor(userId).filter((row) => options?.includeArchived || !row.archivedAt).map((row) => ({ ...row })); }
+  async findFixedAccountById(userId: string, id: string): Promise<FixedAccount | undefined> { const row = this.fixedAccountsFor(userId).find((candidate) => candidate.id === id); return row ? { ...row } : undefined; }
+  async updateFixedAccount(userId: string, input: UpdateFixedAccountRepositoryInput): Promise<FixedAccount | undefined> { const row = this.fixedAccountsFor(userId).find((candidate) => candidate.id === input.id); if (!row) return undefined; const before = { ...row }; Object.assign(row, { ...input, id: row.id, source: undefined, updatedAt: new Date().toISOString() }); this.audit(userId, { operation: 'fixed_account.updated', source: input.source, entityType: 'fixed_account', entityId: row.id, before, after: { ...row } }); return { ...row }; }
+  async setFixedAccountArchived(userId: string, id: string, archived: boolean, source: FinanceAuditSource): Promise<FixedAccount | undefined> { const row = this.fixedAccountsFor(userId).find((candidate) => candidate.id === id); if (!row) return undefined; const before = { ...row }; row.active = !archived; row.archivedAt = archived ? new Date().toISOString() : undefined; row.updatedAt = new Date().toISOString(); this.audit(userId, { operation: archived ? 'fixed_account.archived' : 'fixed_account.restored', source, entityType: 'fixed_account', entityId: id, before, after: { ...row } }); return { ...row }; }
+  async createFixedAccountOccurrences(userId: string, rows: CreateFixedAccountOccurrenceInput[], source: FinanceAuditSource): Promise<FixedAccountOccurrence[]> { const target = this.occurrencesFor(userId); const created: FixedAccountOccurrence[] = []; for (const input of rows) { if (target.some((item) => item.fixedAccountId === input.fixedAccountId && item.referencePeriod === input.referencePeriod)) continue; const now = new Date().toISOString(); const row: FixedAccountOccurrence = { id: `occ_${nextOccurrenceId++}`, ...input, status: 'pendente', displayStatus: new Date(input.dueDate) < new Date() ? 'atrasada' : 'pendente', paidAmount: 0, createdAt: now, updatedAt: now }; target.push(row); created.push({ ...row }); const fixedAccount = this.fixedAccountsFor(userId).find((item) => item.id === input.fixedAccountId); if (fixedAccount && (!fixedAccount.lastGeneratedCompetence || fixedAccount.lastGeneratedCompetence < input.referencePeriod)) fixedAccount.lastGeneratedCompetence = input.referencePeriod; this.audit(userId, { operation: 'OCCURRENCE_GENERATED', source, entityType: 'fixed_account_occurrence', entityId: row.id, after: row }); } return created; }
+  async listFixedAccountOccurrences(userId: string, filter?: FixedAccountOccurrenceFilter): Promise<FixedAccountOccurrence[]> { return this.occurrencesFor(userId).filter((row) => (!filter?.fixedAccountId || row.fixedAccountId === filter.fixedAccountId) && (!filter?.competence || `${row.competenceYear}-${String(row.competenceMonth).padStart(2, '0')}` === filter.competence) && (!filter?.status || row.displayStatus === filter.status || row.status === filter.status)).map((row) => ({ ...row, displayStatus: row.status === 'pendente' && new Date(row.dueDate) < new Date() ? 'atrasada' : row.status })); }
+  async findFixedAccountOccurrenceById(userId: string, id: string): Promise<FixedAccountOccurrence | undefined> { const row = this.occurrencesFor(userId).find((candidate) => candidate.id === id); return row ? { ...row } : undefined; }
+  async recordFixedAccountOccurrencePayment(userId: string, input: FixedAccountOccurrenceSettlementInput): Promise<{ occurrence: FixedAccountOccurrence; transaction: FinanceEntry } | undefined> { const occurrence = this.occurrencesFor(userId).find((item) => item.id === input.occurrenceId); if (!occurrence || occurrence.status === 'cancelada' || occurrence.status === 'paga') return undefined; if (input.amount <= 0 || input.amount > occurrence.amount - occurrence.paidAmount) throw new Error('Valor de pagamento inválido para esta ocorrência.'); const transaction = await this.createWithAudit(userId, input.transaction, { operation: 'transaction.created_from_fixed_occurrence', source: input.source }); occurrence.paidAmount += input.amount; occurrence.status = occurrence.paidAmount >= occurrence.amount ? 'paga' : 'parcial'; occurrence.displayStatus = occurrence.status; occurrence.transactionId = transaction.id; occurrence.paidAt = occurrence.status === 'paga' ? new Date().toISOString() : undefined; occurrence.updatedAt = new Date().toISOString(); this.audit(userId, { operation: occurrence.status === 'paga' ? 'OCCURRENCE_PAID' : 'OCCURRENCE_PARTIAL_PAID', source: input.source, entityType: 'fixed_account_occurrence', entityId: occurrence.id, after: occurrence }); return { occurrence: { ...occurrence }, transaction }; }
+  async cancelFixedAccountOccurrence(userId: string, id: string, source: FinanceAuditSource): Promise<FixedAccountOccurrence | undefined> { const row = this.occurrencesFor(userId).find((candidate) => candidate.id === id); if (!row || row.status !== 'pendente') return undefined; row.status = 'cancelada'; row.displayStatus = 'cancelada'; row.updatedAt = new Date().toISOString(); this.audit(userId, { operation: 'OCCURRENCE_CANCELLED', source, entityType: 'fixed_account_occurrence', entityId: id, after: row }); return { ...row }; }
 }
