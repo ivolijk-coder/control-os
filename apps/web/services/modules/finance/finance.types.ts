@@ -1,4 +1,4 @@
-import type { FinanceAccountKind, FinanceEntry, FinanceEntryType, FinanceRecurrenceFrequency, FinanceTransactionSource, FinanceTransactionStatus, FixedAccountPaymentMethod, FixedAccountRecurrence } from '@control-os/types';
+import type { FinanceAccountKind, FinanceEntry, FinanceEntryType, FinanceRecurrenceFrequency, FinanceTransactionSource, FinanceTransactionStatus, FixedAccountOrigin, FixedAccountPaymentMethod, FixedAccountRecurrence } from '@control-os/types';
 import type { FinanceAccountBalance, FinanceCategoryBreakdownItem } from '@/services/repositories';
 
 /**
@@ -210,6 +210,7 @@ export interface CreateFixedAccountInput {
   name: string;
   description?: string;
   type: 'receita' | 'despesa';
+  origin?: FixedAccountOrigin;
   categoryId: string;
   sourceAccountId?: string;
   destinationAccountId?: string;
@@ -226,6 +227,7 @@ export interface CreateFixedAccountInput {
 export interface UpdateFixedAccountInput {
   id: string;
   type?: 'receita' | 'despesa';
+  origin?: FixedAccountOrigin;
   name?: string;
   description?: string | null;
   categoryId?: string;

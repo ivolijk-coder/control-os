@@ -446,7 +446,7 @@ export class InMemoryFinanceRepository implements FinanceRepository {
   }
 
   async createFixedAccount(userId: string, input: CreateFixedAccountRepositoryInput): Promise<FixedAccount> {
-    const now = new Date().toISOString(); const row: FixedAccount = { id: `fixed_${nextFixedAccountId++}`, ...input, description: input.description, sourceAccountId: input.sourceAccountId, destinationAccountId: input.destinationAccountId, customIntervalDays: input.customIntervalDays, endDate: input.endDate, active: true, createdAt: now, updatedAt: now };
+    const now = new Date().toISOString(); const row: FixedAccount = { id: `fixed_${nextFixedAccountId++}`, ...input, origin: input.origin, description: input.description, sourceAccountId: input.sourceAccountId, destinationAccountId: input.destinationAccountId, customIntervalDays: input.customIntervalDays, endDate: input.endDate, active: true, createdAt: now, updatedAt: now };
     this.fixedAccountsFor(userId).push(row); this.audit(userId, { operation: 'fixed_account.created', source: input.source, entityType: 'fixed_account', entityId: row.id, after: row }); return { ...row };
   }
   async listFixedAccounts(userId: string, options?: { includeArchived?: boolean }): Promise<FixedAccount[]> { return this.fixedAccountsFor(userId).filter((row) => options?.includeArchived || !row.archivedAt).map((row) => ({ ...row })); }

@@ -196,7 +196,7 @@ export class PersistentFinanceService implements FinanceService {
     if (!category) return { success: false, message: 'Selecione uma categoria ativa compatível.' };
     const accountId = input.type === 'despesa' ? input.sourceAccountId : input.destinationAccountId;
     if (accountId && !await this.resolveAccountId(accountId)) return this.accountRequiredResult();
-    const created = await this.repository.createFixedAccount(this.userId, { ...input, recurrence: input.recurrence ?? 'mensal', categoryId: category.id, source: input.source ?? 'manual' });
+    const created = await this.repository.createFixedAccount(this.userId, { ...input, origin: input.origin ?? 'pessoal', recurrence: input.recurrence ?? 'mensal', categoryId: category.id, source: input.source ?? 'manual' });
     await this.generateFixedAccountOccurrences(new Date(new Date().getFullYear(), new Date().getMonth() + 3, 0).toISOString());
     return { success: true, message: 'Conta fixa criada.', data: created };
   }

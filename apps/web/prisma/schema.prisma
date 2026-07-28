@@ -129,6 +129,14 @@ enum FixedAccountPaymentMethod {
   OTHER
 }
 
+/// PF, PJ ou outros. É uma classificação da regra e é copiada para cada
+/// ocorrência para manter os relatórios históricos consistentes.
+enum FixedAccountOrigin {
+  PERSONAL
+  BUSINESS
+  OTHER
+}
+
 /// OVERDUE não é persistido: é derivado em leitura quando PENDING e a data de
 /// vencimento já passou. Isso evita jobs apenas para trocar estados.
 enum FixedAccountOccurrenceStatus {
@@ -291,6 +299,7 @@ model FixedAccount {
   name                    String
   description             String?
   type                    TransactionType
+  origin                  FixedAccountOrigin      @default(PERSONAL)
   categoryId              String                 @map("category_id") @db.Uuid
   sourceAccountId         String?                @map("source_account_id") @db.Uuid
   destinationAccountId    String?                @map("destination_account_id") @db.Uuid
@@ -329,6 +338,7 @@ model FixedAccountOccurrence {
   name                   String
   description            String?
   type                   TransactionType
+  origin                 FixedAccountOrigin       @default(PERSONAL)
   categoryId             String                    @map("category_id") @db.Uuid
   paymentMethod          FixedAccountPaymentMethod @map("payment_method")
   sourceAccountId        String?                   @map("source_account_id") @db.Uuid

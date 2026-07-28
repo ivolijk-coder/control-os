@@ -433,14 +433,14 @@ async function main(): Promise<void> {
     const created = await service.createFixedAccount({
       name: 'Internet', description: 'Plano inicial', type: 'despesa', categoryId,
       sourceAccountId: account.id, paymentMethod: 'conta_bancaria', amount: 119.9,
-      recurrence: 'mensal', dueDay: 10, startDate: new Date().toISOString(),
+      origin: 'empresa', recurrence: 'mensal', dueDay: 10, startDate: new Date().toISOString(),
     });
     assert(created.success, `esperava criar conta fixa: ${created.message}`);
     const fixedId = (created.data as { id: string }).id;
     const before = await service.listFixedAccountOccurrences({ fixedAccountId: fixedId });
     assert(before.length === 3, `esperava horizonte inicial de 3 ocorrências, recebeu ${before.length}`);
     const original = before[0]!;
-    assert(original.name === 'Internet' && original.amount === 119.9 && original.categoryId === categoryId, 'a ocorrência precisa carregar o snapshot financeiro da criação');
+    assert(original.name === 'Internet' && original.amount === 119.9 && original.categoryId === categoryId && original.origin === 'empresa', 'a ocorrência precisa carregar o snapshot financeiro da criação');
     await service.generateFixedAccountOccurrences();
     assert((await service.listFixedAccountOccurrences({ fixedAccountId: fixedId })).length === before.length, 'geração repetida não pode duplicar a mesma competência');
 

@@ -202,6 +202,8 @@ export interface FinanceCategory {
  * núcleo oficial de transações. */
 export type FixedAccountRecurrence = 'mensal' | 'semanal' | 'anual' | 'personalizada';
 export type FixedAccountPaymentMethod = 'conta_bancaria' | 'cartao_credito' | 'dinheiro' | 'pix' | 'boleto' | 'outro';
+/** Contexto da despesa/receita. Não altera sua natureza financeira. */
+export type FixedAccountOrigin = 'pessoal' | 'empresa' | 'outros';
 export type FixedAccountOccurrenceStatus = 'pendente' | 'paga' | 'parcial' | 'cancelada';
 export type FixedAccountOccurrenceDisplayStatus = FixedAccountOccurrenceStatus | 'atrasada';
 
@@ -210,6 +212,7 @@ export interface FixedAccount {
   name: string;
   description?: string;
   type: 'receita' | 'despesa';
+  origin: FixedAccountOrigin;
   categoryId: string;
   sourceAccountId?: string;
   destinationAccountId?: string;
@@ -240,6 +243,8 @@ export interface FixedAccountOccurrence {
   description?: string;
   /** Tipo fotografado no instante da geração; nunca inferir por conta. */
   type: 'receita' | 'despesa';
+  /** Snapshot da origem válida quando esta ocorrência foi criada. */
+  origin: FixedAccountOrigin;
   categoryId: string;
   paymentMethod: FixedAccountPaymentMethod;
   sourceAccountId?: string;

@@ -1,4 +1,4 @@
-import type { FinanceAccountKind, FinanceAccountStatus, FinanceEntryType, FinanceTransactionSource, FinanceTransactionStatus, FinanceTransferDirection, FixedAccountPaymentMethod, FixedAccountRecurrence } from '@control-os/types';
+import type { FinanceAccountKind, FinanceAccountStatus, FinanceEntryType, FinanceTransactionSource, FinanceTransactionStatus, FinanceTransferDirection, FixedAccountOrigin, FixedAccountPaymentMethod, FixedAccountRecurrence } from '@control-os/types';
 
 /**
  * Tipos do Finance Repository (CONTROL OS — Fase 6: Persistência real;
@@ -207,6 +207,7 @@ export interface CreateFixedAccountRepositoryInput {
   name: string;
   description?: string;
   type: 'receita' | 'despesa';
+  origin: FixedAccountOrigin;
   categoryId: string;
   sourceAccountId?: string;
   destinationAccountId?: string;
@@ -243,6 +244,7 @@ export interface CreateFixedAccountOccurrenceInput {
   name: string;
   description?: string;
   type: 'receita' | 'despesa';
+  origin: FixedAccountOrigin;
   categoryId: string;
   paymentMethod: FixedAccountPaymentMethod;
   sourceAccountId?: string;

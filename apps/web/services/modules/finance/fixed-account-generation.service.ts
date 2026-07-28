@@ -50,6 +50,7 @@ export class FixedAccountGenerationService {
       name: account.name,
       description: account.description,
       type: account.type,
+      origin: account.origin,
       categoryId: account.categoryId,
       paymentMethod: account.paymentMethod,
       sourceAccountId: account.sourceAccountId,
