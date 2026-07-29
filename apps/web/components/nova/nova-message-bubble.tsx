@@ -24,6 +24,8 @@ export interface ConversationMessage {
   checklist?: string[];
   /** Só se aplica a mensagens da NOVA já concluídas — ausente enquanto "pensando"/"executando". */
   status?: ConversationMessageStatus;
+  /** Arquivo privado que a NOVA encontrou para o usuário baixar. */
+  attachment?: { label: string; href: string };
 }
 
 export interface NovaMessageBubbleProps {
@@ -96,6 +98,14 @@ export function NovaMessageBubble({ message, onConfirm, onCancel, persona = 'nov
         )}
       >
         <p className="whitespace-pre-line">{message.content}</p>
+        {message.attachment && (
+          <a
+            href={message.attachment.href}
+            className="mt-3 inline-flex rounded-lg border border-accent-blue/30 bg-accent-blue/10 px-3 py-1.5 text-xs font-medium text-accent-blue transition-colors hover:bg-accent-blue/20"
+          >
+            Baixar {message.attachment.label}
+          </a>
+        )}
         {message.checklist && message.checklist.length > 0 && (
           <ul className="mt-2.5 flex flex-col gap-1.5">
             {message.checklist.map((item) => (

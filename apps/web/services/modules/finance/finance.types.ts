@@ -145,10 +145,14 @@ export interface CreateInstallmentInput {
   installments: number;
   description?: string;
   category?: string;
+  /** Categoria persistida escolhida na interface; evita depender do nome. */
+  categoryId?: string;
   accountId?: string;
   accountName?: string;
   /** ISO — data da primeira parcela; as demais são geradas +1 mês cada. Ausente = hoje. */
   startDate?: string;
+  /** Chave estável para importações confirmadas e reenvios seguros. */
+  idempotencyKey?: string;
 }
 
 // --- CONTROL OS — Fase 7: Recorrências ---------------------------------------

@@ -418,6 +418,42 @@ export function NovaWorkspace({
         // ela chega (nunca atrasa nada, só preenche a espera quando existe).
         const executingTimer = window.setTimeout(() => setThinkingStatus('executando'), EXECUTING_SWITCH_MS);
 
+        // Pedido explícito de arquivo: a NOVA não inventa um link nem expõe
+        // arquivos de outra pessoa. Procura somente na biblioteca privada da
+        // sessão e devolve um download temporariamente autenticado.
+        const normalizedText = text.toLocaleLowerCase('pt-BR');
+        const isDocumentRequest = /\b(envie|mande|mandar|baixar|baixe|reenviar|reenvie)\b/.test(normalizedText)
+          && /\b(arquivo|documento|pdf|contrato|comprovante)\b/.test(normalizedText);
+        if (isDocumentRequest) {
+          try {
+            const response = await fetch('/api/documents');
+            const payload = await response.json() as { success?: boolean; documents?: Array<{ id: string; title: string; originalFileName: string }> };
+            const significantWords = normalizedText
+              .replace(/[^a-zà-ú0-9\s]/gi, ' ')
+              .split(/\s+/)
+              .filter((word) => word.length > 3 && !['envie', 'mande', 'arquivo', 'documento', 'contrato', 'comprovante', 'baixar', 'reenvie'].includes(word));
+            const document = payload.documents?.find((candidate) => {
+              const haystack = `${candidate.title} ${candidate.originalFileName}`.toLocaleLowerCase('pt-BR');
+              return significantWords.length === 0 || significantWords.some((word) => haystack.includes(word));
+            });
+            if (response.ok && document) {
+              window.clearTimeout(executingTimer);
+              addNovaMessage(effectivePersona, {
+                id: nextMessageId('nova'),
+                role: 'nova',
+                content: `Encontrei “${document.title}”.`,
+                attachment: { label: document.originalFileName, href: `/api/documents/${document.id}/download` },
+                status: 'success',
+              });
+              setIsThinking(false);
+              return;
+            }
+          } catch {
+            // Se a biblioteca falhar, continua para a conversa normal sem
+            // prometer que encontrou um arquivo.
+          }
+        }
+
         const result = await conversationService.processTurn(text, novaContext, textSessionId, effectivePersona);
         window.clearTimeout(executingTimer);
         addNovaMessage(effectivePersona, {
@@ -448,6 +484,61 @@ export function NovaWorkspace({
       })();
     },
     [novaContext, addNovaMessage, maybeCondenseConversation, effectivePersona, textSessionId]
+  );
+
+  /** Guarda o arquivo na área privada. Um contrato gera somente uma prévia:
+   * a confirmação e o cadastro financeiro acontecem depois em Documentos. */
+  const handleAttachDocument = React.useCallback(
+    (file: File) => {
+      setShowCommandOverview(false);
+      addNovaMessage(effectivePersona, {
+        id: nextMessageId('user'),
+        role: 'user',
+        content: `Arquivo enviado: ${file.name}`,
+      });
+      setIsThinking(true);
+      setThinkingStatus('executando');
+
+      void (async () => {
+        try {
+          const formData = new FormData();
+          formData.set('file', file);
+          const uploadResponse = await fetch('/api/documents', { method: 'POST', body: formData });
+          const uploadPayload = await uploadResponse.json() as { success?: boolean; message?: string; document?: { id: string; title: string; mimeType: string } };
+          if (!uploadResponse.ok || !uploadPayload.success || !uploadPayload.document) throw new Error(uploadPayload.message ?? 'Não foi possível guardar o arquivo.');
+
+          const document = uploadPayload.document;
+          if (document.mimeType === 'application/pdf') {
+            const proposalResponse = await fetch(`/api/documents/${document.id}/contract-proposal`, { method: 'POST' });
+            const proposalPayload = await proposalResponse.json() as { success?: boolean; message?: string };
+            if (!proposalResponse.ok || !proposalPayload.success) throw new Error(proposalPayload.message ?? 'O PDF foi guardado, mas não consegui ler o contrato agora.');
+            addNovaMessage(effectivePersona, {
+              id: nextMessageId('nova'),
+              role: 'nova',
+              content: `Guardei “${document.title}” e preparei a leitura do contrato. Abra Documentos, revise os dados extraídos, escolha a conta e a categoria e confirme. Nada financeiro foi criado ainda.`,
+              status: 'success',
+            });
+          } else {
+            addNovaMessage(effectivePersona, {
+              id: nextMessageId('nova'),
+              role: 'nova',
+              content: `Guardei “${document.title}” na sua área privada de Documentos. Quando quiser, peça este arquivo pelo chat que eu preparo o download.`,
+              status: 'success',
+            });
+          }
+        } catch (error) {
+          addNovaMessage(effectivePersona, {
+            id: nextMessageId('nova'),
+            role: 'nova',
+            content: error instanceof Error ? error.message : 'Não consegui guardar o arquivo agora.',
+            status: 'error',
+          });
+        } finally {
+          setIsThinking(false);
+        }
+      })();
+    },
+    [addNovaMessage, effectivePersona]
   );
 
   const handleConfirmPending = React.useCallback(() => {
@@ -509,6 +600,7 @@ export function NovaWorkspace({
     <div className="mx-auto w-full max-w-2xl">
       <NovaInput
         onSubmit={handleSend}
+        onAttach={handleAttachDocument}
         disabled={isThinking}
         onListeningChange={setIsListening}
         persona={effectivePersona}

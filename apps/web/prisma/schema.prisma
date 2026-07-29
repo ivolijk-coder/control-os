@@ -80,6 +80,21 @@ enum AccountStatus {
   ARCHIVED
 }
 
+/// Tipo funcional de arquivo guardado pela pessoa. Contratos recebem uma
+/// proposta de importação; os demais permanecem documentos privados.
+enum StoredDocumentKind {
+  GENERAL
+  CONTRACT
+}
+
+/// Um contrato nunca cria registros financeiros sozinho. A proposta fica
+/// pendente até uma confirmação explícita no chat da NOVA ou na tela.
+enum DocumentImportProposalStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
 /// Origem técnica de um lançamento. O saldo de abertura é uma movimentação
 /// financeira normal, não um campo solto da conta.
 enum TransactionOrigin {
@@ -410,6 +425,8 @@ model AppUser {
   createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
   whatsappLinks WhatsAppLink[]
   verifications WhatsAppVerification[]
+  documents     StoredDocument[]
+  documentImportProposals DocumentImportProposal[]
 
   @@map("app_users")
 }
@@ -455,4 +472,48 @@ model Attachment {
   createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("finance_attachments")
+}
+
+/// Arquivo privado do usuário. O conteúdo vive no Files API da OpenAI e
+/// `openaiFileId` é usado exclusivamente pelo servidor para leitura e
+/// download autenticado — nunca é exposto ao navegador como um segredo.
+model StoredDocument {
+  id               String              @id @default(uuid()) @db.Uuid
+  userId           String              @map("user_id") @db.Uuid
+  user             AppUser             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title            String
+  originalFileName String              @map("original_file_name")
+  mimeType         String              @map("mime_type")
+  sizeBytes        Int                 @map("size_bytes")
+  openaiFileId     String              @unique @map("openai_file_id")
+  kind             StoredDocumentKind  @default(GENERAL)
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  archivedAt       DateTime?           @map("archived_at") @db.Timestamptz(3)
+  importProposals  DocumentImportProposal[]
+
+  @@index([userId, createdAt])
+  @@map("stored_documents")
+}
+
+/// Dados extraídos de um contrato antes da confirmação. Mantém o texto
+/// estruturado separado do domínio financeiro e guarda o vínculo para o
+/// grupo de parcelas criado depois da aprovação do usuário.
+model DocumentImportProposal {
+  id                         String                       @id @default(uuid()) @db.Uuid
+  userId                     String                       @map("user_id") @db.Uuid
+  user                       AppUser                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documentId                 String                       @map("document_id") @db.Uuid
+  document                   StoredDocument               @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  status                     DocumentImportProposalStatus @default(PENDING)
+  extractedData              Json                         @map("extracted_data")
+  resultingInstallmentGroupId String?                     @map("resulting_installment_group_id") @db.Uuid
+  confirmedAt                DateTime?                    @map("confirmed_at") @db.Timestamptz(3)
+  rejectedAt                 DateTime?                    @map("rejected_at") @db.Timestamptz(3)
+  createdAt                  DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                  DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([userId, status])
+  @@index([documentId])
+  @@map("document_import_proposals")
 }

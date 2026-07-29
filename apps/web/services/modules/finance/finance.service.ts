@@ -72,8 +72,9 @@ function buildInstallmentLegs(params: {
   categoryId?: string;
   accountId: string;
   startDate?: string;
+  idempotencyKey?: string;
 }): CreateFinanceTransactionInput[] {
-  const { type, totalAmount, installments, description, category, categoryId, accountId, startDate } = params;
+  const { type, totalAmount, installments, description, category, categoryId, accountId, startDate, idempotencyKey } = params;
   const installmentGroupId = randomUUID();
   const totalCents = Math.round(totalAmount * 100);
   const baseCents = Math.floor(totalCents / installments);
@@ -96,6 +97,7 @@ function buildInstallmentLegs(params: {
       installmentGroupId,
       installmentNumber: index + 1,
       installmentTotal: installments,
+      idempotencyKey: idempotencyKey ? `${idempotencyKey}:${index + 1}` : undefined,
     };
   });
 }
@@ -467,6 +469,10 @@ export class PersistentFinanceService implements FinanceService {
     if (!(input.totalAmount > 0)) {
       return { success: false, message: 'O valor total do parcelamento precisa ser maior que zero.' };
     }
+    if (input.idempotencyKey) {
+      const previous = await this.repository.findByIdempotencyKey(this.userId, `${input.idempotencyKey}:1`);
+      if (previous) return { success: true, message: 'Este parcelamento já havia sido processado.', data: previous };
+    }
 
     const accountId = await this.resolveAccountId(input.accountId, input.accountName);
     if (!accountId) return this.accountRequiredResult();
@@ -481,6 +487,7 @@ export class PersistentFinanceService implements FinanceService {
       categoryId: category.id,
       accountId,
       startDate: input.startDate,
+      idempotencyKey: input.idempotencyKey,
     });
     const entries = await this.repository.createMany(this.userId, legs);
     const perInstallment = entries[0]?.amount ?? input.totalAmount / input.installments;

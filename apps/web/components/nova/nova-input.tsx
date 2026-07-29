@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowUp, Check, Mic } from 'lucide-react';
+import { ArrowUp, Check, Mic, Paperclip } from 'lucide-react';
 import type { NovaPersona } from '@/services/nova';
 import { cn } from '@/lib/utils';
 import { transitionOut } from '@/lib/motion';
@@ -59,6 +59,9 @@ export interface NovaInputProps {
    * (`NovaPersonaSwitch`). Padrão `'nova'`.
    */
   persona?: NovaPersona;
+  /** Envia um documento privado para a área de arquivos e, quando for PDF,
+   * inicia a leitura contratual para revisão. */
+  onAttach?: (file: File) => void;
 }
 
 /**
@@ -88,6 +91,7 @@ export function NovaInput({
   disabled = false,
   onListeningChange,
   persona = 'nova',
+  onAttach,
 }: NovaInputProps) {
   const isLegendary = persona === 'legendary';
   const personaLabel = isLegendary ? 'LEGENDARY' : 'NOVA';
@@ -98,6 +102,7 @@ export function NovaInput({
   const [isListening, setIsListening] = React.useState(false);
   const [interimTranscript, setInterimTranscript] = React.useState('');
   const [voiceError, setVoiceError] = React.useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const speechSupported = React.useMemo(() => getSpeechProvider().isSupported, []);
 
@@ -226,6 +231,29 @@ export function NovaInput({
           className
         )}
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf,image/png,image/jpeg,image/webp,text/plain"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) onAttach?.(file);
+            event.currentTarget.value = '';
+          }}
+        />
+        {onAttach && (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={disabled}
+            aria-label="Anexar documento para a NOVA"
+            title="Anexar documento"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-text-tertiary transition-colors hover:bg-white/[0.08] hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            <Paperclip className="h-4 w-4" />
+          </button>
+        )}
         {/* Microfone — sempre visível, nunca substitui o campo de texto nem
             o botão de enviar ("os dois coexistem" — Etapa 11C). */}
         <motion.button
