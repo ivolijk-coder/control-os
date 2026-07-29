@@ -13,6 +13,11 @@
     "lint": "turbo run lint",
     "lint:web": "turbo run lint --filter=./apps/web",
     "typecheck": "turbo run typecheck",
+    "test": "pnpm --filter @control-os/web test",
+    "test:unit": "pnpm --filter @control-os/web test:unit",
+    "test:integration": "pnpm --filter @control-os/web test:integration",
+    "test:documents": "pnpm --filter @control-os/web test:documents",
+    "test:coverage": "pnpm --filter @control-os/web test:coverage",
     "db:up": "docker compose -f database/docker-compose.yml up -d"
   },
   "devDependencies": {

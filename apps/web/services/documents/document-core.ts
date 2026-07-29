@@ -23,13 +23,43 @@ export type DocumentFailureCode =
   | 'PROVIDER_TEMPORARY_ERROR' | 'EXTRACTION_INVALID' | 'SECURITY_SCAN_PENDING'
   | 'SECURITY_SCAN_INFECTED' | 'SCANNER_UNAVAILABLE' | 'UNKNOWN';
 
+const SENSITIVE_DIAGNOSTIC_KEY = /(authorization|api[_-]?key|token|secret|password|content|document|file|body)/i;
+
+/** Reduz metadados de erro/auditoria ao necessário para diagnóstico.
+ * Arquivos, texto integral e credenciais nunca atravessam esta fronteira. */
+export function sanitizeDocumentDiagnostics(
+  value: unknown,
+  depth = 0,
+): unknown {
+  if (depth > 4) return '[TRUNCATED]';
+  if (value === null || typeof value === 'number' || typeof value === 'boolean') return value;
+  if (typeof value === 'string') return value.slice(0, 500);
+  if (Array.isArray(value)) return value.slice(0, 30).map((item) => sanitizeDocumentDiagnostics(item, depth + 1));
+  if (typeof value !== 'object') return String(value).slice(0, 500);
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .slice(0, 50)
+      .map(([key, item]) => [
+        key,
+        SENSITIVE_DIAGNOSTIC_KEY.test(key)
+          ? '[REDACTED]'
+          : sanitizeDocumentDiagnostics(item, depth + 1),
+      ]),
+  );
+}
+
 export class DocumentError extends Error {
   constructor(
     public readonly code: DocumentFailureCode,
     message: string,
     public readonly retryable = false,
     public readonly diagnostics?: Record<string, string | number | boolean>,
-  ) { super(message); }
+  ) {
+    super(message);
+    if (diagnostics) {
+      this.diagnostics = sanitizeDocumentDiagnostics(diagnostics) as Record<string, string | number | boolean>;
+    }
+  }
 }
 
 export type ValidatedUpload = {
@@ -169,7 +199,14 @@ export async function auditDocument(input: {
   userId: string; documentId?: string; proposalId?: string; operation: string; source: 'manual' | 'nova' | 'api' | 'system'; entityType: string; entityId: string; before?: unknown; after?: unknown; correlationId?: string;
 }) {
   const correlationId = input.correlationId ?? randomUUID();
-  await prisma.documentAuditEvent.create({ data: { ...input, correlationId, before: input.before as never, after: input.after as never } });
+  await prisma.documentAuditEvent.create({
+    data: {
+      ...input,
+      correlationId,
+      before: sanitizeDocumentDiagnostics(input.before) as never,
+      after: sanitizeDocumentDiagnostics(input.after) as never,
+    },
+  });
   return correlationId;
 }
 

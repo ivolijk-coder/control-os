@@ -561,9 +561,9 @@ model StoredDocument {
   analysisJobs         DocumentAnalysisJob[]
   auditEvents          DocumentAuditEvent[]
 
+  @@unique([userId, sha256])
   @@index([userId, createdAt])
   @@index([userId, archivedAt, createdAt])
-  @@unique([userId, sha256])
   @@index([analysisStatus, createdAt])
   @@map("stored_documents")
 }
@@ -622,19 +622,19 @@ model DocumentAnalysisJob {
 /// Auditoria própria para arquivos e prévias. Não mistura eventos de domínio
 /// documental com `FinanceAuditEvent`, que permanece dedicado ao financeiro.
 model DocumentAuditEvent {
-  id         String          @id @default(uuid()) @db.Uuid
-  userId     String          @map("user_id") @db.Uuid
-  documentId String?         @map("document_id") @db.Uuid
-  document   StoredDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  proposalId String?         @map("proposal_id") @db.Uuid
-  operation  String
-  source     String
-  entityType String          @map("entity_type")
-  entityId   String          @map("entity_id")
-  correlationId String?      @map("correlation_id") @db.Uuid
-  before     Json?
-  after      Json?
-  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  id            String          @id @default(uuid()) @db.Uuid
+  userId        String          @map("user_id") @db.Uuid
+  documentId    String?         @map("document_id") @db.Uuid
+  document      StoredDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  proposalId    String?         @map("proposal_id") @db.Uuid
+  operation     String
+  source        String
+  entityType    String          @map("entity_type")
+  entityId      String          @map("entity_id")
+  correlationId String?         @map("correlation_id") @db.Uuid
+  before        Json?
+  after         Json?
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([userId, createdAt])
   @@index([documentId, createdAt])

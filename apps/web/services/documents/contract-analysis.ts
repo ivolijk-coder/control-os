@@ -17,6 +17,42 @@ export interface DocumentTextExtractor { extract(input: { content: Buffer; fileN
 export interface ContractDataExtractor { extract(text: string): Promise<ContractPreview>; }
 export interface ContractPreviewValidator { validate(preview: ContractPreview): { valid: boolean; warnings: string[] }; }
 
+export const MAX_DOCUMENT_ANALYSIS_ATTEMPTS = 3;
+
+export function documentAnalysisBackoffMs(attempt: number): number {
+  return 2 ** Math.max(1, attempt) * 60_000;
+}
+
+export function shouldRetryDocumentAnalysis(error: unknown, attempt: number): boolean {
+  return error instanceof DocumentError
+    && error.retryable
+    && attempt < MAX_DOCUMENT_ANALYSIS_ATTEMPTS;
+}
+
+export async function claimDocumentAnalysisJob(jobId: string, runnerId: string): Promise<boolean> {
+  const claimed = await prisma.documentAnalysisJob.updateMany({
+    where: { id: jobId, status: 'QUEUED' },
+    data: {
+      status: 'PROCESSING',
+      lockedAt: new Date(),
+      lockedBy: runnerId,
+      attempts: { increment: 1 },
+    },
+  });
+  return claimed.count === 1;
+}
+
+function assertDocumentAnalysisEnabled(): void {
+  if (process.env.OPENAI_DOCUMENT_ANALYSIS_ENABLED !== 'true') {
+    throw new DocumentError(
+      'MODEL_UNSUPPORTED',
+      'A análise por IA está desativada neste ambiente.',
+      false,
+      { provider: 'openai', featureEnabled: false },
+    );
+  }
+}
+
 const EMPTY_PREVIEW: ContractPreview = { creditorName: null, contractNumber: null, totalAmount: null, installmentAmount: null, installments: null, paidInstallments: null, remainingInstallments: null, firstDueDate: null, dueDay: null, interestRate: null, cet: null, iof: null, fine: null, guarantees: [], categorySuggestion: null, summary: '', confidence: 'low', missingFields: [] };
 const webBody = (buffer: Buffer): ArrayBuffer => Uint8Array.from(buffer).buffer;
 const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -52,6 +88,7 @@ async function openAIRequest(url: string, init: RequestInit, model: string) {
 /** OpenAI é usado apenas temporariamente para extração; nunca como storage. */
 export class OpenAITemporaryTextExtractor implements DocumentTextExtractor {
   async extract(input: { content: Buffer; fileName: string; mimeType: string }): Promise<string> {
+    assertDocumentAnalysisEnabled();
     const key = process.env.OPENAI_API_KEY; if (!key) throw new DocumentError('PROVIDER_AUTH_ERROR', 'A análise por IA não está configurada.');
     const form = new FormData(); form.set('purpose', 'user_data'); form.set('file', new File([webBody(input.content)], input.fileName, { type: input.mimeType }));
     const model = process.env.OPENAI_MODEL || 'gpt-5.5';
@@ -68,6 +105,7 @@ export class OpenAITemporaryTextExtractor implements DocumentTextExtractor {
 
 export class OpenAIContractDataExtractor implements ContractDataExtractor {
   async extract(text: string): Promise<ContractPreview> {
+    assertDocumentAnalysisEnabled();
     const key = process.env.OPENAI_API_KEY; if (!key) throw new DocumentError('PROVIDER_AUTH_ERROR', 'A análise por IA não está configurada.');
     const instruction = 'Extraia somente fatos explícitos de contrato financeiro brasileiro. Retorne JSON com creditorName, contractNumber, totalAmount, installmentAmount, installments, paidInstallments, remainingInstallments, firstDueDate, dueDay, interestRate, cet, iof, fine, guarantees, categorySuggestion, summary, confidence, missingFields. Valores são números sem R$. Datas completas YYYY-MM-DD. Campos ausentes null e listados.';
     const model = process.env.OPENAI_MODEL || 'gpt-5.5';
@@ -107,7 +145,7 @@ export async function processNextDocumentAnalysisJob() {
   const job = await prisma.documentAnalysisJob.findFirst({ where: { ...(queuedJobId ? { id: queuedJobId } : {}), status: 'QUEUED', runAfter: { lte: new Date() } }, orderBy: { createdAt: 'asc' }, include: { document: true } });
   if (!job) return null;
   const runnerId = randomUUID();
-  const claimed = await prisma.documentAnalysisJob.updateMany({ where: { id: job.id, status: 'QUEUED' }, data: { status: 'PROCESSING', lockedAt: new Date(), lockedBy: runnerId, attempts: { increment: 1 } } }); if (!claimed.count) return null;
+  if (!(await claimDocumentAnalysisJob(job.id, runnerId))) return null;
   const document = job.document;
   try {
     if (!document.storageKey || document.scanStatus !== 'CLEAN') throw new DocumentError('SECURITY_SCAN_PENDING', 'A análise exige arquivo limpo no storage privado.');
@@ -131,8 +169,8 @@ export async function processNextDocumentAnalysisJob() {
     const code = error instanceof DocumentError ? error.code : 'UNKNOWN';
     const message = error instanceof Error ? error.message : 'Erro desconhecido';
     const attempt = job.attempts + 1;
-    const retry = error instanceof DocumentError && error.retryable && attempt < 3;
-    const runAfter = retry ? new Date(Date.now() + 2 ** attempt * 60_000) : new Date();
+    const retry = shouldRetryDocumentAnalysis(error, attempt);
+    const runAfter = retry ? new Date(Date.now() + documentAnalysisBackoffMs(attempt)) : new Date();
     const released = await prisma.documentAnalysisJob.updateMany({ where: { id: job.id, status: 'PROCESSING', lockedBy: runnerId }, data: { status: retry ? 'QUEUED' : 'FAILED', runAfter, lastErrorCode: code, lastErrorMessage: message.slice(0, 500), lockedAt: null, lockedBy: null } });
     if (!released.count) return { jobId: job.id, skipped: true };
     await prisma.storedDocument.update({ where: { id: document.id }, data: { analysisStatus: retry ? 'QUEUED' : 'FAILED', analysisErrorCode: code, analysisErrorMessage: message.slice(0, 500) } });
