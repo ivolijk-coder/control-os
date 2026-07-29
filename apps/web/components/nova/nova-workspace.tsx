@@ -515,7 +515,7 @@ export function NovaWorkspace({
             addNovaMessage(effectivePersona, {
               id: nextMessageId('nova'),
               role: 'nova',
-              content: `Guardei “${document.title}” e preparei a leitura do contrato. Abra Documentos, revise os dados extraídos, escolha a conta e a categoria e confirme. Nada financeiro foi criado ainda.`,
+              content: `Guardei “${document.title}”. A análise foi colocada na fila e só será liberada depois da verificação de segurança. Quando a prévia estiver pronta, revise os dados em Documentos e confirme. Nada financeiro foi criado ainda.`,
               status: 'success',
             });
           } else {

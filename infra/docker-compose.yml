@@ -302,6 +302,22 @@ services:
       WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN:-}
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
       WEB_SESSION_SECRET: ${API_SECRET_KEY}
+      # Documentos: valores em branco significam "bloqueado com segurança".
+      # Ative somente após configurar storage privado e antivírus na VPS.
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
+      DOCUMENT_STORAGE_PROVIDER: ${DOCUMENT_STORAGE_PROVIDER:-}
+      DOCUMENT_S3_ENDPOINT: ${DOCUMENT_S3_ENDPOINT:-}
+      DOCUMENT_S3_BUCKET: ${DOCUMENT_S3_BUCKET:-}
+      DOCUMENT_S3_REGION: ${DOCUMENT_S3_REGION:-us-east-1}
+      DOCUMENT_S3_ACCESS_KEY: ${DOCUMENT_S3_ACCESS_KEY:-}
+      DOCUMENT_S3_SECRET_KEY: ${DOCUMENT_S3_SECRET_KEY:-}
+      DOCUMENT_SCANNER_PROVIDER: ${DOCUMENT_SCANNER_PROVIDER:-}
+      DOCUMENT_SCANNER_ENDPOINT: ${DOCUMENT_SCANNER_ENDPOINT:-}
+      DOCUMENT_CLAMAV_HOST: ${DOCUMENT_CLAMAV_HOST:-}
+      DOCUMENT_CLAMAV_PORT: ${DOCUMENT_CLAMAV_PORT:-3310}
+      DOCUMENT_SCANNER_TIMEOUT_MS: ${DOCUMENT_SCANNER_TIMEOUT_MS:-30000}
+      DOCUMENT_ANALYSIS_TIMEOUT_MS: ${DOCUMENT_ANALYSIS_TIMEOUT_MS:-90000}
+      DOCUMENT_JOB_RUNNER_SECRET: ${DOCUMENT_JOB_RUNNER_SECRET:-}
     networks:
       - traefik-public
       - backend
@@ -342,6 +358,40 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+  # Worker separado: a interface somente enfileira. O worker usa Redis como
+  # transporte e o banco como fonte idempotente de estado/retry. Ele não é
+  # ativado sem DOCUMENT_JOB_RUNNER_SECRET, para impedir processamento acidental.
+  document-worker:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    profiles: ["documents"]
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DOCUMENT_JOB_RUNNER_SECRET: ${DOCUMENT_JOB_RUNNER_SECRET:?Defina DOCUMENT_JOB_RUNNER_SECRET antes de ativar o worker.}
+      DOCUMENT_WORKER_WEB_URL: http://web:3000
+      DOCUMENT_WORKER_POLL_INTERVAL_SECONDS: ${DOCUMENT_WORKER_POLL_INTERVAL_SECONDS:-2}
+    networks:
+      - backend
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        while true; do
+          wget -qO- --header="Authorization: Bearer $$DOCUMENT_JOB_RUNNER_SECRET" --post-data='' "$$DOCUMENT_WORKER_WEB_URL/api/document-analysis/run" >/dev/null || true
+          sleep "$$DOCUMENT_WORKER_POLL_INTERVAL_SECONDS"
+        done
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 
   # ============================================================
   # MIGRATE — aplica migrations Prisma sob demanda

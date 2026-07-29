@@ -1,42 +1,17 @@
 import { NextResponse } from 'next/server';
-import type { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/prisma';
 import { currentSessionUserId } from '@/services/auth/session';
-import { extractContract } from '@/services/documents/openai-files';
+import { DocumentError } from '@/services/documents/document-core';
+import { enqueueDocumentAnalysis } from '@/services/documents/persistent-document.service';
 
-/** Lê contrato somente para montar uma prévia. Esta rota não toca em
- * transações, contas ou parcelamentos. */
-export async function POST(_request: Request, { params }: { params: { id: string } }): Promise<NextResponse> {
+/** Compatibilidade: análise agora entra na fila; nunca bloqueia o upload. */
+export async function POST(_request: Request, { params }: { params: { id: string } }) {
   const userId = currentSessionUserId();
   if (!userId) return NextResponse.json({ success: false, message: 'Faça login para analisar contratos.' }, { status: 401 });
-  const document = await prisma.storedDocument.findFirst({ where: { id: params.id, userId, archivedAt: null } });
-  if (!document) return NextResponse.json({ success: false, message: 'Contrato não encontrado.' }, { status: 404 });
-  if (document.mimeType !== 'application/pdf') return NextResponse.json({ success: false, message: 'Envie o contrato em PDF para gerar a prévia.' }, { status: 400 });
-
-  // Repetir o envio ou atualizar a página não pode criar duas prévias para o
-  // mesmo contrato. A pessoa continua livre para descartar e pedir nova leitura.
-  const pendingProposal = await prisma.documentImportProposal.findFirst({
-    where: { userId, documentId: document.id, status: 'PENDING' },
-    orderBy: { createdAt: 'desc' },
-  });
-  if (pendingProposal) {
-    return NextResponse.json({
-      success: true,
-      alreadyPrepared: true,
-      proposal: {
-        id: pendingProposal.id,
-        status: pendingProposal.status,
-        extraction: pendingProposal.extractedData,
-      },
-    });
-  }
-
   try {
-    const extraction = await extractContract(document.openaiFileId);
-    const proposal = await prisma.documentImportProposal.create({ data: { userId, documentId: document.id, extractedData: extraction as unknown as Prisma.InputJsonValue } });
-    return NextResponse.json({ success: true, proposal: { id: proposal.id, status: proposal.status, extraction } }, { status: 201 });
+    const job = await enqueueDocumentAnalysis(userId, params.id);
+    if (!job) return NextResponse.json({ success: false, message: 'Contrato não encontrado.' }, { status: 404 });
+    return NextResponse.json({ success: true, queued: true, job: { id: job.id, status: job.status } }, { status: 202 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Não foi possível ler o contrato agora.';
-    return NextResponse.json({ success: false, message }, { status: 502 });
+    return NextResponse.json({ success: false, code: error instanceof DocumentError ? error.code : 'UNKNOWN', message: error instanceof Error ? error.message : 'Não foi possível preparar a análise.' }, { status: 409 });
   }
 }

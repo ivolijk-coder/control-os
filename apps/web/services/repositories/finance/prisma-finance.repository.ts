@@ -60,6 +60,14 @@ import type {
  * `id` de outro usuário seja mutável só por adivinhação.
  */
 export class PrismaFinanceRepository implements FinanceRepository {
+  /**
+   * Permite que um fluxo composto (por exemplo, confirmar uma prévia de
+   * documento) reutilize o FinanceService dentro da mesma transação Prisma.
+   * O serviço continua sem conhecer Prisma; só o repositório recebe o
+   * cliente transacional quando necessário.
+   */
+  constructor(private readonly transactionClient?: Prisma.TransactionClient) {}
+
   // --- Transações -------------------------------------------------------
 
   async create(userId: string, input: CreateFinanceTransactionInput): Promise<FinanceEntry> {
@@ -74,6 +82,13 @@ export class PrismaFinanceRepository implements FinanceRepository {
    * falhar, nenhuma fica gravada. "Usar transações quando necessário."
    */
   async createMany(userId: string, inputs: CreateFinanceTransactionInput[]): Promise<FinanceEntry[]> {
+    if (this.transactionClient) {
+      const rows = [];
+      for (const input of inputs) {
+        rows.push(await this.transactionClient.transaction.create({ data: toCreateData(userId, input) }));
+      }
+      return rows.map(toFinanceEntry);
+    }
     const rows = await prisma.$transaction(
       inputs.map((input) => prisma.transaction.create({ data: toCreateData(userId, input) }))
     );
@@ -149,7 +164,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async findByIdempotencyKey(userId: string, key: string): Promise<FinanceEntry | undefined> {
-    const row = await prisma.transaction.findFirst({ where: { userId, idempotencyKey: key } });
+    const row = await (this.transactionClient ?? prisma).transaction.findFirst({ where: { userId, idempotencyKey: key } });
     return row ? toFinanceEntry(row) : undefined;
   }
 
@@ -317,7 +332,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async findAccountById(userId: string, id: string): Promise<FinanceAccount | undefined> {
-    const row = await prisma.account.findFirst({ where: { id, userId } });
+    const row = await (this.transactionClient ?? prisma).account.findFirst({ where: { id, userId } });
     return row ? toFinanceAccount(row) : undefined;
   }
 
@@ -434,7 +449,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async findCategoryById(userId: string, id: string): Promise<FinanceCategory | undefined> {
-    const row = await prisma.category.findFirst({ where: { id, userId } });
+    const row = await (this.transactionClient ?? prisma).category.findFirst({ where: { id, userId } });
     return row ? toFinanceCategory(row) : undefined;
   }
 

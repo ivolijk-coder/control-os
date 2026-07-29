@@ -15,6 +15,7 @@ type FixedAccount = {
 type FixedAccountsResponse = { success: boolean; message?: string; accounts?: FixedAccount[] };
 type AccountsResponse = { success: boolean; message?: string; accounts?: Account[] };
 type CategoriesResponse = { success: boolean; message?: string; categories?: Category[] };
+type MutationResponse = { success: boolean; message?: string };
 
 const paymentMethods = [
   ['conta_bancaria', 'Conta bancária'], ['pix', 'PIX'], ['boleto', 'Boleto'], ['dinheiro', 'Dinheiro'], ['outro', 'Outro'],
@@ -30,6 +31,25 @@ function addMonths(date: Date, months: number): string {
   const result = new Date(date);
   result.setMonth(result.getMonth() + months);
   return result.toISOString().slice(0, 10);
+}
+
+async function readMutationResponse(response: Response): Promise<MutationResponse> {
+  const raw = await response.text();
+  if (!raw) {
+    return {
+      success: false,
+      message: `O servidor não concluiu o cadastro (erro ${response.status}). Tente novamente; se continuar, avise o suporte.`,
+    };
+  }
+
+  try {
+    return JSON.parse(raw) as MutationResponse;
+  } catch {
+    return {
+      success: false,
+      message: `O servidor respondeu de forma inesperada (erro ${response.status}). Tente novamente; se continuar, avise o suporte.`,
+    };
+  }
 }
 
 export default function FixedAccountsPage() {
@@ -95,7 +115,7 @@ export default function FixedAccountsPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, type, origin, amount: parsedAmount, categoryId, paymentMethod, recurrence, customIntervalDays: recurrence === 'personalizada' ? parsedInterval : undefined, dueDay: parsedDay, startDate, endDate, ...(type === 'despesa' ? { sourceAccountId: accountId || undefined } : { destinationAccountId: accountId || undefined }) }),
       });
-      const data = await response.json() as { success: boolean; message?: string };
+      const data = await readMutationResponse(response);
       if (!response.ok || !data.success) throw new Error(data.message ?? 'Não foi possível salvar a conta fixa.');
       setMessage('Conta fixa criada. As próximas ocorrências foram geradas com este snapshot.'); setName(''); setAmount(''); setDuration('indeterminada'); await load();
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Não foi possível salvar.'); }
@@ -106,7 +126,7 @@ export default function FixedAccountsPage() {
     const action = item.archivedAt ? 'restore' : 'archive';
     if (!item.archivedAt && !window.confirm(`Arquivar “${item.name}”? O histórico será preservado.`)) return;
     const response = await fetch(`/api/finance/fixed-accounts/${item.id}/${action}`, { method: 'POST' });
-    const data = await response.json() as { success: boolean; message?: string };
+    const data = await readMutationResponse(response);
     setMessage(data.message ?? (data.success ? 'Conta atualizada.' : 'Não foi possível atualizar.'));
     if (data.success) await load();
   }

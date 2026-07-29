@@ -91,8 +91,57 @@ enum StoredDocumentKind {
 /// pendente até uma confirmação explícita no chat da NOVA ou na tela.
 enum DocumentImportProposalStatus {
   PENDING
+  READY_FOR_REVIEW
+  PROCESSING
   CONFIRMED
   REJECTED
+  DISCARDED
+  FAILED
+  EXPIRED
+}
+
+/// O arquivo é mantido em storage privado, independente da OpenAI. Registros
+/// LEGACY_OPENAI existem somente para a migração progressiva dos documentos
+/// antigos; novos uploads nunca devem usar esse provider como repositório.
+enum DocumentStorageProvider {
+  S3
+  LOCAL_DEVELOPMENT
+  LEGACY_OPENAI
+}
+
+enum DocumentStorageStatus {
+  PENDING_UPLOAD
+  AVAILABLE
+  UPLOAD_FAILED
+  QUARANTINED
+  MIGRATION_PENDING
+  MIGRATION_FAILED
+  ARCHIVED
+}
+
+enum DocumentScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  FAILED
+  NOT_CONFIGURED
+}
+
+enum DocumentAnalysisStatus {
+  NOT_REQUESTED
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  NEEDS_REVIEW
+}
+
+enum DocumentAnalysisJobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
 }
 
 /// Origem técnica de um lançamento. O saldo de abertura é uma movimentação
@@ -174,35 +223,35 @@ enum FixedAccountReconciliationStatus {
 /// borda do repositório (`PrismaFinanceRepository`) — nenhum tipo TS novo
 /// duplicando `FinanceEntry` é criado por causa deste model.
 model Transaction {
-  id          String          @id @default(uuid()) @db.Uuid
-  userId      String          @map("user_id") @db.Uuid
-  type        TransactionType
-  origin      TransactionOrigin @default(MANUAL)
+  id                     String            @id @default(uuid()) @db.Uuid
+  userId                 String            @map("user_id") @db.Uuid
+  type                   TransactionType
+  origin                 TransactionOrigin @default(MANUAL)
   /// `Decimal`, não `Float` — dinheiro nunca deveria acumular erro de
   /// ponto flutuante binário. Convertido para `number` (formato de
   /// `FinanceEntry.amount`) na borda do repositório via `.toNumber()`.
-  amount      Decimal         @db.Decimal(12, 2)
-  description String?
+  amount                 Decimal           @db.Decimal(12, 2)
+  description            String?
   /// Rótulo livre (mesmo formato de `FinanceEntry.category`, `@control-os/types`)
   /// — o que esta fase de fato usa. Coexiste com `categoryId`/`categoryRef`
   /// abaixo de propósito: "expand-and-contract" — quando `Category` ganhar
   /// CRUD real (fase futura), a migração vira só passar a preencher
   /// `categoryId` também, sem quebrar nada que já lê `category` (string).
-  category    String?
-  date        DateTime        @default(now()) @db.Timestamptz(3)
-  status      TransactionStatus @default(CONFIRMED)
-  source      TransactionSource @default(MANUAL)
-  competenceDate DateTime? @map("competence_date") @db.Timestamptz(3)
-  dueDate        DateTime? @map("due_date") @db.Timestamptz(3)
-  paidAt         DateTime? @map("paid_at") @db.Timestamptz(3)
-  confirmedAt    DateTime? @map("confirmed_at") @db.Timestamptz(3)
-  canceledAt     DateTime? @map("canceled_at") @db.Timestamptz(3)
-  idempotencyKey String? @map("idempotency_key") @db.VarChar(120)
-  idempotencyFingerprint String? @map("idempotency_fingerprint") @db.VarChar(128)
-  correlationId String? @map("correlation_id") @db.Uuid
-  reversalOfId String? @map("reversal_of_id") @db.Uuid
-  reversalOf Transaction? @relation("TransactionReversal", fields: [reversalOfId], references: [id])
-  reversals Transaction[] @relation("TransactionReversal")
+  category               String?
+  date                   DateTime          @default(now()) @db.Timestamptz(3)
+  status                 TransactionStatus @default(CONFIRMED)
+  source                 TransactionSource @default(MANUAL)
+  competenceDate         DateTime?         @map("competence_date") @db.Timestamptz(3)
+  dueDate                DateTime?         @map("due_date") @db.Timestamptz(3)
+  paidAt                 DateTime?         @map("paid_at") @db.Timestamptz(3)
+  confirmedAt            DateTime?         @map("confirmed_at") @db.Timestamptz(3)
+  canceledAt             DateTime?         @map("canceled_at") @db.Timestamptz(3)
+  idempotencyKey         String?           @map("idempotency_key") @db.VarChar(120)
+  idempotencyFingerprint String?           @map("idempotency_fingerprint") @db.VarChar(128)
+  correlationId          String?           @map("correlation_id") @db.Uuid
+  reversalOfId           String?           @map("reversal_of_id") @db.Uuid
+  reversalOf             Transaction?      @relation("TransactionReversal", fields: [reversalOfId], references: [id])
+  reversals              Transaction[]     @relation("TransactionReversal")
 
   categoryId  String?   @map("category_id") @db.Uuid
   categoryRef Category? @relation(fields: [categoryId], references: [id])
@@ -233,7 +282,7 @@ model Transaction {
   installmentNumber  Int?    @map("installment_number")
   installmentTotal   Int?    @map("installment_total")
 
-  attachments Attachment[]
+  attachments                    Attachment[]
   fixedAccountOccurrencePayments FixedAccountOccurrencePayment[]
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -257,21 +306,21 @@ model Transaction {
 /// referência persistente para o catálogo; `FinanceEntry.category` segue como
 /// snapshot textual histórico, preservando relatórios após renomeações.
 model Category {
-  id           String            @id @default(uuid()) @db.Uuid
-  userId       String            @map("user_id") @db.Uuid
-  name         String
-  kind         TransactionType?
-  icon         String            @default("tag") @db.VarChar(40)
-  color        String            @default("#6366F1") @db.VarChar(16)
-  status       CategoryStatus    @default(ACTIVE)
-  sortOrder    Int               @default(0) @map("sort_order")
-  isFavorite   Boolean           @default(false) @map("is_favorite")
-  archivedAt   DateTime?         @map("archived_at") @db.Timestamptz(3)
-  transactions Transaction[]
-  fixedAccounts FixedAccount[]
+  id                  String                   @id @default(uuid()) @db.Uuid
+  userId              String                   @map("user_id") @db.Uuid
+  name                String
+  kind                TransactionType?
+  icon                String                   @default("tag") @db.VarChar(40)
+  color               String                   @default("#6366F1") @db.VarChar(16)
+  status              CategoryStatus           @default(ACTIVE)
+  sortOrder           Int                      @default(0) @map("sort_order")
+  isFavorite          Boolean                  @default(false) @map("is_favorite")
+  archivedAt          DateTime?                @map("archived_at") @db.Timestamptz(3)
+  transactions        Transaction[]
+  fixedAccounts       FixedAccount[]
   occurrenceSnapshots FixedAccountOccurrence[]
-  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt           DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([userId, name])
   @@index([userId, status])
@@ -287,20 +336,20 @@ model Category {
 /// numa criação repetida via conversa) — seguro adicionar agora porque
 /// nenhuma linha real existia antes desta fase (nada grava aqui ainda).
 model Account {
-  id           String        @id @default(uuid()) @db.Uuid
-  userId       String        @map("user_id") @db.Uuid
-  name         String
-  kind         AccountKind   @default(OUTRO)
-  currency     String        @default("BRL") @db.VarChar(3)
-  status       AccountStatus @default(ACTIVE)
-  archivedAt   DateTime?     @map("archived_at") @db.Timestamptz(3)
-  transactions Transaction[]
-  fixedAccountsAsSource FixedAccount[] @relation("FixedAccountSource")
-  fixedAccountsAsDestination FixedAccount[] @relation("FixedAccountDestination")
-  occurrenceSnapshotsAsSource FixedAccountOccurrence[] @relation("OccurrenceSourceAccount")
+  id                               String                   @id @default(uuid()) @db.Uuid
+  userId                           String                   @map("user_id") @db.Uuid
+  name                             String
+  kind                             AccountKind              @default(OUTRO)
+  currency                         String                   @default("BRL") @db.VarChar(3)
+  status                           AccountStatus            @default(ACTIVE)
+  archivedAt                       DateTime?                @map("archived_at") @db.Timestamptz(3)
+  transactions                     Transaction[]
+  fixedAccountsAsSource            FixedAccount[]           @relation("FixedAccountSource")
+  fixedAccountsAsDestination       FixedAccount[]           @relation("FixedAccountDestination")
+  occurrenceSnapshotsAsSource      FixedAccountOccurrence[] @relation("OccurrenceSourceAccount")
   occurrenceSnapshotsAsDestination FixedAccountOccurrence[] @relation("OccurrenceDestinationAccount")
-  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt                        DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                        DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([userId, name])
   @@map("finance_accounts")
@@ -309,31 +358,31 @@ model Account {
 /// Cadastro permanente de uma obrigação/receita recorrente. Não carrega saldo
 /// e não é uma transação: somente gera ocorrências com snapshot imutável.
 model FixedAccount {
-  id                      String                 @id @default(uuid()) @db.Uuid
-  userId                  String                 @map("user_id") @db.Uuid
+  id                      String                    @id @default(uuid()) @db.Uuid
+  userId                  String                    @map("user_id") @db.Uuid
   name                    String
   description             String?
   type                    TransactionType
-  origin                  FixedAccountOrigin      @default(PERSONAL)
-  categoryId              String                 @map("category_id") @db.Uuid
-  sourceAccountId         String?                @map("source_account_id") @db.Uuid
-  destinationAccountId    String?                @map("destination_account_id") @db.Uuid
+  origin                  FixedAccountOrigin        @default(PERSONAL)
+  categoryId              String                    @map("category_id") @db.Uuid
+  sourceAccountId         String?                   @map("source_account_id") @db.Uuid
+  destinationAccountId    String?                   @map("destination_account_id") @db.Uuid
   paymentMethod           FixedAccountPaymentMethod @map("payment_method")
-  amount                  Decimal                @db.Decimal(12, 2)
+  amount                  Decimal                   @db.Decimal(12, 2)
   recurrence              FixedAccountRecurrence
-  customIntervalDays      Int?                   @map("custom_interval_days")
-  dueDay                  Int                    @map("due_day")
-  startDate               DateTime               @map("start_date") @db.Timestamptz(3)
-  endDate                 DateTime?              @map("end_date") @db.Timestamptz(3)
-  active                  Boolean                @default(true)
-  archivedAt              DateTime?              @map("archived_at") @db.Timestamptz(3)
-  lastGeneratedCompetence String?                @map("last_generated_competence") @db.VarChar(32)
-  category                Category               @relation(fields: [categoryId], references: [id])
-  sourceAccount           Account?               @relation("FixedAccountSource", fields: [sourceAccountId], references: [id])
-  destinationAccount      Account?               @relation("FixedAccountDestination", fields: [destinationAccountId], references: [id])
+  customIntervalDays      Int?                      @map("custom_interval_days")
+  dueDay                  Int                       @map("due_day")
+  startDate               DateTime                  @map("start_date") @db.Timestamptz(3)
+  endDate                 DateTime?                 @map("end_date") @db.Timestamptz(3)
+  active                  Boolean                   @default(true)
+  archivedAt              DateTime?                 @map("archived_at") @db.Timestamptz(3)
+  lastGeneratedCompetence String?                   @map("last_generated_competence") @db.VarChar(32)
+  category                Category                  @relation(fields: [categoryId], references: [id])
+  sourceAccount           Account?                  @relation("FixedAccountSource", fields: [sourceAccountId], references: [id])
+  destinationAccount      Account?                  @relation("FixedAccountDestination", fields: [destinationAccountId], references: [id])
   occurrences             FixedAccountOccurrence[]
-  createdAt               DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt               DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt               DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([userId, active, archivedAt])
   @@index([userId, lastGeneratedCompetence])
@@ -344,33 +393,33 @@ model FixedAccount {
 /// Fato mensal (ou semanal/anual) criado a partir de uma regra. Os campos da
 /// regra são copiados para preservar fielmente a configuração daquele período.
 model FixedAccountOccurrence {
-  id                     String                    @id @default(uuid()) @db.Uuid
-  fixedAccountId         String                    @map("fixed_account_id") @db.Uuid
-  competenceMonth        Int                       @map("competence_month")
-  competenceYear         Int                       @map("competence_year")
-  referencePeriod        String                    @map("reference_period") @db.VarChar(32)
-  dueDate                DateTime                  @map("due_date") @db.Timestamptz(3)
-  name                   String
-  description            String?
-  type                   TransactionType
-  origin                 FixedAccountOrigin       @default(PERSONAL)
-  categoryId             String                    @map("category_id") @db.Uuid
-  paymentMethod          FixedAccountPaymentMethod @map("payment_method")
-  sourceAccountId        String?                   @map("source_account_id") @db.Uuid
-  destinationAccountId   String?                   @map("destination_account_id") @db.Uuid
-  amount                 Decimal                   @db.Decimal(12, 2)
-  status                 FixedAccountOccurrenceStatus @default(PENDING)
-  transactionId          String?                   @map("transaction_id") @db.Uuid
-  paidAt                 DateTime?                 @map("paid_at") @db.Timestamptz(3)
-  reconciliationStatus   FixedAccountReconciliationStatus? @map("reconciliation_status")
-  externalReferenceId    String?                   @map("external_reference_id")
-  fixedAccount           FixedAccount              @relation(fields: [fixedAccountId], references: [id])
-  category               Category                  @relation(fields: [categoryId], references: [id])
-  sourceAccount          Account?                  @relation("OccurrenceSourceAccount", fields: [sourceAccountId], references: [id])
-  destinationAccount     Account?                  @relation("OccurrenceDestinationAccount", fields: [destinationAccountId], references: [id])
-  payments               FixedAccountOccurrencePayment[]
-  createdAt              DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt              DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                   String                            @id @default(uuid()) @db.Uuid
+  fixedAccountId       String                            @map("fixed_account_id") @db.Uuid
+  competenceMonth      Int                               @map("competence_month")
+  competenceYear       Int                               @map("competence_year")
+  referencePeriod      String                            @map("reference_period") @db.VarChar(32)
+  dueDate              DateTime                          @map("due_date") @db.Timestamptz(3)
+  name                 String
+  description          String?
+  type                 TransactionType
+  origin               FixedAccountOrigin                @default(PERSONAL)
+  categoryId           String                            @map("category_id") @db.Uuid
+  paymentMethod        FixedAccountPaymentMethod         @map("payment_method")
+  sourceAccountId      String?                           @map("source_account_id") @db.Uuid
+  destinationAccountId String?                           @map("destination_account_id") @db.Uuid
+  amount               Decimal                           @db.Decimal(12, 2)
+  status               FixedAccountOccurrenceStatus      @default(PENDING)
+  transactionId        String?                           @map("transaction_id") @db.Uuid
+  paidAt               DateTime?                         @map("paid_at") @db.Timestamptz(3)
+  reconciliationStatus FixedAccountReconciliationStatus? @map("reconciliation_status")
+  externalReferenceId  String?                           @map("external_reference_id")
+  fixedAccount         FixedAccount                      @relation(fields: [fixedAccountId], references: [id])
+  category             Category                          @relation(fields: [categoryId], references: [id])
+  sourceAccount        Account?                          @relation("OccurrenceSourceAccount", fields: [sourceAccountId], references: [id])
+  destinationAccount   Account?                          @relation("OccurrenceDestinationAccount", fields: [destinationAccountId], references: [id])
+  payments             FixedAccountOccurrencePayment[]
+  createdAt            DateTime                          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime                          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([fixedAccountId, referencePeriod])
   @@index([competenceYear, competenceMonth, dueDate])
@@ -381,13 +430,13 @@ model FixedAccountOccurrence {
 /// Cada baixa parcial é ligada a uma transação real. Isso elimina saldo
 /// paralelo e permite que uma ocorrência seja concluída por várias baixas.
 model FixedAccountOccurrencePayment {
-  id          String                 @id @default(uuid()) @db.Uuid
-  occurrenceId String                @map("occurrence_id") @db.Uuid
-  transactionId String               @unique @map("transaction_id") @db.Uuid
-  amount      Decimal                @db.Decimal(12, 2)
-  occurrence  FixedAccountOccurrence @relation(fields: [occurrenceId], references: [id])
-  transaction Transaction            @relation(fields: [transactionId], references: [id])
-  createdAt   DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  id            String                 @id @default(uuid()) @db.Uuid
+  occurrenceId  String                 @map("occurrence_id") @db.Uuid
+  transactionId String                 @unique @map("transaction_id") @db.Uuid
+  amount        Decimal                @db.Decimal(12, 2)
+  occurrence    FixedAccountOccurrence @relation(fields: [occurrenceId], references: [id])
+  transaction   Transaction            @relation(fields: [transactionId], references: [id])
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([occurrenceId])
   @@map("finance_fixed_account_occurrence_payments")
@@ -397,17 +446,17 @@ model FixedAccountOccurrencePayment {
 /// dependência de telas ou canais: a mesma estrutura atende Manual, NOVA,
 /// WhatsApp e API, preservando o estado anterior e posterior quando houver.
 model FinanceAuditEvent {
-  id         String   @id @default(uuid()) @db.Uuid
-  userId     String   @map("user_id") @db.Uuid
-  actorUserId String  @map("actor_user_id") @db.Uuid
-  operation  String
-  source     String
-  entityType String   @map("entity_type")
-  entityId   String   @map("entity_id") @db.Uuid
-  before     Json?    @map("before_state")
-  after      Json?    @map("after_state")
-  correlationId String? @map("correlation_id") @db.Uuid
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  actorUserId   String   @map("actor_user_id") @db.Uuid
+  operation     String
+  source        String
+  entityType    String   @map("entity_type")
+  entityId      String   @map("entity_id") @db.Uuid
+  before        Json?    @map("before_state")
+  after         Json?    @map("after_state")
+  correlationId String?  @map("correlation_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([userId, entityType, entityId])
   @@index([userId, createdAt])
@@ -418,14 +467,14 @@ model FinanceAuditEvent {
 /// do serviço Python: o app web é dono deste modelo e usa o mesmo UUID como
 /// escopo dos módulos financeiros.
 model AppUser {
-  id            String                 @id @default(uuid()) @db.Uuid
-  name          String
-  email         String                 @unique
-  passwordHash  String                 @map("password_hash")
-  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
-  whatsappLinks WhatsAppLink[]
-  verifications WhatsAppVerification[]
-  documents     StoredDocument[]
+  id                      String                   @id @default(uuid()) @db.Uuid
+  name                    String
+  email                   String                   @unique
+  passwordHash            String                   @map("password_hash")
+  createdAt               DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  whatsappLinks           WhatsAppLink[]
+  verifications           WhatsAppVerification[]
+  documents               StoredDocument[]
   documentImportProposals DocumentImportProposal[]
 
   @@map("app_users")
@@ -478,21 +527,44 @@ model Attachment {
 /// `openaiFileId` é usado exclusivamente pelo servidor para leitura e
 /// download autenticado — nunca é exposto ao navegador como um segredo.
 model StoredDocument {
-  id               String              @id @default(uuid()) @db.Uuid
-  userId           String              @map("user_id") @db.Uuid
-  user             AppUser             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title            String
-  originalFileName String              @map("original_file_name")
-  mimeType         String              @map("mime_type")
-  sizeBytes        Int                 @map("size_bytes")
-  openaiFileId     String              @unique @map("openai_file_id")
-  kind             StoredDocumentKind  @default(GENERAL)
-  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
-  archivedAt       DateTime?           @map("archived_at") @db.Timestamptz(3)
-  importProposals  DocumentImportProposal[]
+  id                   String                   @id @default(uuid()) @db.Uuid
+  userId               String                   @map("user_id") @db.Uuid
+  user                 AppUser                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title                String
+  displayName          String?                  @map("display_name")
+  originalFileName     String                   @map("original_file_name")
+  mimeType             String                   @map("mime_type")
+  detectedMimeType     String?                  @map("detected_mime_type")
+  extension            String?
+  sizeBytes            Int                      @map("size_bytes")
+  sha256               String?
+  storageProvider      DocumentStorageProvider? @map("storage_provider")
+  storageStatus        DocumentStorageStatus    @default(MIGRATION_PENDING) @map("storage_status")
+  storageKey           String?                  @unique @map("storage_key")
+  scanStatus           DocumentScanStatus       @default(PENDING) @map("scan_status")
+  scanDetails          Json?                    @map("scan_details")
+  analysisStatus       DocumentAnalysisStatus   @default(NOT_REQUESTED) @map("analysis_status")
+  analysisAttempts     Int                      @default(0) @map("analysis_attempts")
+  analysisVersion      Int                      @default(1) @map("analysis_version")
+  analysisStartedAt    DateTime?                @map("analysis_started_at") @db.Timestamptz(3)
+  analysisCompletedAt  DateTime?                @map("analysis_completed_at") @db.Timestamptz(3)
+  analysisErrorCode    String?                  @map("analysis_error_code")
+  analysisErrorMessage String?                  @map("analysis_error_message")
+  folder               String?
+  tags                 String[]                 @default([])
+  openaiFileId         String?                  @unique @map("openai_file_id")
+  kind                 StoredDocumentKind       @default(GENERAL)
+  createdAt            DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+  archivedAt           DateTime?                @map("archived_at") @db.Timestamptz(3)
+  importProposals      DocumentImportProposal[]
+  analysisJobs         DocumentAnalysisJob[]
+  auditEvents          DocumentAuditEvent[]
 
   @@index([userId, createdAt])
+  @@index([userId, archivedAt, createdAt])
+  @@unique([userId, sha256])
+  @@index([analysisStatus, createdAt])
   @@map("stored_documents")
 }
 
@@ -500,20 +572,72 @@ model StoredDocument {
 /// estruturado separado do domínio financeiro e guarda o vínculo para o
 /// grupo de parcelas criado depois da aprovação do usuário.
 model DocumentImportProposal {
-  id                         String                       @id @default(uuid()) @db.Uuid
-  userId                     String                       @map("user_id") @db.Uuid
-  user                       AppUser                      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  documentId                 String                       @map("document_id") @db.Uuid
-  document                   StoredDocument               @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  status                     DocumentImportProposalStatus @default(PENDING)
-  extractedData              Json                         @map("extracted_data")
-  resultingInstallmentGroupId String?                     @map("resulting_installment_group_id") @db.Uuid
-  confirmedAt                DateTime?                    @map("confirmed_at") @db.Timestamptz(3)
-  rejectedAt                 DateTime?                    @map("rejected_at") @db.Timestamptz(3)
-  createdAt                  DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                  DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                          String                       @id @default(uuid()) @db.Uuid
+  userId                      String                       @map("user_id") @db.Uuid
+  user                        AppUser                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documentId                  String                       @map("document_id") @db.Uuid
+  document                    StoredDocument               @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  status                      DocumentImportProposalStatus @default(PENDING)
+  extractedData               Json                         @map("extracted_data")
+  analysisVersion             Int                          @default(1) @map("analysis_version")
+  idempotencyKey              String?                      @unique @map("idempotency_key")
+  validationWarnings          String[]                     @default([]) @map("validation_warnings")
+  analysisErrorCode           String?                      @map("analysis_error_code")
+  analysisErrorMessage        String?                      @map("analysis_error_message")
+  expiresAt                   DateTime?                    @map("expires_at") @db.Timestamptz(3)
+  resultingInstallmentGroupId String?                      @map("resulting_installment_group_id") @db.Uuid
+  confirmedAt                 DateTime?                    @map("confirmed_at") @db.Timestamptz(3)
+  rejectedAt                  DateTime?                    @map("rejected_at") @db.Timestamptz(3)
+  discardedAt                 DateTime?                    @map("discarded_at") @db.Timestamptz(3)
+  createdAt                   DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                   DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([userId, status])
   @@index([documentId])
   @@map("document_import_proposals")
+}
+
+/// Fila persistente e idempotente. Um worker futuro pode consumi-la sem mudar
+/// o contrato HTTP; enquanto isso um executor interno a processa sob demanda.
+model DocumentAnalysisJob {
+  id               String                    @id @default(uuid()) @db.Uuid
+  documentId       String                    @map("document_id") @db.Uuid
+  document         StoredDocument            @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  analysisVersion  Int                       @map("analysis_version")
+  status           DocumentAnalysisJobStatus @default(QUEUED)
+  attempts         Int                       @default(0)
+  runAfter         DateTime                  @default(now()) @map("run_after") @db.Timestamptz(3)
+  lockedAt         DateTime?                 @map("locked_at") @db.Timestamptz(3)
+  lockedBy         String?                   @map("locked_by")
+  lastErrorCode    String?                   @map("last_error_code")
+  lastErrorMessage String?                   @map("last_error_message")
+  createdAt        DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([documentId, analysisVersion])
+  @@index([status, runAfter])
+  @@map("document_analysis_jobs")
+}
+
+/// Auditoria própria para arquivos e prévias. Não mistura eventos de domínio
+/// documental com `FinanceAuditEvent`, que permanece dedicado ao financeiro.
+model DocumentAuditEvent {
+  id         String          @id @default(uuid()) @db.Uuid
+  userId     String          @map("user_id") @db.Uuid
+  documentId String?         @map("document_id") @db.Uuid
+  document   StoredDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  proposalId String?         @map("proposal_id") @db.Uuid
+  operation  String
+  source     String
+  entityType String          @map("entity_type")
+  entityId   String          @map("entity_id")
+  correlationId String?      @map("correlation_id") @db.Uuid
+  before     Json?
+  after      Json?
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([userId, createdAt])
+  @@index([documentId, createdAt])
+  @@index([correlationId])
+  @@map("document_audit_events")
 }

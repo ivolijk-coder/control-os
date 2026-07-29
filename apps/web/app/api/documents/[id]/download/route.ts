@@ -1,24 +1,14 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
 import { currentSessionUserId } from '@/services/auth/session';
-import { downloadPrivateFile } from '@/services/documents/openai-files';
+import { DocumentError } from '@/services/documents/document-core';
+import { openDocument } from '@/services/documents/persistent-document.service';
 
-export async function GET(_request: Request, { params }: { params: { id: string } }): Promise<Response> {
+export async function GET(_request: Request, { params }: { params: { id: string } }) {
   const userId = currentSessionUserId();
-  if (!userId) return NextResponse.json({ success: false, message: 'Faça login para baixar seus arquivos.' }, { status: 401 });
-  const document = await prisma.storedDocument.findFirst({ where: { id: params.id, userId, archivedAt: null } });
-  if (!document) return NextResponse.json({ success: false, message: 'Arquivo não encontrado.' }, { status: 404 });
+  if (!userId) return NextResponse.json({ success: false, message: 'Faça login para baixar documentos.' }, { status: 401 });
   try {
-    const upstream = await downloadPrivateFile(document.openaiFileId);
-    return new Response(upstream.body, {
-      headers: {
-        'Content-Type': document.mimeType || 'application/octet-stream',
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(document.originalFileName)}`,
-        'Cache-Control': 'private, no-store',
-      },
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Não foi possível baixar o arquivo agora.';
-    return NextResponse.json({ success: false, message }, { status: 502 });
-  }
+    const result = await openDocument(userId, params.id);
+    if (!result) return NextResponse.json({ success: false, message: 'Documento não encontrado.' }, { status: 404 });
+    return new NextResponse(Uint8Array.from(result.content).buffer, { headers: { 'content-type': result.document.detectedMimeType || result.document.mimeType, 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(result.document.originalFileName)}`, 'cache-control': 'private, no-store' } });
+  } catch (error) { return NextResponse.json({ success: false, code: error instanceof DocumentError ? error.code : 'UNKNOWN', message: error instanceof Error ? error.message : 'Não foi possível abrir o documento.' }, { status: 409 }); }
 }

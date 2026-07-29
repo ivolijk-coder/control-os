@@ -69,7 +69,3 @@ export type { UpdateHabitInput } from './habits/habits.types';
 export { MockNotesService, notesService } from './notes/notes.service';
 export type { NotesService } from './notes/notes.interfaces';
 export type { CreateNoteInput } from './notes/notes.types';
-
-export { MockDocumentsService, documentsService } from './documents/documents.service';
-export type { DocumentsService } from './documents/documents.interfaces';
-export type { StoreDocumentInput } from './documents/documents.types';
