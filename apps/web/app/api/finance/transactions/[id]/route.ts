@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { currentSessionUserId } from '@/services/auth/session';
 import { financeService } from '@/services/modules';
 import { runAsFinanceUser } from '@/services/modules/finance/finance-user-context';
+import { FinanceQueryError } from '@/services/modules/finance/finance-query';
 
 function object(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
@@ -10,6 +11,24 @@ function object(value: unknown): Record<string, unknown> | undefined {
 function failure(message: string, status: number): NextResponse { return NextResponse.json({ success: false, message }, { status }); }
 function text(value: unknown): string | undefined { return typeof value === 'string' && value.trim() ? value.trim() : undefined; }
 function date(value: unknown): string | undefined { return value === undefined ? undefined : typeof value === 'string' && !Number.isNaN(new Date(value).getTime()) ? value : undefined; }
+
+export async function GET(_request: NextRequest, context: { params: { id: string } }): Promise<NextResponse> {
+  const userId = currentSessionUserId();
+  if (!userId) return failure('Faça login para consultar uma transação.', 401);
+  if (!isUuid(context.params.id)) return failure('Transação não encontrada.', 404);
+  try {
+    const transaction = await runAsFinanceUser(userId, () => financeService.getTransactionById(context.params.id));
+    return NextResponse.json({ success: true, transaction });
+  } catch (cause) {
+    if (cause instanceof FinanceQueryError && cause.code === 'not_found') return failure('Transação não encontrada.', 404);
+    console.error('Falha ao consultar transação:', cause);
+    return failure('Não foi possível carregar a transação agora.', 500);
+  }
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
 
 export async function PATCH(request: NextRequest, context: { params: { id: string } }): Promise<NextResponse> {
   const userId = currentSessionUserId();

@@ -9,6 +9,8 @@ import type {
   FinanceCategoryBreakdownItem,
   FinanceSummary,
   FinanceTransactionFilter,
+  FinanceTransactionPage,
+  FinanceTransactionPageQuery,
   UpdateFinanceTransactionInput,
   UpdateFinanceCategoryInput,
   SetFinanceCategoryStatusInput,
@@ -71,6 +73,7 @@ export interface FinanceRepository {
    */
   findById(userId: string, id: string): Promise<FinanceEntry | undefined>;
   list(userId: string, filter?: FinanceTransactionFilter): Promise<FinanceEntry[]>;
+  listPaginated(userId: string, query: FinanceTransactionPageQuery): Promise<FinanceTransactionPage>;
   /** "Últimas movimentações" (Dashboard) — mais recentes primeiro, limitadas a `limit`. */
   getRecent(userId: string, limit: number): Promise<FinanceEntry[]>;
   /**

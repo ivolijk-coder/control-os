@@ -153,6 +153,65 @@ export interface FinanceEntry {
 }
 
 /**
+ * Contrato público de leitura de uma transação financeira. É deliberadamente
+ * independente do model Prisma: datas são ISO, dinheiro segue temporariamente
+ * o `number` já usado por `FinanceEntry`, e nenhum Decimal/enum do ORM cruza a
+ * borda HTTP.
+ */
+export interface FinanceTransactionDto {
+  id: string;
+  type: FinanceEntryType;
+  description: string;
+  amount: number;
+  category: string;
+  categoryId?: string;
+  date: string;
+  accountId?: string;
+  status: FinanceTransactionStatus;
+  source: FinanceTransactionSource;
+  competenceDate?: string;
+  dueDate?: string;
+  paidAt?: string;
+  confirmedAt?: string;
+  canceledAt?: string;
+  reversalOfId?: string;
+  correlationId?: string;
+  transferGroupId?: string;
+  transferDirection?: FinanceTransferDirection;
+  installmentGroupId?: string;
+  installmentNumber?: number;
+  installmentTotal?: number;
+  recurrenceFrequency?: FinanceRecurrenceFrequency;
+}
+
+/** Ordenações públicas permitidas. `id` é sempre o desempate interno. */
+export type FinanceTransactionSort = 'date_desc' | 'date_asc';
+
+/** Filtros aceitos pela consulta paginada de transações. */
+export interface FinanceTransactionFilters {
+  cursor?: string;
+  limit?: number;
+  type?: FinanceEntryType;
+  status?: FinanceTransactionStatus;
+  accountId?: string;
+  categoryId?: string;
+  /** Canal real já persistido pelo projeto (`Transaction.source`). */
+  origin?: FinanceTransactionSource;
+  competenceFrom?: string;
+  competenceTo?: string;
+  dueDateFrom?: string;
+  dueDateTo?: string;
+  search?: string;
+  sort?: FinanceTransactionSort;
+}
+
+export interface PaginatedFinanceTransactions {
+  items: FinanceTransactionDto[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+/**
  * Conta financeira (CONTROL OS — Fase 7). "Criar suporte para múltiplas
  * contas... Carteira, Conta Corrente, Poupança, Nubank, Inter, Caixa,
  * Cartão de Crédito" — `name` é o rótulo livre do exemplo ("Nubank"),

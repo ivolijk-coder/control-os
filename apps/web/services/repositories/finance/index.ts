@@ -18,6 +18,8 @@ export type {
   FinanceCategoryBreakdownItem,
   FinanceSummary,
   FinanceTransactionFilter,
+  FinanceTransactionPage,
+  FinanceTransactionPageQuery,
   UpdateFinanceTransactionInput,
 } from './finance-repository.types';
 export { PrismaFinanceRepository } from './prisma-finance.repository';

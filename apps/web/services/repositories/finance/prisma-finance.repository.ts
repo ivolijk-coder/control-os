@@ -18,6 +18,8 @@ import type {
   FinanceCategoryBreakdownItem,
   FinanceSummary,
   FinanceTransactionFilter,
+  FinanceTransactionPage,
+  FinanceTransactionPageQuery,
   SetFinanceAccountStatusInput,
   SetFinanceCategoryStatusInput,
   UpdateFinanceAccountInput,
@@ -193,11 +195,35 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async list(userId: string, filter?: FinanceTransactionFilter): Promise<FinanceEntry[]> {
-    const rows = await prisma.transaction.findMany({
+    const rows = await (this.transactionClient ?? prisma).transaction.findMany({
       where: buildWhere(userId, filter),
       orderBy: { date: 'desc' },
     });
     return rows.map(toFinanceEntry);
+  }
+
+  async listPaginated(userId: string, query: FinanceTransactionPageQuery): Promise<FinanceTransactionPage> {
+    const client = this.transactionClient ?? prisma;
+    if (query.cursor) {
+      const ownedCursor = await client.transaction.findFirst({
+        where: { id: query.cursor.id, userId, date: new Date(query.cursor.date) },
+        select: { id: true },
+      });
+      if (!ownedCursor) return { items: [], hasMore: false, cursorValid: false };
+    }
+
+    const where = buildPageWhere(userId, query);
+    const direction = query.sort === 'date_asc' ? 'asc' : 'desc';
+    const rows = await client.transaction.findMany({
+      where,
+      orderBy: [{ date: direction }, { id: direction }],
+      take: query.limit + 1,
+    });
+    return {
+      items: rows.slice(0, query.limit).map(toFinanceEntry),
+      hasMore: rows.length > query.limit,
+      cursorValid: true,
+    };
   }
 
   async getRecent(userId: string, limit: number): Promise<FinanceEntry[]> {
@@ -725,6 +751,35 @@ function buildWhere(userId: string, filter?: FinanceTransactionFilter): Prisma.T
       ...(filter.from ? { gte: new Date(filter.from) } : {}),
       ...(filter.to ? { lte: new Date(filter.to) } : {}),
     };
+  }
+  return where;
+}
+
+function buildPageWhere(userId: string, query: FinanceTransactionPageQuery): Prisma.TransactionWhereInput {
+  const where: Prisma.TransactionWhereInput = {
+    userId,
+    type: query.type ? toPersistedType(query.type) : undefined,
+    status: query.status ? toPersistedStatus(query.status) : undefined,
+    accountId: query.accountId,
+    categoryId: query.categoryId,
+    source: query.source ? toPersistedSource(query.source) : undefined,
+    description: query.search ? { contains: query.search, mode: 'insensitive' } : undefined,
+    competenceDate: query.competenceFrom || query.competenceTo ? {
+      ...(query.competenceFrom ? { gte: new Date(query.competenceFrom) } : {}),
+      ...(query.competenceTo ? { lte: new Date(query.competenceTo) } : {}),
+    } : undefined,
+    dueDate: query.dueDateFrom || query.dueDateTo ? {
+      ...(query.dueDateFrom ? { gte: new Date(query.dueDateFrom) } : {}),
+      ...(query.dueDateTo ? { lte: new Date(query.dueDateTo) } : {}),
+    } : undefined,
+  };
+  if (query.cursor) {
+    const comparison = query.sort === 'date_asc' ? 'gt' : 'lt';
+    const cursorDate = new Date(query.cursor.date);
+    where.OR = [
+      { date: { [comparison]: cursorDate } },
+      { date: cursorDate, id: { [comparison]: query.cursor.id } },
+    ];
   }
   return where;
 }

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { FinanceAccount, FinanceCategory, FinanceEntry } from '@control-os/types';
+import type { FinanceAccount, FinanceCategory, FinanceEntry, FinanceTransactionDto, FinanceTransactionFilters, PaginatedFinanceTransactions } from '@control-os/types';
 import type { ActionResult } from '@/services/action-result.types';
 import type { CreateFinanceTransactionInput, FinanceRepository } from '@/services/repositories';
 import type { FinanceAuditSource } from '@/services/repositories/finance/finance-repository.types';
@@ -30,6 +30,13 @@ import type {
   PayFixedAccountOccurrenceInput,
 } from './finance.types';
 import { FixedAccountGenerationService } from './fixed-account-generation.service';
+import {
+  encodeFinanceTransactionCursor,
+  FinanceQueryError,
+  MAX_FINANCE_TRANSACTION_PAGE_SIZE,
+  normalizeFinanceTransactionFilters,
+  toFinanceTransactionDto,
+} from './finance-query';
 
 /**
  * CONTROL OS — Fase 6: Todo `Prisma*Repository` guarda dados por `userId`
@@ -184,7 +191,42 @@ export class PersistentFinanceService implements FinanceService {
 
   // --- Núcleo de transações (Sprint 2.1) -----------------------------------
 
-  async listTransactions(): Promise<FinanceEntry[]> { return this.repository.list(this.userId); }
+  async listTransactions(): Promise<FinanceEntry[]> {
+    const entries: FinanceEntry[] = [];
+    let cursor: string | undefined;
+    do {
+      const normalized = normalizeFinanceTransactionFilters({
+        cursor,
+        limit: MAX_FINANCE_TRANSACTION_PAGE_SIZE,
+        sort: 'date_desc',
+      });
+      const page = await this.repository.listPaginated(this.userId, normalized);
+      if (!page.cursorValid) throw new FinanceQueryError('Cursor inválido.', 'invalid_cursor');
+      entries.push(...page.items);
+      const last = page.items.at(-1);
+      cursor = page.hasMore && last ? encodeFinanceTransactionCursor(last, normalized.sort) : undefined;
+    } while (cursor);
+    return entries;
+  }
+
+  async listTransactionsPaginated(filters: FinanceTransactionFilters = {}): Promise<PaginatedFinanceTransactions> {
+    const normalized = normalizeFinanceTransactionFilters(filters);
+    const page = await this.repository.listPaginated(this.userId, normalized);
+    if (!page.cursorValid) throw new FinanceQueryError('Cursor inválido.', 'invalid_cursor');
+    const last = page.items.at(-1);
+    return {
+      items: page.items.map(toFinanceTransactionDto),
+      hasMore: page.hasMore,
+      nextCursor: page.hasMore && last ? encodeFinanceTransactionCursor(last, normalized.sort) : null,
+    };
+  }
+
+  async getTransactionById(id: string): Promise<FinanceTransactionDto> {
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw new FinanceQueryError('Transação não encontrada.', 'not_found');
+    const entry = await this.repository.findById(this.userId, id);
+    if (!entry) throw new FinanceQueryError('Transação não encontrada.', 'not_found');
+    return toFinanceTransactionDto(entry);
+  }
 
   // --- Contas fixas e ocorrências (Sprint 3.0) ----------------------------
   async createFixedAccount(input: CreateFixedAccountInput): Promise<ActionResult> {

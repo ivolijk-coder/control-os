@@ -1,4 +1,4 @@
-import type { FinanceAccount, FinanceCategory, FinanceEntry, FixedAccount, FixedAccountOccurrence } from '@control-os/types';
+import type { FinanceAccount, FinanceCategory, FinanceEntry, FinanceTransactionDto, FinanceTransactionFilters, FixedAccount, FixedAccountOccurrence, PaginatedFinanceTransactions } from '@control-os/types';
 import type { ActionResult } from '@/services/action-result.types';
 import type {
   CreateExpenseInput,
@@ -47,6 +47,8 @@ export interface FinanceService {
   cancelTransaction(id: string, source?: 'manual' | 'nova' | 'whatsapp' | 'api'): Promise<ActionResult>;
   reverseTransaction(id: string, source?: 'manual' | 'nova' | 'whatsapp' | 'api'): Promise<ActionResult>;
   listTransactions(): Promise<FinanceEntry[]>;
+  listTransactionsPaginated(filters?: FinanceTransactionFilters): Promise<PaginatedFinanceTransactions>;
+  getTransactionById(id: string): Promise<FinanceTransactionDto>;
   // Despesas
   createExpense(input: CreateExpenseInput): Promise<ActionResult>;
   updateExpense(input: UpdateExpenseInput): Promise<ActionResult>;

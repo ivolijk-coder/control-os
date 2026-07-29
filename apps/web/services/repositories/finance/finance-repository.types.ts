@@ -1,4 +1,4 @@
-import type { FinanceAccountKind, FinanceAccountStatus, FinanceEntryType, FinanceTransactionSource, FinanceTransactionStatus, FinanceTransferDirection, FixedAccountOrigin, FixedAccountPaymentMethod, FixedAccountRecurrence } from '@control-os/types';
+import type { FinanceAccountKind, FinanceAccountStatus, FinanceEntryType, FinanceTransactionSort, FinanceTransactionSource, FinanceTransactionStatus, FinanceTransferDirection, FixedAccountOrigin, FixedAccountPaymentMethod, FixedAccountRecurrence } from '@control-os/types';
 
 /**
  * Tipos do Finance Repository (CONTROL OS — Fase 6: Persistência real;
@@ -29,6 +29,33 @@ export interface FinanceTransactionFilter {
   idempotencyFingerprint?: string;
   correlationId?: string;
   reversalOfId?: string;
+}
+
+/**
+ * Consulta já validada pelo FinanceService. Datas são instantes ISO em UTC;
+ * os limites finais são inclusivos. O cursor nunca é aceito do cliente nesta
+ * forma: o serviço decodifica e valida o contrato opaco primeiro.
+ */
+export interface FinanceTransactionPageQuery {
+  limit: number;
+  sort: FinanceTransactionSort;
+  cursor?: { id: string; date: string };
+  type?: FinanceEntryType;
+  status?: FinanceTransactionStatus;
+  accountId?: string;
+  categoryId?: string;
+  source?: FinanceTransactionSource;
+  competenceFrom?: string;
+  competenceTo?: string;
+  dueDateFrom?: string;
+  dueDateTo?: string;
+  search?: string;
+}
+
+export interface FinanceTransactionPage {
+  items: import('@control-os/types').FinanceEntry[];
+  hasMore: boolean;
+  cursorValid: boolean;
 }
 
 export interface CreateFinanceTransactionInput {

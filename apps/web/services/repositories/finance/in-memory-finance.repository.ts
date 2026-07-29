@@ -8,6 +8,8 @@ import type {
   FinanceCategoryBreakdownItem,
   FinanceSummary,
   FinanceTransactionFilter,
+  FinanceTransactionPage,
+  FinanceTransactionPageQuery,
   SetFinanceAccountStatusInput,
   SetFinanceCategoryStatusInput,
   UpdateFinanceAccountInput,
@@ -44,6 +46,21 @@ function matchesFilter(entry: FinanceEntry, filter: FinanceTransactionFilter | u
   if (filter.from && entry.date < filter.from) return false;
   if (filter.to && entry.date > filter.to) return false;
   if (filter.accountId && entry.accountId !== filter.accountId) return false;
+  return true;
+}
+
+function matchesPageQuery(entry: FinanceEntry, query: FinanceTransactionPageQuery): boolean {
+  if (query.type && entry.type !== query.type) return false;
+  if (query.status && (entry.status ?? 'confirmada') !== query.status) return false;
+  if (query.accountId && entry.accountId !== query.accountId) return false;
+  if (query.categoryId && entry.categoryId !== query.categoryId) return false;
+  if (query.source && (entry.source ?? 'manual') !== query.source) return false;
+  const competence = entry.competenceDate ?? entry.date;
+  if (query.competenceFrom && competence < query.competenceFrom) return false;
+  if (query.competenceTo && competence > query.competenceTo) return false;
+  if (query.dueDateFrom && (!entry.dueDate || entry.dueDate < query.dueDateFrom)) return false;
+  if (query.dueDateTo && (!entry.dueDate || entry.dueDate > query.dueDateTo)) return false;
+  if (query.search && !entry.description.toLocaleLowerCase('pt-BR').includes(query.search.toLocaleLowerCase('pt-BR'))) return false;
   return true;
 }
 
@@ -252,6 +269,25 @@ export class InMemoryFinanceRepository implements FinanceRepository {
 
   async list(userId: string, filter?: FinanceTransactionFilter): Promise<FinanceEntry[]> {
     return this.entriesFor(userId).filter((entry) => matchesFilter(entry, filter));
+  }
+
+  async listPaginated(userId: string, query: FinanceTransactionPageQuery): Promise<FinanceTransactionPage> {
+    const direction = query.sort === 'date_asc' ? 1 : -1;
+    const ordered = this.entriesFor(userId)
+      .filter((entry) => matchesPageQuery(entry, query))
+      .sort((left, right) => direction * (left.date.localeCompare(right.date) || left.id.localeCompare(right.id)));
+    let start = 0;
+    if (query.cursor) {
+      const index = ordered.findIndex((entry) => entry.id === query.cursor?.id && entry.date === query.cursor.date);
+      if (index < 0) return { items: [], hasMore: false, cursorValid: false };
+      start = index + 1;
+    }
+    const rows = ordered.slice(start, start + query.limit + 1);
+    return {
+      items: rows.slice(0, query.limit).map((entry) => ({ ...entry })),
+      hasMore: rows.length > query.limit,
+      cursorValid: true,
+    };
   }
 
   async getRecent(userId: string, limit: number): Promise<FinanceEntry[]> {

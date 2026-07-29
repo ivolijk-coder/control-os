@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import type { FinanceEntryType, FinanceTransactionFilters, FinanceTransactionSort, FinanceTransactionSource, FinanceTransactionStatus } from '@control-os/types';
 import { currentSessionUserId } from '@/services/auth/session';
 import { financeService } from '@/services/modules';
 import { runAsFinanceUser } from '@/services/modules/finance/finance-user-context';
+import { FinanceQueryError } from '@/services/modules/finance/finance-query';
 
-const TYPES = ['receita', 'despesa', 'transferencia'] as const;
-const STATUSES = ['pendente', 'confirmada'] as const;
+const TYPES: readonly FinanceEntryType[] = ['receita', 'despesa', 'transferencia'];
+const STATUSES: readonly FinanceTransactionStatus[] = ['pendente', 'confirmada', 'cancelada', 'estornada'];
+const SOURCES: readonly FinanceTransactionSource[] = ['manual', 'nova', 'whatsapp', 'api'];
+const SORTS: readonly FinanceTransactionSort[] = ['date_desc', 'date_asc'];
 
 function object(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
@@ -29,16 +33,57 @@ function date(value: unknown): string | undefined {
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const userId = currentSessionUserId();
   if (!userId) return failure('Faça login para consultar transações.', 401);
-  const requestedStatus = request.nextUrl.searchParams.get('status');
-  if (requestedStatus && !STATUSES.includes(requestedStatus as typeof STATUSES[number])) return failure('Status de transação inválido.', 400);
+  const search = request.nextUrl.searchParams;
+  const type = member(search.get('type'), TYPES);
+  const status = member(search.get('status'), STATUSES);
+  const origin = member(search.get('origin'), SOURCES);
+  const sort = member(search.get('sort'), SORTS);
+  if (search.has('type') && !type) return failure('Tipo de transação inválido.', 400);
+  if (search.has('status') && !status) return failure('Status de transação inválido.', 400);
+  if (search.has('origin') && !origin) return failure('Origem de transação inválida.', 400);
+  if (search.has('sort') && !sort) return failure('Ordenação inválida.', 400);
+  const accountId = optional(search.get('accountId'));
+  const categoryId = optional(search.get('categoryId'));
+  if (accountId && !isUuid(accountId)) return failure('Conta inválida.', 400);
+  if (categoryId && !isUuid(categoryId)) return failure('Categoria inválida.', 400);
+  const rawLimit = search.get('limit');
+  const limit = rawLimit === null ? undefined : Number(rawLimit);
+  const filters: FinanceTransactionFilters = {
+    cursor: optional(search.get('cursor')),
+    limit,
+    type,
+    status,
+    accountId,
+    categoryId,
+    origin,
+    competenceFrom: optional(search.get('competenceFrom')),
+    competenceTo: optional(search.get('competenceTo')),
+    dueDateFrom: optional(search.get('dueDateFrom')),
+    dueDateTo: optional(search.get('dueDateTo')),
+    search: optional(search.get('search')),
+    sort,
+  };
   try {
-    const transactions = await runAsFinanceUser(userId, () => financeService.listTransactions());
-    const filtered = requestedStatus ? transactions.filter((entry) => entry.status === requestedStatus) : transactions;
-    return NextResponse.json({ success: true, transactions: filtered });
+    const page = await runAsFinanceUser(userId, () => financeService.listTransactionsPaginated(filters));
+    return NextResponse.json({ success: true, ...page });
   } catch (cause) {
+    if (cause instanceof FinanceQueryError) return failure(cause.message, 400);
     console.error('Falha ao consultar transações:', cause);
     return failure('Não foi possível carregar as transações agora.', 500);
   }
+}
+
+function optional(value: string | null): string | undefined {
+  const normalized = value?.trim();
+  return normalized || undefined;
+}
+
+function member<T extends string>(value: string | null, values: readonly T[]): T | undefined {
+  return value !== null && values.some((candidate) => candidate === value) ? values.find((candidate) => candidate === value) : undefined;
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
