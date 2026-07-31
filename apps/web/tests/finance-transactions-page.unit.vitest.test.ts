@@ -14,12 +14,16 @@ const queryState = vi.hoisted(() => ({
   transaction: {} as Record<string, unknown>,
   accounts: {} as Record<string, unknown>,
   categories: {} as Record<string, unknown>,
+  accountsIncludeArchived: false,
 }));
 
 vi.mock('@/lib/finance', () => ({
   useFinanceTransactions: () => queryState.transactions,
   useFinanceTransaction: () => queryState.transaction,
-  useFinanceAccounts: () => queryState.accounts,
+  useFinanceAccounts: (includeArchived: boolean) => {
+    queryState.accountsIncludeArchived = includeArchived;
+    return queryState.accounts;
+  },
   useFinanceCategories: () => queryState.categories,
 }));
 
@@ -62,6 +66,7 @@ beforeEach(() => {
     isError: false,
     data: [{ id: 'category-1', name: 'Alimentação' }],
   };
+  queryState.accountsIncludeArchived = false;
 });
 
 describe('lista real de transações', () => {
@@ -103,6 +108,7 @@ describe('lista real de transações', () => {
     expect(html).toContain('aria-label="Abrir detalhes de Mercado"');
     expect(html).toContain('Paginação segura por cursor');
     expect(html).toContain('Próxima');
+    expect(queryState.accountsIncludeArchived).toBe(true);
   });
 
   it('oferece filtros, pesquisa e somente a ordenação suportada pela API', () => {

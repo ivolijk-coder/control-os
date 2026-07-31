@@ -74,7 +74,7 @@ export default function FinanceTransactionsPage() {
     [cursor, debouncedSearch, filters]
   );
   const transactionsQuery = useFinanceTransactions(queryFilters);
-  const accountsQuery = useFinanceAccounts();
+  const accountsQuery = useFinanceAccounts(true);
   const categoriesQuery = useFinanceCategories();
   const transactionQuery = useFinanceTransaction(selectedId);
 
