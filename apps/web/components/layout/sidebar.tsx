@@ -21,6 +21,7 @@ const FINANCE_ITEM_IDS = new Set([
   'nav_financeiro_contas',
   'nav_financeiro_categorias',
   'nav_financeiro_transacoes',
+  'nav_financeiro_nova_transacao',
   'nav_financeiro_contas_fixas',
   'nav_financeiro_contas_do_mes',
   'nav_financeiro_cartoes',
@@ -30,7 +31,8 @@ const FINANCE_ITEM_IDS = new Set([
 
 function itemIsActive(item: NavItem, pathname: string | null): boolean {
   if (!pathname) return false;
-  return item.href === '/financeiro' ? pathname === '/financeiro' : pathname.startsWith(item.href);
+  if (item.href === '/financeiro' || item.href === '/financeiro/transacoes') return pathname === item.href;
+  return pathname.startsWith(item.href);
 }
 
 function NavLink({ item, pathname, collapsed, nested = false }: {
