@@ -14,6 +14,9 @@ const queryState = vi.hoisted(() => ({
   transaction: {} as Record<string, unknown>,
   accounts: {} as Record<string, unknown>,
   categories: {} as Record<string, unknown>,
+  confirmMutation: {} as Record<string, unknown>,
+  cancelMutation: {} as Record<string, unknown>,
+  reverseMutation: {} as Record<string, unknown>,
   accountsIncludeArchived: false,
 }));
 
@@ -25,6 +28,9 @@ vi.mock('@/lib/finance', () => ({
     return queryState.accounts;
   },
   useFinanceCategories: () => queryState.categories,
+  useConfirmFinanceTransaction: () => queryState.confirmMutation,
+  useCancelFinanceTransaction: () => queryState.cancelMutation,
+  useReverseFinanceTransaction: () => queryState.reverseMutation,
 }));
 
 function transaction(overrides: Partial<FinanceTransactionDto> = {}): FinanceTransactionDto {
@@ -66,6 +72,9 @@ beforeEach(() => {
     isError: false,
     data: [{ id: 'category-1', name: 'Alimentação' }],
   };
+  queryState.confirmMutation = { isPending: false, mutateAsync: vi.fn() };
+  queryState.cancelMutation = { isPending: false, mutateAsync: vi.fn() };
+  queryState.reverseMutation = { isPending: false, mutateAsync: vi.fn() };
   queryState.accountsIncludeArchived = false;
 });
 
@@ -109,6 +118,26 @@ describe('lista real de transações', () => {
     expect(html).toContain('Paginação segura por cursor');
     expect(html).toContain('Próxima');
     expect(queryState.accountsIncludeArchived).toBe(true);
+  });
+
+  it('apresenta somente as ações compatíveis com o status recebido', () => {
+    queryState.transactions = {
+      isPending: false,
+      isError: false,
+      data: {
+        items: [
+          transaction({ id: 'pending', status: 'pendente', confirmedAt: undefined }),
+          transaction({ id: 'confirmed', status: 'confirmada' }),
+          transaction({ id: 'cancelled', status: 'cancelada', confirmedAt: undefined }),
+        ],
+        nextCursor: null,
+        hasMore: false,
+      },
+    };
+    const html = renderPage();
+    expect(html).toContain('aria-label="Confirmar transação"');
+    expect(html).toContain('aria-label="Cancelar transação"');
+    expect(html).toContain('aria-label="Estornar transação"');
   });
 
   it('oferece filtros, pesquisa e somente a ordenação suportada pela API', () => {

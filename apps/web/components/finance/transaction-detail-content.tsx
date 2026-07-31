@@ -24,9 +24,11 @@ export function FinanceTransactionStatusBadge({ status }: { status: FinanceTrans
 export function TransactionDetailContent({
   transaction,
   accountName,
+  actions,
 }: {
   transaction: FinanceTransactionDto;
   accountName: string;
+  actions?: React.ReactNode;
 }) {
   const history = [
     ['Competência', transaction.competenceDate ?? transaction.date],
@@ -73,6 +75,8 @@ export function TransactionDetailContent({
         <h3 className="text-sm font-medium text-text-primary">Anexos</h3>
         <p className="mt-2 text-xs text-text-tertiary">Nenhum anexo disponível no contrato de consulta atual.</p>
       </section>
+
+      {actions && <div className="border-t border-border-subtle pt-4">{actions}</div>}
     </div>
   );
 }

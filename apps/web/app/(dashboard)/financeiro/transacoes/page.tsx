@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUp,
+  CheckCircle2,
   FileSearch,
   Search,
   X,
@@ -27,12 +28,24 @@ import {
   TransactionDetailContent,
 } from '@/components/finance/transaction-detail-content';
 import {
+  lifecycleActionLabel,
+  TransactionLifecycleActions,
+} from '@/components/finance/transaction-lifecycle-actions';
+import {
+  useCancelFinanceTransaction,
+  useConfirmFinanceTransaction,
   useFinanceAccounts,
   useFinanceCategories,
   useFinanceTransaction,
   useFinanceTransactions,
+  useReverseFinanceTransaction,
   type FinanceAccountDto,
 } from '@/lib/finance';
+import {
+  executeFinanceLifecycleAction,
+  lifecycleActionKey,
+  type FinanceLifecycleAction,
+} from '@/lib/finance/transaction-lifecycle-model';
 import {
   buildFinanceTransactionFilters,
   INITIAL_TRANSACTION_FILTERS,
@@ -55,6 +68,18 @@ interface TransactionListViewProps {
   onNextPage?: () => void;
   onPreviousPage?: () => void;
   onSelectTransaction?: (id: string) => void;
+  pendingKeys: ReadonlySet<string>;
+  feedback?: TransactionLifecycleFeedback;
+  onLifecycleAction?: (action: FinanceLifecycleAction, transactionId: string) => void;
+}
+
+type TransactionLifecycleFeedback =
+  | { kind: 'success'; message: string }
+  | { kind: 'error'; message: string };
+
+interface PendingConfirmation {
+  action: 'cancel' | 'reverse';
+  transactionId: string;
 }
 
 export default function FinanceTransactionsPage() {
@@ -63,6 +88,10 @@ export default function FinanceTransactionsPage() {
   const [cursor, setCursor] = React.useState<string>();
   const [cursorHistory, setCursorHistory] = React.useState<Array<string | undefined>>([]);
   const [selectedId, setSelectedId] = React.useState<string>();
+  const [pendingConfirmation, setPendingConfirmation] = React.useState<PendingConfirmation>();
+  const [pendingKeys, setPendingKeys] = React.useState<Set<string>>(() => new Set());
+  const [lifecycleFeedback, setLifecycleFeedback] = React.useState<TransactionLifecycleFeedback>();
+  const lifecycleLocks = React.useRef(new Set<string>());
 
   React.useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(filters.search), 300);
@@ -77,6 +106,50 @@ export default function FinanceTransactionsPage() {
   const accountsQuery = useFinanceAccounts(true);
   const categoriesQuery = useFinanceCategories();
   const transactionQuery = useFinanceTransaction(selectedId);
+  const confirmTransaction = useConfirmFinanceTransaction();
+  const cancelTransaction = useCancelFinanceTransaction();
+  const reverseTransaction = useReverseFinanceTransaction();
+
+  const executeLifecycleAction = React.useCallback(async (
+    action: FinanceLifecycleAction,
+    transactionId: string
+  ) => {
+    const mutation = action === 'confirm'
+      ? confirmTransaction
+      : action === 'cancel'
+        ? cancelTransaction
+        : reverseTransaction;
+    setLifecycleFeedback(undefined);
+    const result = await executeFinanceLifecycleAction({
+      action,
+      transactionId,
+      locks: lifecycleLocks.current,
+      execute: (id) => mutation.mutateAsync(id),
+      onPendingChange: (key, pending) => {
+        setPendingKeys((current) => {
+          const next = new Set(current);
+          if (pending) next.add(key); else next.delete(key);
+          return next;
+        });
+      },
+    });
+    if (result.kind === 'success' || result.kind === 'error') {
+      setLifecycleFeedback({ kind: result.kind, message: result.message });
+    }
+    if (result.kind === 'success') setPendingConfirmation(undefined);
+  }, [cancelTransaction, confirmTransaction, reverseTransaction]);
+
+  const requestLifecycleAction = React.useCallback((
+    action: FinanceLifecycleAction,
+    transactionId: string
+  ) => {
+    if (action === 'confirm') {
+      void executeLifecycleAction(action, transactionId);
+      return;
+    }
+    setPendingConfirmation({ action, transactionId });
+    setLifecycleFeedback(undefined);
+  }, [executeLifecycleAction]);
 
   const changeFilter = React.useCallback(<K extends keyof TransactionFilterState>(
     key: K,
@@ -124,6 +197,9 @@ export default function FinanceTransactionsPage() {
         onNextPage={goToNextPage}
         onPreviousPage={goToPreviousPage}
         onSelectTransaction={setSelectedId}
+        pendingKeys={pendingKeys}
+        feedback={lifecycleFeedback}
+        onLifecycleAction={requestLifecycleAction}
       />
 
       <FloatingPanel
@@ -138,7 +214,7 @@ export default function FinanceTransactionsPage() {
         <div className="flex items-center justify-between border-b border-white/[0.08] px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-text-primary">Detalhes da transação</p>
-            <p className="mt-0.5 text-xs text-text-tertiary">Consulta somente leitura</p>
+            <p className="mt-0.5 text-xs text-text-tertiary">Dados e ações disponíveis</p>
           </div>
           <button
             type="button"
@@ -164,9 +240,27 @@ export default function FinanceTransactionsPage() {
           <TransactionDetailContent
             transaction={transactionQuery.data}
             accountName={accountName(accountsQuery.data ?? [], transactionQuery.data.accountId)}
+            actions={(
+              <div className="space-y-3">
+                <TransactionLifecycleFeedbackView feedback={lifecycleFeedback} />
+                <TransactionLifecycleActions
+                  transactionId={transactionQuery.data.id}
+                  status={transactionQuery.data.status}
+                  pendingKeys={pendingKeys}
+                  onAction={requestLifecycleAction}
+                />
+              </div>
+            )}
           />
         ) : null}
       </FloatingPanel>
+
+      <LifecycleConfirmationPanel
+        confirmation={pendingConfirmation}
+        pendingKeys={pendingKeys}
+        onClose={() => setPendingConfirmation(undefined)}
+        onConfirm={(confirmation) => void executeLifecycleAction(confirmation.action, confirmation.transactionId)}
+      />
     </>
   );
 }
@@ -181,6 +275,9 @@ function TransactionListView({
   onNextPage = () => undefined,
   onPreviousPage = () => undefined,
   onSelectTransaction = () => undefined,
+  pendingKeys,
+  feedback,
+  onLifecycleAction = () => undefined,
 }: TransactionListViewProps) {
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-5 py-8 sm:px-8">
@@ -189,6 +286,8 @@ function TransactionListView({
         title="Transações"
         meta={state.kind === 'success' ? `${state.page.items.length} nesta página` : undefined}
       />
+
+      <TransactionLifecycleFeedbackView feedback={feedback} />
 
       <GlassCard interactive={false} className="p-4">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -304,6 +403,8 @@ function TransactionListView({
                       key={transaction.id}
                       transaction={transaction}
                       onSelect={() => onSelectTransaction(transaction.id)}
+                      pendingKeys={pendingKeys}
+                      onLifecycleAction={onLifecycleAction}
                     />
                   ))}
                 </tbody>
@@ -341,9 +442,13 @@ function TransactionListView({
 function TransactionRow({
   transaction,
   onSelect,
+  pendingKeys,
+  onLifecycleAction,
 }: {
   transaction: FinanceTransactionDto;
   onSelect: () => void;
+  pendingKeys: ReadonlySet<string>;
+  onLifecycleAction: (action: FinanceLifecycleAction, transactionId: string) => void;
 }) {
   const positive = transaction.type === 'receita'
     || (transaction.type === 'transferencia' && transaction.transferDirection === 'entrada');
@@ -366,12 +471,76 @@ function TransactionRow({
         <FinanceTransactionStatusBadge status={transaction.status} />
       </td>
       <td className={`px-4 py-3 text-right font-mono text-sm ${positive ? 'text-accent-green' : 'text-accent-red'}`}>
-        <span className="inline-flex items-center gap-1">
-          {positive ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
-          {formatCurrency(transaction.amount)}
-        </span>
+        <div className="flex items-center justify-end gap-3">
+          <span className="inline-flex items-center gap-1">
+            {positive ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
+            {formatCurrency(transaction.amount)}
+          </span>
+          <TransactionLifecycleActions
+            transactionId={transaction.id}
+            status={transaction.status}
+            pendingKeys={pendingKeys}
+            compact
+            onAction={onLifecycleAction}
+          />
+        </div>
       </td>
     </tr>
+  );
+}
+
+function TransactionLifecycleFeedbackView({ feedback }: { feedback?: TransactionLifecycleFeedback }) {
+  if (!feedback) return null;
+  if (feedback.kind === 'error') return <FormError message={feedback.message} />;
+  return (
+    <div role="status" className="flex items-center gap-2 rounded-md border border-accent-green/20 bg-accent-green/10 px-3 py-2 text-xs text-accent-green">
+      <CheckCircle2 className="h-4 w-4" />
+      {feedback.message}
+    </div>
+  );
+}
+
+function LifecycleConfirmationPanel({ confirmation, pendingKeys, onClose, onConfirm }: {
+  confirmation?: PendingConfirmation;
+  pendingKeys: ReadonlySet<string>;
+  onClose: () => void;
+  onConfirm: (confirmation: PendingConfirmation) => void;
+}) {
+  const label = confirmation ? lifecycleActionLabel(confirmation.action) : '';
+  const pending = confirmation
+    ? pendingKeys.has(lifecycleActionKey(confirmation.action, confirmation.transactionId))
+    : false;
+  return (
+    <FloatingPanel
+      open={Boolean(confirmation)}
+      onOpenChange={(open) => { if (!open && !pending) onClose(); }}
+      title={`${label} transação`}
+      description="Confirme a ação antes de continuar. O histórico financeiro será preservado."
+      className="max-w-md"
+    >
+      <div className="space-y-5 p-6">
+        <div>
+          <h2 className="text-lg font-semibold text-text-primary">{label} transação?</h2>
+          <p className="mt-2 text-sm leading-6 text-text-secondary">
+            {confirmation?.action === 'reverse'
+              ? 'O lançamento original será preservado e receberá um estorno auditável.'
+              : 'A transação pendente será cancelada e continuará disponível no histórico.'}
+          </p>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" disabled={pending} onClick={onClose}>Voltar</Button>
+          <Button
+            type="button"
+            variant={confirmation?.action === 'reverse' ? 'danger' : 'primary'}
+            loading={pending}
+            disabled={!confirmation || pending}
+            onClick={() => { if (confirmation) onConfirm(confirmation); }}
+          >
+            {pending ? `${label}…` : `Confirmar ${label.toLowerCase()}`}
+          </Button>
+        </div>
+      </div>
+    </FloatingPanel>
   );
 }
 
