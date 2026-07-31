@@ -16,6 +16,26 @@ function json(body: unknown, status = 200): Response {
 }
 
 describe('cliente HTTP financeiro', () => {
+  it('invoca o fetch nativo sem vinculá-lo à instância do cliente', async () => {
+    let receiver: unknown;
+    vi.stubGlobal('fetch', function (this: unknown) {
+      receiver = this;
+      return Promise.resolve(json({
+        success: true,
+        dashboard: {},
+        fixedAccounts: {},
+      }));
+    });
+
+    try {
+      const client = new FinanceApiClient();
+      await client.getDashboard();
+      expect(receiver).not.toBe(client);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('serializa filtros em ordem estável e preserva cursor opaco', () => {
     expect(serializeFinanceTransactionFilters({
       sort: 'date_asc',

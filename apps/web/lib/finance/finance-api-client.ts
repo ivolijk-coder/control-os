@@ -89,6 +89,8 @@ interface ApiSuccess {
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
+const defaultFetcher: Fetcher = (input, init) => fetch(input, init);
+
 export class FinanceApiError extends Error {
   readonly code?: string;
   readonly status: number;
@@ -128,7 +130,7 @@ export function serializeFinanceTransactionFilters(filters: FinanceTransactionFi
 }
 
 export class FinanceApiClient {
-  constructor(private readonly fetcher: Fetcher = fetch) {}
+  constructor(private readonly fetcher: Fetcher = defaultFetcher) {}
 
   async getDashboard(signal?: AbortSignal): Promise<FinanceDashboardPayload> {
     const payload = await this.request<ApiSuccess & FinanceDashboardPayload>('/api/finance/dashboard', { signal });
