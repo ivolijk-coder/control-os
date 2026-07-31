@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { Badge } from '@control-os/ui';
 import type { MissionStatus } from '@control-os/types';
 import { cn } from '@/lib/utils';
