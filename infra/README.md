@@ -196,12 +196,35 @@ Mesma lógica para `evolution-postgres` com `EVOLUTION_POSTGRES_USER`/`EVOLUTION
 
 ## Atualizando a stack
 
+Para publicar uma atualização do frontend em produção, use a rotina controlada:
+
 ```bash
-git pull
-docker compose up -d --build
+cd /srv/control-os/infra
+chmod +x scripts/deploy-web-safe.sh
+./scripts/deploy-web-safe.sh
 ```
 
-O Compose só recria os containers cujas imagens mudaram (`web`, `api` se o código mudou) — `postgres`/`redis`/`evolution-*` continuam rodando sem interrupção, a menos que a própria versão de imagem tenha sido alterada no `docker-compose.yml`.
+O script exige a branch `main` e o working tree limpo, atualiza o checkout
+somente por fast-forward, cria um dump do PostgreSQL principal fora do
+repositório e valida o arquivo com `pg_restore -l`. Em seguida, audita o estado
+das migrations, executa exclusivamente `prisma migrate deploy` quando houver
+uma migration pendente reconhecida, reconstrói somente o `web` e aguarda o
+health check antes de executar os smoke tests públicos.
+
+O processo é interrompido se houver divergência no Git, backup vazio ou
+inválido, estado inesperado de migrations, falha de build/health ou resposta
+inesperada das APIs. Os containers de banco, Redis, Traefik, API e Evolution
+são identificados antes da publicação e devem permanecer os mesmos ao final.
+
+Por padrão, os backups desta rotina ficam em
+`/srv/control-os-backups/manual`. Esse diretório está fora do checkout Git. A
+cópia externa e o teste periódico de restauração continuam obrigatórios; a
+validação do catálogo prova que o dump pode ser lido pelo `pg_restore`, mas não
+substitui um ensaio completo de restauração isolada.
+
+Não use `docker compose up -d --build` para uma atualização rotineira: esse
+comando tem escopo amplo e pode reconstruir ou recriar serviços que não fazem
+parte da entrega aprovada.
 
 ## Troubleshooting
 
