@@ -78,6 +78,12 @@ export interface ExpenseIntent extends NovaIntentBase {
   kind: 'registrar_despesa';
   amount: number;
   description: string;
+  /** Conta mencionada pelo usuário. Quando ausente, o FinanceService só
+   * resolve automaticamente se houver exatamente uma conta ativa. */
+  accountName?: string;
+  /** Categoria mencionada pelo usuário; Alimentação continua sendo o padrão
+   * seguro para despesas de mercado quando nenhuma categoria for informada. */
+  category?: string;
 }
 
 export interface RevenueIntent extends NovaIntentBase {

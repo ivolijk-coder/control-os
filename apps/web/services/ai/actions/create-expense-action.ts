@@ -5,6 +5,8 @@ import type { Action } from './types';
 export interface CreateExpenseInput {
   amount: number;
   description: string;
+  accountName?: string;
+  category?: string;
 }
 
 /**
@@ -25,7 +27,9 @@ export class CreateExpenseAction implements Action {
     const result = await postFinanceAction('expense.create', {
       amount: this.input.amount,
       description: this.input.description,
-      categoryId: 'default:Alimentação',
+      accountName: this.input.accountName,
+      category: this.input.category,
+      categoryId: this.input.category ? undefined : 'default:Alimentação',
       idempotencyKey: createIdempotencyKey(),
     });
     return [{ action: { kind: 'criar_despesa', label: 'Registrar despesa' }, ok: result.success, detail: result.message }];

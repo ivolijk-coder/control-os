@@ -43,7 +43,12 @@ export class IntentResolver {
   resolve(intent: NovaIntent): Action | undefined {
     switch (intent.kind) {
       case 'registrar_despesa':
-        return new CreateExpenseAction({ amount: intent.amount, description: intent.description });
+        return new CreateExpenseAction({
+          amount: intent.amount,
+          description: intent.description,
+          accountName: intent.accountName,
+          category: intent.category,
+        });
       case 'registrar_receita':
         return new CreateIncomeAction({ amount: intent.amount, description: intent.description });
       case 'transferir_conta':

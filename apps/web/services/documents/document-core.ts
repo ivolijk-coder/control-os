@@ -62,6 +62,26 @@ export class DocumentError extends Error {
   }
 }
 
+export function publicDocumentFailure(
+  error: unknown,
+  fallbackMessage: string,
+  fallbackStatus = 500,
+): { code: DocumentFailureCode; message: string; status: number } {
+  if (error instanceof DocumentError) {
+    const status = error.code === 'FILE_TOO_LARGE'
+      ? 413
+      : error.code === 'INVALID_FILE' || error.code === 'UNSUPPORTED_FILE' || error.code === 'PASSWORD_PROTECTED'
+        ? 400
+        : 409;
+    return {
+      code: error.code,
+      message: error.message,
+      status,
+    };
+  }
+  return { code: 'UNKNOWN', message: fallbackMessage, status: fallbackStatus };
+}
+
 export type ValidatedUpload = {
   buffer: Buffer; sha256: string; extension: string; detectedMimeType: string; pageCount?: number;
 };

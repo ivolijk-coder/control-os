@@ -29,6 +29,7 @@ export class CreateExpenseAction implements ActionHandler {
       { name: 'description', type: 'string', required: false, description: 'Descrição curta da despesa.' },
       { name: 'category', type: 'string', required: false, description: 'Categoria da despesa (ex.: Mercado, Transporte).' },
       { name: 'categoryId', type: 'string', required: false, description: 'ID da categoria. Quando ausente, usa a categoria padrão Alimentação.' },
+      { name: 'accountName', type: 'string', required: false, description: 'Nome da conta bancária informada pelo usuário.' },
       { name: 'date', type: 'string', required: false, description: 'Data da despesa (AAAA-MM-DD), se mencionada.' },
     ],
     examples: [
@@ -43,10 +44,13 @@ export class CreateExpenseAction implements ActionHandler {
     if (amount === undefined) {
       return { success: false, message: 'Não entendi o valor da despesa — preciso de um "amount" (ou "value") numérico.' };
     }
+    const category = getString(payload, 'category');
     return this.financeService.createExpense({
       amount,
       description: getString(payload, 'description'),
-      categoryId: getString(payload, 'categoryId') ?? 'default:Alimentação',
+      accountName: getString(payload, 'accountName'),
+      category,
+      categoryId: getString(payload, 'categoryId') ?? (category ? undefined : 'default:Alimentação'),
       date: getString(payload, 'date'),
       source: financeSource(payload),
       idempotencyKey: getString(payload, 'idempotencyKey'),

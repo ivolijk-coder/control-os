@@ -46,6 +46,8 @@ export const INTENT_TOOL_SCHEMAS: ToolSchema[] = [
       properties: {
         amount: { type: 'number', description: 'Valor da despesa, em reais.' },
         description: { type: 'string', description: 'Descrição curta da despesa.' },
+        accountName: { type: 'string', description: 'Conta bancária mencionada pelo usuário. Não invente uma conta quando ela não for informada.' },
+        category: { type: 'string', description: 'Categoria mencionada pelo usuário. Para compras de mercado sem outra indicação, use Alimentação.' },
       },
       required: ['amount', 'description'],
     },

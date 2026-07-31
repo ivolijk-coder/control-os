@@ -212,7 +212,14 @@ function mapToolCallToIntent(toolCall: NovaAIToolCall, raw: string): NovaIntent 
       const amount = requireNumber(args, 'amount');
       const description = requireString(args, 'description');
       if (amount === undefined || description === undefined) break;
-      return { kind: 'registrar_despesa', raw, amount, description };
+      return {
+        kind: 'registrar_despesa',
+        raw,
+        amount,
+        description,
+        accountName: requireString(args, 'accountName'),
+        category: requireString(args, 'category'),
+      };
     }
     case 'registrar_receita': {
       const amount = requireNumber(args, 'amount');

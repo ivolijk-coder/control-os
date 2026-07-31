@@ -114,6 +114,30 @@ describe('scanner com falha fechada', () => {
 });
 
 describe('erros e auditoria sanitizados', () => {
+  it('não expõe mensagens internas de erros inesperados na API', async () => {
+    const { publicDocumentFailure } = await import('../document-core');
+    expect(publicDocumentFailure(
+      new Error('Invalid prisma.storedDocument.findFirst invocation: analysis_status does not exist'),
+      'Não foi possível guardar o arquivo agora.',
+    )).toEqual({
+      code: 'UNKNOWN',
+      message: 'Não foi possível guardar o arquivo agora.',
+      status: 500,
+    });
+  });
+
+  it('preserva mensagens seguras de erro de domínio', async () => {
+    const { DocumentError, publicDocumentFailure } = await import('../document-core');
+    expect(publicDocumentFailure(
+      new DocumentError('FILE_TOO_LARGE', 'Envie um arquivo menor.'),
+      'Falha genérica.',
+    )).toEqual({
+      code: 'FILE_TOO_LARGE',
+      message: 'Envie um arquivo menor.',
+      status: 413,
+    });
+  });
+
   it('remove segredos e conteúdo integral de estruturas aninhadas', async () => {
     const { sanitizeDocumentDiagnostics } = await import('../document-core');
     expect(sanitizeDocumentDiagnostics({

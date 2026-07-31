@@ -467,7 +467,17 @@ export class ConversationService {
     const results = perItemResults.flatMap((entry) => entry.results);
     const ok = results.length > 0 && results.every((result) => result.ok);
     const [firstItem] = items;
-    const templateReply = firstItem ? buildReply(firstItem.intent, ok) : FALLBACK_REPLY;
+    const firstFailure = results.find((result) => !result.ok);
+    const templateReply = firstFailure?.detail
+      ? firstFailure.detail
+      : firstItem ? buildReply(firstItem.intent, ok) : FALLBACK_REPLY;
+
+    // Uma falha de domínio precisa chegar intacta ao usuário. A IA não pode
+    // transformar "selecione uma conta" em "tente novamente", pois isso
+    // elimina justamente a informação necessária para concluir a ação.
+    if (!ok && firstFailure?.detail) {
+      return { status: 'erro', reply: firstFailure.detail, checklist, results };
+    }
 
     const provider = getAIProvider();
     if (!isReasoningProvider(provider) || !continuationToken) {
