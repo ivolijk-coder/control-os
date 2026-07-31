@@ -163,20 +163,41 @@ export class PersistentFinanceService implements FinanceService {
    * quebrar os textos e transações legadas já existentes. */
   private async resolveCategory(input: { category?: string; categoryId?: string }, kind: 'receita' | 'despesa'): Promise<{ id: string; name: string } | undefined> {
     if (input.categoryId) {
-      const found = await this.repository.findCategoryById(this.userId, input.categoryId);
-      if (found?.status === 'ativa' && found.kind === kind) return { id: found.id, name: found.name };
-      // Categorias padrão começam como IDs virtuais. Ao serem escolhidas
-      // para um lançamento, tornam-se uma categoria real do proprietário.
+      // IDs `default:*` são referências lógicas apresentadas pelo catálogo,
+      // nunca UUIDs. Resolva-as antes de consultar a coluna UUID do Prisma.
       if (input.categoryId.startsWith('default:')) {
-        const name = input.categoryId.slice('default:'.length);
-        const definition = DEFAULT_FINANCE_CATEGORIES.find(([candidate, candidateKind]) => candidate === name && candidateKind === kind);
-        if (definition) {
+        const logicalName = input.categoryId.slice('default:'.length).trim();
+        const definition = DEFAULT_FINANCE_CATEGORIES.find(
+          ([candidate, candidateKind]) => candidate.toLocaleLowerCase('pt-BR') === logicalName.toLocaleLowerCase('pt-BR') && candidateKind === kind
+        );
+        if (!definition) return undefined;
+
+        const existing = await this.repository.findCategoryByName(this.userId, definition[0]);
+        if (existing) {
+          return existing.status === 'ativa' && existing.kind === kind
+            ? { id: existing.id, name: existing.name }
+            : undefined;
+        }
+
+        try {
           const category = await this.repository.createCategory(this.userId, {
             name: definition[0], kind, icon: definition[2], color: definition[3],
           });
           return { id: category.id, name: category.name };
+        } catch (error) {
+          // `@@unique([userId, name])` impede duplicação quando duas ações
+          // concorrentes materializam o mesmo padrão. O perdedor reutiliza
+          // a linha criada pelo vencedor; outros erros continuam visíveis.
+          const concurrent = await this.repository.findCategoryByName(this.userId, definition[0]);
+          if (concurrent?.status === 'ativa' && concurrent.kind === kind) {
+            return { id: concurrent.id, name: concurrent.name };
+          }
+          throw error;
         }
       }
+
+      const found = await this.repository.findCategoryById(this.userId, input.categoryId);
+      if (found?.status === 'ativa' && found.kind === kind) return { id: found.id, name: found.name };
       return undefined;
     }
     const name = input.category?.trim() || 'Outros';
