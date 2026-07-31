@@ -1,18 +1,22 @@
 'use client';
 
-import { CreditCard, Repeat, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
-import { Button } from '@control-os/ui';
+import * as React from 'react';
+import { CreditCard, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { FadeIn } from '@/components/dashboard/fade-in';
 import { GlassCard } from '@/components/ui/glass-card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { FormError } from '@/components/ui/form-error';
+import { Skeleton } from '@/components/ui/skeleton';
 import { SectionHeader } from '@/components/dashboard/section-header';
 import { DashboardCard } from '@/components/dashboard/dashboard-card';
 import { ChartCard } from '@/components/dashboard/chart-card';
 import { MiniBarChart, MiniSparkline } from '@/components/dashboard/mini-charts';
 import { RecommendationCard } from '@/components/dashboard/recommendation-card';
-import { ProgressRing } from '@/components/dashboard/progress-ring';
-import { useDataStore } from '@/lib/data-store';
-import { financeEntrySign, formatCurrency } from '@/lib/utils';
+import {
+  useFinanceDashboard,
+  type FinanceDashboardPayload,
+} from '@/lib/finance';
+import { formatCurrency } from '@/lib/utils';
 
 const CATEGORY_EMOJI: Record<string, string> = {
   Alimentação: '🍽️',
@@ -25,6 +29,13 @@ const CATEGORY_EMOJI: Record<string, string> = {
   Moradia: '🏠',
 };
 
+const CHART_ACCENTS = ['purple', 'blue', 'green', 'red'] as const;
+
+export type FinanceDashboardViewState =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'success'; data: FinanceDashboardPayload };
+
 function categoryEmoji(category: string): string {
   return CATEGORY_EMOJI[category] ?? '💳';
 }
@@ -33,110 +44,119 @@ function formatEntryDate(date: string): string {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(new Date(date));
 }
 
-const CHART_ACCENTS = ['purple', 'blue', 'green', 'red'] as const;
+function hasDashboardData(data: FinanceDashboardPayload): boolean {
+  const { dashboard, fixedAccounts } = data;
+  return dashboard.currentBalance !== 0
+    || dashboard.monthIncome !== 0
+    || dashboard.monthExpenses !== 0
+    || dashboard.savings !== 0
+    || dashboard.recentTransactions.length > 0
+    || dashboard.topExpenseCategories.length > 0
+    || dashboard.monthlyEvolution.length > 0
+    || fixedAccounts.plannedThisMonth.length > 0;
+}
 
-/**
- * Financeiro — módulo premium (CONTROL OS — Etapa 10B).
- *
- * Lê de `useDataStore` exatamente como antes — nenhum campo novo, nenhuma
- * chamada nova. A diferença é só de apresentação: em vez de duas listas
- * ("Dívidas", "Lançamentos") em sequência, agora tem fluxo do mês, gastos
- * por categoria e um resumo derivado (não é IA ao vivo — é cálculo local
- * puro sobre os mesmos lançamentos, igual ao `buildHomeInsights` da Etapa 9).
- * "Assinaturas" é uma leitura filtrada dos mesmos `financeEntries`
- * (categoria "Software" ou descrição contendo "assinatura") — não é um tipo
- * de dado novo. "Parcelamentos" é a mesma lista de `debts` de sempre, só
- * com um anel de progresso no lugar da barra linear.
- */
+function entryIsPositive(entry: FinanceDashboardPayload['dashboard']['recentTransactions'][number]): boolean {
+  return entry.type === 'receita'
+    || (entry.type === 'transferencia' && entry.transferDirection === 'entrada');
+}
+
 export default function FinanceiroPage() {
-  const financeEntries = useDataStore((state) => state.financeEntries);
-  const debts = useDataStore((state) => state.debts);
-  const payDebtInstallment = useDataStore((state) => state.payDebtInstallment);
+  const dashboardQuery = useFinanceDashboard();
 
-  const receitaTotal = financeEntries
-    .filter((entry) => entry.type === 'receita')
-    .reduce((sum, entry) => sum + entry.amount, 0);
-  const gastosTotal = financeEntries
-    .filter((entry) => entry.type === 'despesa')
-    .reduce((sum, entry) => sum + entry.amount, 0);
-  const saldo = receitaTotal - gastosTotal;
-  const dividasTotal = debts.reduce((sum, debt) => sum + debt.remainingAmount, 0);
+  if (dashboardQuery.isPending) {
+    return <FinanceDashboardView state={{ kind: 'loading' }} />;
+  }
+  if (dashboardQuery.isError) {
+    return (
+      <FinanceDashboardView
+        state={{
+          kind: 'error',
+          message: dashboardQuery.error.message || 'Não foi possível carregar o dashboard financeiro.',
+        }}
+      />
+    );
+  }
+  return <FinanceDashboardView state={{ kind: 'success', data: dashboardQuery.data }} />;
+}
 
-  const sortedEntries = [...financeEntries].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
+export function FinanceDashboardView({ state }: { state: FinanceDashboardViewState }) {
+  if (state.kind === 'loading') return <FinanceDashboardLoading />;
 
-  // Fluxo do mês: saldo acumulado ao longo dos lançamentos, do mais antigo
-  // pro mais recente — só os lançamentos que já existem, nada projetado.
-  const chronological = [...financeEntries].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  const flowValues = chronological.reduce<number[]>((acc, entry) => {
-    const previous = acc.length > 0 ? acc[acc.length - 1] ?? 0 : 0;
-    const delta = financeEntrySign(entry) * entry.amount;
-    acc.push(previous + delta);
-    return acc;
-  }, []);
+  if (state.kind === 'error') {
+    return (
+      <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
+        <SectionHeader level="page" title="Financeiro" />
+        <FormError message={state.message} />
+      </div>
+    );
+  }
 
-  // Gastos por categoria — só despesas, agrupadas e ordenadas da maior pra menor.
-  const gastosPorCategoria = Array.from(
-    financeEntries
-      .filter((entry) => entry.type === 'despesa')
-      .reduce((map, entry) => {
-        map.set(entry.category, (map.get(entry.category) ?? 0) + entry.amount);
-        return map;
-      }, new Map<string, number>())
-  )
-    .sort((a, b) => b[1] - a[1])
-    .map(([category, value], index) => ({
-      label: `${categoryEmoji(category)} ${category}`,
-      value,
-      displayValue: formatCurrency(value),
-      accent: CHART_ACCENTS[index % CHART_ACCENTS.length],
-    }));
+  if (!hasDashboardData(state.data)) {
+    return (
+      <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
+        <SectionHeader level="page" title="Financeiro" meta="0 lançamentos" />
+        <EmptyState
+          icon={Wallet}
+          title="Seu financeiro está pronto para começar."
+          description="Registre uma receita ou despesa para acompanhar seus dados reais aqui."
+        />
+      </div>
+    );
+  }
 
-  const assinaturas = financeEntries.filter(
-    (entry) => entry.category === 'Software' || entry.description.toLowerCase().includes('assinatura')
-  );
-
-  const maiorCategoria = gastosPorCategoria[0];
-  const resumoNova =
-    maiorCategoria && gastosTotal > 0
-      ? `${Math.round((maiorCategoria.value / gastosTotal) * 100)}% dos seus gastos este mês foram em ${maiorCategoria.label.replace(/^\S+\s/, '')}. Saldo atual: ${formatCurrency(saldo)}.`
-      : 'Ainda não há gastos suficientes este mês para eu montar um resumo.';
+  const { dashboard, fixedAccounts } = state.data;
+  const categoryChart = dashboard.topExpenseCategories.map((item, index) => ({
+    label: `${categoryEmoji(item.category)} ${item.category}`,
+    value: item.total,
+    displayValue: formatCurrency(item.total),
+    accent: CHART_ACCENTS[index % CHART_ACCENTS.length],
+  }));
+  const flowValues = dashboard.monthlyEvolution.map((point) => point.balance);
+  const topCategory = dashboard.topExpenseCategories[0];
+  const summary = topCategory
+    ? `Sua maior categoria de gastos no período é ${topCategory.category}, com ${formatCurrency(topCategory.total)}. Saldo atual: ${formatCurrency(dashboard.currentBalance)}.`
+    : `Receitas de ${formatCurrency(dashboard.monthIncome)}, despesas de ${formatCurrency(dashboard.monthExpenses)} e saldo atual de ${formatCurrency(dashboard.currentBalance)}.`;
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
       <FadeIn>
-        <SectionHeader level="page" title="Financeiro" meta={`${financeEntries.length} lançamentos`} />
+        <SectionHeader level="page" title="Financeiro" meta={`${dashboard.recentTransactions.length} lançamentos recentes`} />
       </FadeIn>
 
       <FadeIn delay={0.05}>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <DashboardCard icon={TrendingUp} label="Receita" value={formatCurrency(receitaTotal)} accent="blue" />
-          <DashboardCard icon={TrendingDown} label="Gastos" value={formatCurrency(gastosTotal)} accent="red" />
-          <DashboardCard icon={Wallet} label="Saldo" value={formatCurrency(saldo)} accent={saldo >= 0 ? 'green' : 'red'} />
+          <DashboardCard icon={TrendingUp} label="Receita" value={formatCurrency(dashboard.monthIncome)} accent="blue" />
+          <DashboardCard icon={TrendingDown} label="Gastos" value={formatCurrency(dashboard.monthExpenses)} accent="red" />
+          <DashboardCard
+            icon={Wallet}
+            label="Saldo"
+            value={formatCurrency(dashboard.currentBalance)}
+            accent={dashboard.currentBalance >= 0 ? 'green' : 'red'}
+          />
           <DashboardCard
             icon={CreditCard}
-            label="Dívidas em aberto"
-            value={formatCurrency(dividasTotal)}
-            accent={dividasTotal > 0 ? 'red' : 'green'}
+            label="Economia"
+            value={formatCurrency(dashboard.savings)}
+            accent={dashboard.savings >= 0 ? 'green' : 'red'}
           />
         </div>
       </FadeIn>
 
       <FadeIn delay={0.08}>
-        <RecommendationCard text={resumoNova} />
+        <RecommendationCard text={summary} />
       </FadeIn>
 
       <FadeIn delay={0.1}>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <ChartCard title="Fluxo do mês" description="Saldo acumulado ao longo dos lançamentos">
-            <MiniSparkline values={flowValues} accent={saldo >= 0 ? 'green' : 'red'} />
+          <ChartCard title="Evolução mensal" description="Saldo consolidado informado pelo financeiro">
+            <MiniSparkline values={flowValues} accent={dashboard.currentBalance >= 0 ? 'green' : 'red'} />
           </ChartCard>
           <ChartCard title="Gastos por categoria">
-            {gastosPorCategoria.length > 0 ? (
-              <MiniBarChart data={gastosPorCategoria} />
+            {categoryChart.length > 0 ? (
+              <MiniBarChart data={categoryChart} />
             ) : (
-              <p className="text-xs text-text-tertiary">Nenhuma despesa registrada ainda.</p>
+              <p className="text-xs text-text-tertiary">Nenhuma despesa registrada no período.</p>
             )}
           </ChartCard>
         </div>
@@ -144,102 +164,85 @@ export default function FinanceiroPage() {
 
       <FadeIn delay={0.13}>
         <div className="flex flex-col gap-3">
-          <SectionHeader title="Parcelamentos" meta={`${debts.length} em aberto`} />
-
-          {debts.length === 0 && (
+          <SectionHeader title="Compromissos do mês" meta={`${fixedAccounts.plannedThisMonth.length}`} />
+          {fixedAccounts.plannedThisMonth.length === 0 ? (
             <EmptyState
               icon={CreditCard}
-              title="Nenhuma dívida registrada."
-              description='Conte para a Nova, ex.: "Tenho uma dívida de R$ 3.000 em 10x".'
+              title="Nenhum compromisso previsto neste mês."
+              description="Contas fixas materializadas aparecerão aqui."
             />
-          )}
-
-          <div className="flex flex-col gap-2">
-            {debts.map((debt) => {
-              const quitada = debt.remainingAmount <= 0;
-              const progress = (debt.installmentsPaid / debt.installmentsTotal) * 100;
-              return (
-                <GlassCard key={debt.id} interactive={false} className="p-4">
-                  <div className="flex items-center gap-4">
-                    <ProgressRing value={progress} size={44} strokeWidth={4} accent={quitada ? 'green' : 'purple'}>
-                      <span className="font-mono text-[10px] text-text-secondary">{Math.round(progress)}%</span>
-                    </ProgressRing>
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <p className="truncate text-sm text-text-primary">{debt.description}</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {fixedAccounts.plannedThisMonth.map((occurrence) => (
+                <GlassCard key={occurrence.id} interactive={false} className="p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex min-w-0 flex-col">
+                      <p className="truncate text-sm text-text-primary">{occurrence.name}</p>
                       <p className="text-xs text-text-tertiary">
-                        {debt.category} · {debt.installmentsPaid}/{debt.installmentsTotal} parcelas
+                        {formatEntryDate(occurrence.dueDate)} · {occurrence.displayStatus}
                       </p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <span className="font-mono text-sm text-accent-red">{formatCurrency(debt.remainingAmount)}</span>
-                      <Button variant="secondary" size="sm" disabled={quitada} onClick={() => payDebtInstallment(debt.id)}>
-                        {quitada ? 'Quitada' : 'Pagar parcela'}
-                      </Button>
-                    </div>
+                    <span className="shrink-0 font-mono text-sm text-text-primary">
+                      {formatCurrency(occurrence.amount)}
+                    </span>
                   </div>
-                </GlassCard>
-              );
-            })}
-          </div>
-        </div>
-      </FadeIn>
-
-      {assinaturas.length > 0 && (
-        <FadeIn delay={0.16}>
-          <div className="flex flex-col gap-3">
-            <SectionHeader title="Assinaturas" meta={`${assinaturas.length}`} />
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {assinaturas.map((entry) => (
-                <GlassCard key={entry.id} interactive={false} className="flex items-center gap-3 p-4">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/[0.06]">
-                    <Repeat className="h-4 w-4 text-text-secondary" />
-                  </span>
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <p className="truncate text-sm text-text-primary">{entry.description}</p>
-                    <p className="text-xs text-text-tertiary">{formatEntryDate(entry.date)}</p>
-                  </div>
-                  <span className="shrink-0 font-mono text-sm text-accent-red">{formatCurrency(entry.amount)}</span>
                 </GlassCard>
               ))}
             </div>
-          </div>
-        </FadeIn>
-      )}
+          )}
+        </div>
+      </FadeIn>
 
       <FadeIn delay={0.18}>
         <div className="flex flex-col gap-3">
-          <SectionHeader title="Lançamentos" meta={`${sortedEntries.length}`} />
-
-          {sortedEntries.length === 0 && (
-            <EmptyState title="Nenhum lançamento ainda." description="Conte para a Nova o que você gastou ou recebeu." />
-          )}
-
-          <div className="flex flex-col gap-2">
-            {sortedEntries.map((entry) => (
-              <GlassCard key={entry.id} interactive={false} className="p-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex min-w-0 flex-col">
-                    <p className="truncate text-sm text-text-primary">{entry.description}</p>
-                    <p className="text-xs text-text-tertiary">
-                      {categoryEmoji(entry.category)} {entry.category} · {formatEntryDate(entry.date)}
-                    </p>
-                  </div>
-                  <span
-                    className={
-                      financeEntrySign(entry) > 0
+          <SectionHeader title="Lançamentos recentes" meta={`${dashboard.recentTransactions.length}`} />
+          {dashboard.recentTransactions.length === 0 ? (
+            <EmptyState title="Nenhum lançamento recente." description="Seus próximos lançamentos aparecerão aqui." />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {dashboard.recentTransactions.map((entry) => {
+                const positive = entryIsPositive(entry);
+                return (
+                  <GlassCard key={entry.id} interactive={false} className="p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex min-w-0 flex-col">
+                        <p className="truncate text-sm text-text-primary">{entry.description}</p>
+                        <p className="text-xs text-text-tertiary">
+                          {categoryEmoji(entry.category)} {entry.category} · {formatEntryDate(entry.date)}
+                        </p>
+                      </div>
+                      <span className={positive
                         ? 'shrink-0 font-mono text-sm text-accent-green'
-                        : 'shrink-0 font-mono text-sm text-accent-red'
-                    }
-                  >
-                    {financeEntrySign(entry) > 0 ? '+' : '-'}
-                    {formatCurrency(entry.amount)}
-                  </span>
-                </div>
-              </GlassCard>
-            ))}
-          </div>
+                        : 'shrink-0 font-mono text-sm text-accent-red'}
+                      >
+                        {positive ? '+' : '-'}
+                        {formatCurrency(entry.amount)}
+                      </span>
+                    </div>
+                  </GlassCard>
+                );
+              })}
+            </div>
+          )}
         </div>
       </FadeIn>
+    </div>
+  );
+}
+
+function FinanceDashboardLoading() {
+  return (
+    <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8" aria-label="Carregando dashboard financeiro">
+      <Skeleton className="h-10 w-56" />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[0, 1, 2, 3].map((item) => <Skeleton key={item} className="h-28" />)}
+      </div>
+      <Skeleton className="h-16" />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Skeleton className="h-48" />
+        <Skeleton className="h-48" />
+      </div>
+      <Skeleton className="h-36" />
     </div>
   );
 }
