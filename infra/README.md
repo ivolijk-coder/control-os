@@ -149,6 +149,45 @@ download ou análise de IA sem resultado `CLEAN`.
 `NOT_CONFIGURED` permanece uma dívida técnica deliberada. Sem scanner
 configurado, o comportamento compatível continua sendo `scanStatus=PENDING`.
 
+### Worker de análise documental (document-worker)
+
+Depois que um documento passa pelo ClamAV (`scanStatus=CLEAN`) e é gravado no
+R2, um `DocumentAnalysisJob` é criado e enfileirado (Postgres + Redis). Nada
+processa essa fila sozinho: o serviço `document-worker`
+(`infra/docker-compose.yml`) existe exatamente para isso, mas fica atrás de
+`profiles: ["documents"]` de propósito — não sobe com `docker compose up -d`
+comum, para impedir chamadas acidentais (e cobradas) à OpenAI antes de você
+decidir ativar.
+
+Antes de ativar, preencha em `infra/.env`:
+
+- `DOCUMENT_JOB_RUNNER_SECRET` — segredo que autentica o worker no endpoint
+  `POST /api/document-analysis/run`. Gere com `openssl rand -hex 32`.
+- `OPENAI_DOCUMENT_ANALYSIS_ENABLED=true` — sem isto, a análise é bloqueada
+  mesmo com `OPENAI_API_KEY` configurada (ver
+  `services/documents/contract-analysis.ts`, `assertDocumentAnalysisEnabled`).
+- `OPENAI_API_KEY` — já deve estar preenchida se o chat da NOVA usa
+  `AI_PROVIDER=openai`; se não, preencha também aqui.
+
+Depois, ative o worker:
+
+```bash
+docker compose --profile documents up -d document-worker
+```
+
+Ele roda um loop de polling autenticado contra o próprio `web` (rede interna
+`backend`, sem porta pública), com `DOCUMENT_WORKER_POLL_INTERVAL_SECONDS`
+(padrão 2s) entre tentativas. O banco continua sendo a fonte idempotente de
+estado — jobs que já estavam `QUEUED` antes da ativação são processados
+normalmente nos primeiros ciclos, sem duplicar: o worker reivindica cada job
+com uma atualização condicional (`status: QUEUED → PROCESSING`, só uma
+chamada vence a corrida) e a prévia resultante usa uma chave de idempotência
+por documento+versão.
+
+Para conferir se está ativo: `docker compose ps document-worker` (deve estar
+`running`/`healthy`) e, depois de um upload novo `CLEAN`, o `analysisStatus`
+do documento deve sair de `QUEUED` em poucos segundos.
+
 ### 8. Criar a primeira instância de WhatsApp na Evolution API
 
 ```bash

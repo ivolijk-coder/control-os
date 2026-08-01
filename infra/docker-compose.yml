@@ -336,6 +336,11 @@ services:
       NEXT_PUBLIC_AI_PROVIDER: ${AI_PROVIDER:-mock}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.5}
+      # Opt-in explícito para a extração real de contratos via OpenAI (ver
+      # assertDocumentAnalysisEnabled em services/documents/contract-analysis.ts).
+      # Sem "true", o worker bloqueia a chamada mesmo com OPENAI_API_KEY
+      # configurada — nunca fica ligado por acidente.
+      OPENAI_DOCUMENT_ANALYSIS_ENABLED: ${OPENAI_DOCUMENT_ANALYSIS_ENABLED:-false}
       AI_DEBUG_LOGS: ${AI_DEBUG_LOGS:-0}
       NEXT_PUBLIC_AI_DEBUG_LOGS: ${AI_DEBUG_LOGS:-0}
       NEXT_PUBLIC_AI_FALLBACK_TO_MOCK: ${AI_FALLBACK_TO_MOCK:-0}
@@ -433,10 +438,34 @@ services:
       - /bin/sh
       - -ec
       - |
+        # Shutdown gracioso: no "docker compose stop/down", o Compose manda
+        # SIGTERM ao PID 1 (este script) e espera "stop_grace_period" (padrão
+        # 10s) antes de SIGKILL. Sem o trap abaixo, um SIGTERM em pleno "wget"
+        # mata a requisição em voo sem chance de sair limpo do loop.
+        trap 'exit 0' TERM INT
+        touch /tmp/document-worker-heartbeat
         while true; do
           wget -qO- --header="Authorization: Bearer $$DOCUMENT_JOB_RUNNER_SECRET" --post-data='' "$$DOCUMENT_WORKER_WEB_URL/api/document-analysis/run" >/dev/null || true
-          sleep "$$DOCUMENT_WORKER_POLL_INTERVAL_SECONDS"
+          date +%s > /tmp/document-worker-heartbeat
+          # "sleep" em segundo plano + "wait": comando em primeiro plano
+          # responde a sinais na hora, em vez de só depois do sleep terminar.
+          sleep "$$DOCUMENT_WORKER_POLL_INTERVAL_SECONDS" &
+          wait $!
         done
+    healthcheck:
+      # Este container não expõe porta/servidor HTTP próprio — o healthcheck
+      # confere um arquivo de heartbeat atualizado a cada iteração do loop
+      # acima. Se DOCUMENT_WORKER_POLL_INTERVAL_SECONDS for configurado bem
+      # acima do padrão (2s), aumente o limiar "-lt 60" abaixo de acordo.
+      test:
+        [
+          "CMD-SHELL",
+          "test $(( $(date +%s) - $(cat /tmp/document-worker-heartbeat 2>/dev/null || echo 0) )) -lt 60",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     logging:
       driver: json-file
       options:
