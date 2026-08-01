@@ -1,0 +1,16 @@
+-- Adiciona o status ARCHIVED a DocumentImportProposalStatus.
+--
+-- Motivo: documentos classificados como não-financeiros pela análise de IA
+-- (ex.: Contrato Social, Recibo — ver decideDocumentAction() em
+-- services/documents/contract-analysis.ts) agora também geram um registro
+-- de DocumentImportProposal, para a tela de Documentos exibir tipo/resumo
+-- de qualquer documento analisado, não só dos financeiros. Esse registro
+-- nunca é acionável nem confirmável (confirm/route.ts não muda) e não pode
+-- ser confundido com DISCARDED, que continua significando exclusivamente
+-- "o usuário rejeitou uma proposta financeira" (ver
+-- app/api/document-previews/[id]/discard/route.ts). ARCHIVED é um status
+-- terminal, gerado pelo sistema, sem ação financeira associada.
+--
+-- Aditiva: apenas um novo valor é adicionado ao enum existente. Nenhuma
+-- linha existente é alterada ou apagada.
+ALTER TYPE "DocumentImportProposalStatus" ADD VALUE 'ARCHIVED';

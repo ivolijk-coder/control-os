@@ -96,6 +96,7 @@ enum DocumentImportProposalStatus {
   CONFIRMED
   REJECTED
   DISCARDED
+  ARCHIVED
   FAILED
   EXPIRED
 }

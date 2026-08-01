@@ -54,59 +54,99 @@ describe('retry, backoff e limite de jobs', () => {
   });
 });
 
-describe('classificação de documento antes de gerar proposta financeira', () => {
-  it('Caso A: Contrato Social com capital declarado NÃO deve gerar proposta financeira', async () => {
-    const { isFinancialInstallmentProposal } = await import('../contract-analysis');
+// decideDocumentAction() é o único portão consultado pelo worker
+// (processNextDocumentAnalysisJob) para decidir o status gravado em
+// DocumentImportProposal: 'ARCHIVE' -> status ARCHIVED (guardado com
+// classificação/resumo, sem proposta acionável, nunca confirmável);
+// 'CREATE_FINANCIAL_PROPOSAL' -> status READY_FOR_REVIEW (ou PENDING se a
+// validação financeira falhar) e uma proposta de fato é criada;
+// 'ASK_USER' -> status READY_FOR_REVIEW, mas sem validação financeira —
+// o usuário precisa confirmar manualmente se é uma operação financeira.
+describe('decideDocumentAction: destino de um documento classificado', () => {
+  it('Contrato Social com capital declarado -> ARCHIVE (status ARCHIVED, sem proposta financeira)', async () => {
+    const { decideDocumentAction, isFinancialInstallmentProposal } = await import('../contract-analysis');
     const contratoSocial = {
       ...SYNTHETIC_CONTRACT_PREVIEW,
-      documentType: 'CONTRATO_SOCIAL' as const,
-      proposalType: 'INFORMATION_EXTRACTION' as const,
-      financialOperationDetected: false,
+      documentType: 'CONTRACT_SOCIAL' as const,
+      documentIntent: 'ARCHIVE_ONLY' as const,
+      confidence: 'high' as const,
+      financialOperation: { detected: false, type: null, creditor: null, amount: null, installments: null },
       creditorName: null,
       totalAmount: 30_000,
       installmentAmount: null,
       installments: null,
       summary: 'Constituição da sociedade CONTROL MARKETING DIGITAL LTDA, capital social de R$ 30.000,00.',
     };
+    expect(decideDocumentAction(contratoSocial)).toBe('ARCHIVE');
     expect(isFinancialInstallmentProposal(contratoSocial)).toBe(false);
   });
 
-  it('Caso B: contrato de financiamento com credor, valor e parcelas claros DEVE gerar proposta financeira', async () => {
-    const { isFinancialInstallmentProposal } = await import('../contract-analysis');
+  it('Financiamento com credor, valor e parcelas claros -> CREATE_FINANCIAL_PROPOSAL (status READY_FOR_REVIEW, cria proposta)', async () => {
+    const { decideDocumentAction, isFinancialInstallmentProposal } = await import('../contract-analysis');
     const financiamento = {
       ...SYNTHETIC_CONTRACT_PREVIEW,
-      documentType: 'FINANCIAMENTO' as const,
-      proposalType: 'FINANCIAL_INSTALLMENT' as const,
-      financialOperationDetected: true,
+      documentType: 'FINANCING_CONTRACT' as const,
+      documentIntent: 'FINANCIAL_ACTION_REQUIRED' as const,
+      confidence: 'high' as const,
+      financialOperation: { detected: true, type: 'FINANCIAMENTO', creditor: 'Banco X', amount: 120_000, installments: 48 },
       creditorName: 'Banco X',
       totalAmount: 120_000,
       installments: 48,
       interestRate: 1.5,
     };
+    expect(decideDocumentAction(financiamento)).toBe('CREATE_FINANCIAL_PROPOSAL');
     expect(isFinancialInstallmentProposal(financiamento)).toBe(true);
   });
 
-  it('Caso C: recibo simples sem operação de crédito NÃO deve gerar proposta financeira', async () => {
-    const { isFinancialInstallmentProposal } = await import('../contract-analysis');
+  it('Recibo simples sem operação de crédito -> ARCHIVE (status ARCHIVED)', async () => {
+    const { decideDocumentAction, isFinancialInstallmentProposal } = await import('../contract-analysis');
     const recibo = {
       ...SYNTHETIC_CONTRACT_PREVIEW,
-      documentType: 'RECIBO' as const,
-      proposalType: 'NONE' as const,
-      financialOperationDetected: false,
+      documentType: 'RECEIPT' as const,
+      documentIntent: 'EXTRACT_INFORMATION' as const,
+      confidence: 'high' as const,
+      financialOperation: { detected: false, type: null, creditor: null, amount: null, installments: null },
       creditorName: null,
       totalAmount: 500,
       installments: null,
       summary: 'Recibo de pagamento avulso, sem parcelamento.',
     };
+    expect(decideDocumentAction(recibo)).toBe('ARCHIVE');
     expect(isFinancialInstallmentProposal(recibo)).toBe(false);
   });
 
-  it('fecha por padrão quando a IA marca financialOperationDetected=true mas faltam dados mínimos de crédito', async () => {
+  it('Documento ambíguo (intenção financeira sem dados mínimos de crédito) -> ASK_USER (status READY_FOR_REVIEW, sem inventar)', async () => {
+    const { decideDocumentAction, isFinancialInstallmentProposal } = await import('../contract-analysis');
+    const ambiguo = {
+      ...SYNTHETIC_CONTRACT_PREVIEW,
+      documentType: 'LEGAL_DOCUMENT' as const,
+      documentIntent: 'FINANCIAL_ACTION_REQUIRED' as const,
+      confidence: 'medium' as const,
+      financialOperation: { detected: true, type: 'PRESTACAO_SERVICO', creditor: null, amount: null, installments: null },
+      creditorName: null,
+      totalAmount: null,
+      installments: null,
+      summary: 'Contrato de prestação de serviço recorrente, sem valor total nem número de parcelas definidos.',
+    };
+    expect(decideDocumentAction(ambiguo)).toBe('ASK_USER');
+    expect(isFinancialInstallmentProposal(ambiguo)).toBe(false);
+  });
+
+  it('confiança baixa nunca é resolvida por adivinhação -> ASK_USER mesmo com dados financeiros aparentemente completos', async () => {
+    const { decideDocumentAction } = await import('../contract-analysis');
+    const baixaConfianca = {
+      ...SYNTHETIC_CONTRACT_PREVIEW,
+      documentIntent: 'FINANCIAL_ACTION_REQUIRED' as const,
+      confidence: 'low' as const,
+    };
+    expect(decideDocumentAction(baixaConfianca)).toBe('ASK_USER');
+  });
+
+  it('fecha por padrão quando a IA marca financialOperation.detected=true mas faltam dados mínimos de crédito', async () => {
     const { isFinancialInstallmentProposal } = await import('../contract-analysis');
     const incompleto = {
       ...SYNTHETIC_CONTRACT_PREVIEW,
-      proposalType: 'FINANCIAL_INSTALLMENT' as const,
-      financialOperationDetected: true,
+      financialOperation: { ...SYNTHETIC_CONTRACT_PREVIEW.financialOperation, detected: true },
       creditorName: null,
     };
     expect(isFinancialInstallmentProposal(incompleto)).toBe(false);
