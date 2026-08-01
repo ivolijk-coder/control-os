@@ -72,11 +72,20 @@ async function openAIRequest(url: string, init: RequestInit, model: string) {
   const timeout = Math.max(5_000, Number(process.env.DOCUMENT_ANALYSIS_TIMEOUT_MS ?? 90_000));
   try {
     const response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeout) });
-    const diagnostics = {
+    const diagnostics: Record<string, string | number | boolean> = {
       provider: 'openai', model, httpStatus: response.status, durationMs: Date.now() - startedAt,
       requestId: response.headers.get('x-request-id') ?? 'unavailable',
     };
-    if (!response.ok) throw errorForResponse(response.status, diagnostics);
+    if (!response.ok) {
+      // A OpenAI devolve o motivo real em { error: { message, type, code } }.
+      // Sem capturar isto, todo 400 vira o rótulo genérico MODEL_UNSUPPORTED
+      // sem explicar por quê (ver errorForResponse).
+      const providerError = await response.json().catch(() => null) as { error?: { message?: string; type?: string; code?: string } } | null;
+      if (providerError?.error?.message) diagnostics.providerMessage = providerError.error.message;
+      if (providerError?.error?.type) diagnostics.providerErrorType = providerError.error.type;
+      if (providerError?.error?.code) diagnostics.providerErrorCode = providerError.error.code;
+      throw errorForResponse(response.status, diagnostics);
+    }
     return { response, diagnostics };
   } catch (error) {
     if (error instanceof DocumentError) throw error;
@@ -167,7 +176,12 @@ export async function processNextDocumentAnalysisJob() {
     await auditDocument({ userId: document.userId, documentId: document.id, proposalId: proposal.id, operation: 'DOCUMENT_ANALYZED', source: 'system', entityType: 'document', entityId: document.id, after: { valid: validation.valid } }); return { jobId: job.id, proposalId: proposal.id };
   } catch (error) {
     const code = error instanceof DocumentError ? error.code : 'UNKNOWN';
-    const message = error instanceof Error ? error.message : 'Erro desconhecido';
+    // Preferir a mensagem real da OpenAI (já sanitizada/truncada por
+    // sanitizeDocumentDiagnostics em DocumentError) quando disponível, em vez
+    // do rótulo genérico — assim lastErrorMessage/analysisErrorMessage
+    // mostram a causa real sem precisar abrir o JSON de auditoria.
+    const providerMessage = error instanceof DocumentError && typeof error.diagnostics?.providerMessage === 'string' ? error.diagnostics.providerMessage : undefined;
+    const message = providerMessage ?? (error instanceof Error ? error.message : 'Erro desconhecido');
     const attempt = job.attempts + 1;
     const retry = shouldRetryDocumentAnalysis(error, attempt);
     const runAfter = retry ? new Date(Date.now() + documentAnalysisBackoffMs(attempt)) : new Date();
