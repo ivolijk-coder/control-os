@@ -156,11 +156,38 @@ class LocalDevelopmentStorage implements PrivateDocumentStorage {
  */
 class S3CompatibleStorage implements PrivateDocumentStorage {
   provider = 'S3' as const;
-  private endpoint = (process.env.DOCUMENT_S3_ENDPOINT ?? '').replace(/\/$/, '');
-  private bucket = process.env.DOCUMENT_S3_BUCKET ?? '';
-  private accessKey = process.env.DOCUMENT_S3_ACCESS_KEY ?? '';
-  private secretKey = process.env.DOCUMENT_S3_SECRET_KEY ?? '';
-  private region = process.env.DOCUMENT_S3_REGION ?? 'us-east-1';
+  private readonly endpoint: string;
+  private readonly bucket: string;
+  private readonly accessKey: string;
+  private readonly secretKey: string;
+  private readonly region: string;
+
+  constructor(provider: 's3' | 'r2') {
+    const hasR2Configuration = Boolean(
+      process.env.R2_ACCOUNT_ID
+      || process.env.R2_BUCKET
+      || process.env.R2_ACCESS_KEY_ID
+      || process.env.R2_SECRET_ACCESS_KEY
+      || process.env.R2_ENDPOINT,
+    );
+    if (provider === 'r2' || hasR2Configuration) {
+      const accountId = process.env.R2_ACCOUNT_ID?.trim() ?? '';
+      this.endpoint = (process.env.R2_ENDPOINT?.trim() || (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : '')).replace(/\/$/, '');
+      this.bucket = process.env.R2_BUCKET?.trim() ?? '';
+      this.accessKey = process.env.R2_ACCESS_KEY_ID?.trim() ?? '';
+      this.secretKey = process.env.R2_SECRET_ACCESS_KEY?.trim() ?? '';
+      this.region = 'auto';
+      if (!accountId || !this.endpoint || !this.bucket || !this.accessKey || !this.secretKey) {
+        throw new DocumentError('UNKNOWN', 'O armazenamento privado Cloudflare R2 não está configurado.');
+      }
+      return;
+    }
+    this.endpoint = (process.env.DOCUMENT_S3_ENDPOINT ?? '').replace(/\/$/, '');
+    this.bucket = process.env.DOCUMENT_S3_BUCKET ?? '';
+    this.accessKey = process.env.DOCUMENT_S3_ACCESS_KEY ?? '';
+    this.secretKey = process.env.DOCUMENT_S3_SECRET_KEY ?? '';
+    this.region = process.env.DOCUMENT_S3_REGION ?? 'us-east-1';
+  }
 
   private signingKey(date: string) {
     const hmac = (key: Buffer | string, value: string) => createHmac('sha256', key).update(value).digest();
@@ -193,23 +220,41 @@ class S3CompatibleStorage implements PrivateDocumentStorage {
     return fetch(`${endpoint.origin}${canonicalUri}`, { method, headers, body: body ? webBody(body) : undefined });
   }
 
+  private failure(response: Response, action: string): DocumentError {
+    if (response.status === 401 || response.status === 403) {
+      return new DocumentError('PROVIDER_AUTH_ERROR', `O storage privado não autorizou ${action}.`);
+    }
+    if (response.status === 404) {
+      return new DocumentError('UNKNOWN', `O bucket ou objeto do storage privado não existe para ${action}.`);
+    }
+    return new DocumentError('PROVIDER_TEMPORARY_ERROR', `O storage privado não conseguiu ${action}.`, response.status >= 500);
+  }
+
   async put(key: string, content: Buffer, mimeType: string) {
     const response = await this.request('PUT', key, content, mimeType);
-    if (!response.ok) throw new DocumentError('PROVIDER_TEMPORARY_ERROR', 'O storage privado recusou o arquivo.', response.status >= 500);
+    if (!response.ok) throw this.failure(response, 'armazenar o arquivo');
   }
   async get(key: string) {
     const response = await this.request('GET', key);
-    if (!response.ok) throw new DocumentError('PROVIDER_TEMPORARY_ERROR', 'Não foi possível recuperar o documento.', response.status >= 500);
+    if (!response.ok) throw this.failure(response, 'recuperar o documento');
     return Buffer.from(await response.arrayBuffer());
   }
-  async remove(key: string) { await this.request('DELETE', key); }
-  async exists(key: string) { return (await this.request('HEAD', key)).ok; }
+  async remove(key: string) {
+    const response = await this.request('DELETE', key);
+    if (!response.ok && response.status !== 404) throw this.failure(response, 'remover o documento');
+  }
+  async exists(key: string) {
+    const response = await this.request('HEAD', key);
+    if (response.status === 404) return false;
+    if (!response.ok) throw this.failure(response, 'consultar o documento');
+    return true;
+  }
 }
 
 export function documentStorage(): PrivateDocumentStorage {
-  const provider = process.env.DOCUMENT_STORAGE_PROVIDER;
-  if (provider === 's3') return new S3CompatibleStorage();
-  if (process.env.NODE_ENV === 'production') throw new DocumentError('UNKNOWN', 'Storage privado de documentos não configurado. Configure DOCUMENT_STORAGE_PROVIDER=s3 antes de aceitar uploads.');
+  const provider = process.env.DOCUMENT_STORAGE_PROVIDER?.trim().toLowerCase();
+  if (provider === 's3' || provider === 'r2') return new S3CompatibleStorage(provider);
+  if (process.env.NODE_ENV === 'production') throw new DocumentError('UNKNOWN', 'Storage privado de documentos não configurado. Configure DOCUMENT_STORAGE_PROVIDER=r2 ou s3 antes de aceitar uploads.');
   return new LocalDevelopmentStorage();
 }
 
