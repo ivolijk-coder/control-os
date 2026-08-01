@@ -54,6 +54,65 @@ describe('retry, backoff e limite de jobs', () => {
   });
 });
 
+describe('classificação de documento antes de gerar proposta financeira', () => {
+  it('Caso A: Contrato Social com capital declarado NÃO deve gerar proposta financeira', async () => {
+    const { isFinancialInstallmentProposal } = await import('../contract-analysis');
+    const contratoSocial = {
+      ...SYNTHETIC_CONTRACT_PREVIEW,
+      documentType: 'CONTRATO_SOCIAL' as const,
+      proposalType: 'INFORMATION_EXTRACTION' as const,
+      financialOperationDetected: false,
+      creditorName: null,
+      totalAmount: 30_000,
+      installmentAmount: null,
+      installments: null,
+      summary: 'Constituição da sociedade CONTROL MARKETING DIGITAL LTDA, capital social de R$ 30.000,00.',
+    };
+    expect(isFinancialInstallmentProposal(contratoSocial)).toBe(false);
+  });
+
+  it('Caso B: contrato de financiamento com credor, valor e parcelas claros DEVE gerar proposta financeira', async () => {
+    const { isFinancialInstallmentProposal } = await import('../contract-analysis');
+    const financiamento = {
+      ...SYNTHETIC_CONTRACT_PREVIEW,
+      documentType: 'FINANCIAMENTO' as const,
+      proposalType: 'FINANCIAL_INSTALLMENT' as const,
+      financialOperationDetected: true,
+      creditorName: 'Banco X',
+      totalAmount: 120_000,
+      installments: 48,
+      interestRate: 1.5,
+    };
+    expect(isFinancialInstallmentProposal(financiamento)).toBe(true);
+  });
+
+  it('Caso C: recibo simples sem operação de crédito NÃO deve gerar proposta financeira', async () => {
+    const { isFinancialInstallmentProposal } = await import('../contract-analysis');
+    const recibo = {
+      ...SYNTHETIC_CONTRACT_PREVIEW,
+      documentType: 'RECIBO' as const,
+      proposalType: 'NONE' as const,
+      financialOperationDetected: false,
+      creditorName: null,
+      totalAmount: 500,
+      installments: null,
+      summary: 'Recibo de pagamento avulso, sem parcelamento.',
+    };
+    expect(isFinancialInstallmentProposal(recibo)).toBe(false);
+  });
+
+  it('fecha por padrão quando a IA marca financialOperationDetected=true mas faltam dados mínimos de crédito', async () => {
+    const { isFinancialInstallmentProposal } = await import('../contract-analysis');
+    const incompleto = {
+      ...SYNTHETIC_CONTRACT_PREVIEW,
+      proposalType: 'FINANCIAL_INSTALLMENT' as const,
+      financialOperationDetected: true,
+      creditorName: null,
+    };
+    expect(isFinancialInstallmentProposal(incompleto)).toBe(false);
+  });
+});
+
 describe('OpenAI opt-in', () => {
   beforeEach(() => {
     vi.stubEnv('OPENAI_DOCUMENT_ANALYSIS_ENABLED', 'false');

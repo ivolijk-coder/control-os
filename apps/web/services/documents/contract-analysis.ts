@@ -6,7 +6,18 @@ import { prisma } from '@/lib/prisma';
 import { auditDocument, documentStorage, DocumentError } from './document-core';
 import { dequeueDocumentAnalysisJobSafely, enqueueDocumentAnalysisJob } from './document-analysis-queue';
 
+export type DocumentClassificationType =
+  | 'CONTRATO_SOCIAL' | 'CONTRATO_FINANCEIRO' | 'FINANCIAMENTO' | 'NOTA_FISCAL'
+  | 'RECIBO' | 'COMPROVANTE_PAGAMENTO' | 'DOCUMENTO_PESSOAL' | 'OUTROS';
+export type DocumentProposalType = 'FINANCIAL_INSTALLMENT' | 'INFORMATION_EXTRACTION' | 'NONE';
+
 export type ContractPreview = {
+  // Classificação: decide se este documento gera uma DocumentImportProposal
+  // financeira (ver isFinancialInstallmentProposal). Capital social,
+  // patrimônio e valores declarados NUNCA devem virar financialOperationDetected=true.
+  documentType: DocumentClassificationType;
+  proposalType: DocumentProposalType;
+  financialOperationDetected: boolean;
   creditorName: string | null; contractNumber: string | null; totalAmount: number | null; installmentAmount: number | null;
   installments: number | null; paidInstallments: number | null; remainingInstallments: number | null; firstDueDate: string | null;
   dueDay: number | null; interestRate: number | null; cet: number | null; iof: number | null; fine: number | null;
@@ -53,7 +64,9 @@ function assertDocumentAnalysisEnabled(): void {
   }
 }
 
-const EMPTY_PREVIEW: ContractPreview = { creditorName: null, contractNumber: null, totalAmount: null, installmentAmount: null, installments: null, paidInstallments: null, remainingInstallments: null, firstDueDate: null, dueDay: null, interestRate: null, cet: null, iof: null, fine: null, guarantees: [], categorySuggestion: null, summary: '', confidence: 'low', missingFields: [] };
+const DOCUMENT_CLASSIFICATION_TYPES = new Set<DocumentClassificationType>(['CONTRATO_SOCIAL', 'CONTRATO_FINANCEIRO', 'FINANCIAMENTO', 'NOTA_FISCAL', 'RECIBO', 'COMPROVANTE_PAGAMENTO', 'DOCUMENTO_PESSOAL', 'OUTROS']);
+const DOCUMENT_PROPOSAL_TYPES = new Set<DocumentProposalType>(['FINANCIAL_INSTALLMENT', 'INFORMATION_EXTRACTION', 'NONE']);
+const EMPTY_PREVIEW: ContractPreview = { documentType: 'OUTROS', proposalType: 'NONE', financialOperationDetected: false, creditorName: null, contractNumber: null, totalAmount: null, installmentAmount: null, installments: null, paidInstallments: null, remainingInstallments: null, firstDueDate: null, dueDay: null, interestRate: null, cet: null, iof: null, fine: null, guarantees: [], categorySuggestion: null, summary: '', confidence: 'low', missingFields: [] };
 const webBody = (buffer: Buffer): ArrayBuffer => Uint8Array.from(buffer).buffer;
 const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : null;
 const integer = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
@@ -116,7 +129,7 @@ export class OpenAIContractDataExtractor implements ContractDataExtractor {
   async extract(text: string): Promise<ContractPreview> {
     assertDocumentAnalysisEnabled();
     const key = process.env.OPENAI_API_KEY; if (!key) throw new DocumentError('PROVIDER_AUTH_ERROR', 'A análise por IA não está configurada.');
-    const instruction = 'Extraia somente fatos explícitos de contrato financeiro brasileiro. Retorne JSON com creditorName, contractNumber, totalAmount, installmentAmount, installments, paidInstallments, remainingInstallments, firstDueDate, dueDay, interestRate, cet, iof, fine, guarantees, categorySuggestion, summary, confidence, missingFields. Valores são números sem R$. Datas completas YYYY-MM-DD. Campos ausentes null e listados.';
+    const instruction = 'Antes de extrair dados financeiros, classifique o documento. Nunca trate capital social, patrimônio, valor declarado ou capital empresarial como dívida ou parcelamento. Só considere operação financeira quando houver obrigação de pagamento futura (parcelas, financiamento, empréstimo) com credor e valor claros. Retorne JSON com: documentType (um destes: CONTRATO_SOCIAL, CONTRATO_FINANCEIRO, FINANCIAMENTO, NOTA_FISCAL, RECIBO, COMPROVANTE_PAGAMENTO, DOCUMENTO_PESSOAL, OUTROS), proposalType (FINANCIAL_INSTALLMENT, INFORMATION_EXTRACTION ou NONE), financialOperationDetected (true somente se houver credor, valor financiado, parcelas e obrigação de pagamento futura claros; caso contrário false), creditorName, contractNumber, totalAmount, installmentAmount, installments, paidInstallments, remainingInstallments, firstDueDate, dueDay, interestRate, cet, iof, fine, guarantees, categorySuggestion, summary, confidence, missingFields. Valores são números sem R$. Datas completas YYYY-MM-DD. Campos financeiros ausentes ou não aplicáveis: null e listados em missingFields.';
     const model = process.env.OPENAI_MODEL || 'gpt-5.5';
     // A OpenAI exige que a palavra "json" apareça nas mensagens de input
     // quando text.format = json_object — não basta estar só em "instructions"
@@ -125,11 +138,28 @@ export class OpenAIContractDataExtractor implements ContractDataExtractor {
     const request = await openAIRequest('https://api.openai.com/v1/responses', { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' }, body: JSON.stringify({ model, instructions: instruction, input, text: { format: { type: 'json_object' } }, max_output_tokens: 1800 }) }, model);
     const payload = await request.response.json() as { output?: Array<{ content?: Array<{ text?: string }> }> };
     const output = payload.output?.flatMap((item) => item.content ?? []).map((item) => item.text).find(Boolean); if (!output) throw new DocumentError('EXTRACTION_INVALID', 'A IA não retornou uma prévia estruturada.');
-    try { const raw = JSON.parse(output) as Record<string, unknown>; const confidence = raw.confidence === 'high' || raw.confidence === 'medium' ? raw.confidence : 'low'; return { ...EMPTY_PREVIEW, creditorName: string(raw.creditorName), contractNumber: string(raw.contractNumber), totalAmount: number(raw.totalAmount), installmentAmount: number(raw.installmentAmount), installments: integer(raw.installments), paidInstallments: integer(raw.paidInstallments), remainingInstallments: integer(raw.remainingInstallments), firstDueDate: string(raw.firstDueDate), dueDay: integer(raw.dueDay), interestRate: number(raw.interestRate), cet: number(raw.cet), iof: number(raw.iof), fine: number(raw.fine), guarantees: Array.isArray(raw.guarantees) ? raw.guarantees.filter((item): item is string => typeof item === 'string').slice(0, 10) : [], categorySuggestion: string(raw.categorySuggestion), summary: string(raw.summary) ?? 'Prévia gerada para revisão.', confidence, missingFields: Array.isArray(raw.missingFields) ? raw.missingFields.filter((item): item is string => typeof item === 'string').slice(0, 30) : [] }; } catch { throw new DocumentError('EXTRACTION_INVALID', 'A IA retornou uma prévia em formato inválido.', false, request.diagnostics); }
+    try { const raw = JSON.parse(output) as Record<string, unknown>; const confidence = raw.confidence === 'high' || raw.confidence === 'medium' ? raw.confidence : 'low'; const documentType = typeof raw.documentType === 'string' && DOCUMENT_CLASSIFICATION_TYPES.has(raw.documentType as DocumentClassificationType) ? raw.documentType as DocumentClassificationType : 'OUTROS'; const proposalType = typeof raw.proposalType === 'string' && DOCUMENT_PROPOSAL_TYPES.has(raw.proposalType as DocumentProposalType) ? raw.proposalType as DocumentProposalType : 'NONE'; const financialOperationDetected = raw.financialOperationDetected === true; return { ...EMPTY_PREVIEW, documentType, proposalType, financialOperationDetected, creditorName: string(raw.creditorName), contractNumber: string(raw.contractNumber), totalAmount: number(raw.totalAmount), installmentAmount: number(raw.installmentAmount), installments: integer(raw.installments), paidInstallments: integer(raw.paidInstallments), remainingInstallments: integer(raw.remainingInstallments), firstDueDate: string(raw.firstDueDate), dueDay: integer(raw.dueDay), interestRate: number(raw.interestRate), cet: number(raw.cet), iof: number(raw.iof), fine: number(raw.fine), guarantees: Array.isArray(raw.guarantees) ? raw.guarantees.filter((item): item is string => typeof item === 'string').slice(0, 10) : [], categorySuggestion: string(raw.categorySuggestion), summary: string(raw.summary) ?? 'Prévia gerada para revisão.', confidence, missingFields: Array.isArray(raw.missingFields) ? raw.missingFields.filter((item): item is string => typeof item === 'string').slice(0, 30) : [] }; } catch { throw new DocumentError('EXTRACTION_INVALID', 'A IA retornou uma prévia em formato inválido.', false, request.diagnostics); }
   }
 }
 
 export const contractPreviewValidator: ContractPreviewValidator = { validate(preview) { const warnings = [...preview.missingFields]; if (!preview.creditorName) warnings.push('Credor não identificado.'); if (!preview.totalAmount && !preview.installmentAmount) warnings.push('Valor não identificado.'); if (!preview.installments || preview.installments < 2) warnings.push('Quantidade de parcelas não identificada.'); return { valid: warnings.length === 0, warnings: [...new Set(warnings)] }; } };
+
+/**
+ * Único portão que decide se um documento vira DocumentImportProposal
+ * financeira. Fecha por padrão: exige que a IA tenha marcado
+ * financialOperationDetected + proposalType=FINANCIAL_INSTALLMENT E que os
+ * dados mínimos de uma operação de crédito estejam presentes (credor, valor
+ * financiado, parcelas). Capital social e valores meramente declarativos
+ * (financialOperationDetected=false) nunca passam por aqui — o documento é
+ * só classificado e guardado, sem proposta financeira.
+ */
+export function isFinancialInstallmentProposal(preview: ContractPreview): boolean {
+  return preview.financialOperationDetected === true
+    && preview.proposalType === 'FINANCIAL_INSTALLMENT'
+    && Boolean(preview.creditorName)
+    && preview.totalAmount != null
+    && preview.installments != null && preview.installments > 0;
+}
 
 /** Um worker chama isto. A API pública só enfileira; ela não processa. */
 async function recoverInterruptedDocumentAnalysisJobs() {
@@ -164,11 +194,21 @@ export async function processNextDocumentAnalysisJob() {
     if (!document.storageKey || document.scanStatus !== 'CLEAN') throw new DocumentError('SECURITY_SCAN_PENDING', 'A análise exige arquivo limpo no storage privado.');
     await prisma.storedDocument.update({ where: { id: document.id }, data: { analysisStatus: 'PROCESSING', analysisStartedAt: new Date(), analysisAttempts: { increment: 1 } } });
     await auditDocument({ userId: document.userId, documentId: document.id, operation: 'DOCUMENT_ANALYSIS_STARTED', source: 'system', entityType: 'document', entityId: document.id });
-    const content = await documentStorage().get(document.storageKey); const text = await new OpenAITemporaryTextExtractor().extract({ content, fileName: document.originalFileName, mimeType: document.detectedMimeType || document.mimeType }); const preview = await new OpenAIContractDataExtractor().extract(text); const validation = contractPreviewValidator.validate(preview);
+    const content = await documentStorage().get(document.storageKey); const text = await new OpenAITemporaryTextExtractor().extract({ content, fileName: document.originalFileName, mimeType: document.detectedMimeType || document.mimeType }); const preview = await new OpenAIContractDataExtractor().extract(text);
+    // Classificação decide o fluxo: só um documento com operação financeira
+    // clara (crédito/parcelamento) roda o validador de prévia financeira e
+    // gera DocumentImportProposal. Os demais (ex.: Contrato Social) só são
+    // classificados e o documento é marcado como concluído, sem proposta.
+    const isFinancial = isFinancialInstallmentProposal(preview);
+    const validation = isFinancial ? contractPreviewValidator.validate(preview) : { valid: true, warnings: [] as string[] };
     const previewKey = `document-preview:${document.id}:v${document.analysisVersion}`;
     const committed = await prisma.$transaction(async (tx) => {
       const ownership = await tx.documentAnalysisJob.updateMany({ where: { id: job.id, status: 'PROCESSING', lockedBy: runnerId }, data: { status: 'COMPLETED', lockedAt: null, lockedBy: null } });
       if (!ownership.count) return null;
+      if (!isFinancial) {
+        await tx.storedDocument.update({ where: { id: document.id }, data: { analysisStatus: 'COMPLETED', analysisCompletedAt: new Date(), analysisErrorCode: null, analysisErrorMessage: null } });
+        return { proposal: null, existingProposal: null };
+      }
       const existingProposal = await tx.documentImportProposal.findFirst({ where: { idempotencyKey: previewKey }, select: { id: true } });
       const proposal = await tx.documentImportProposal.upsert({ where: { idempotencyKey: previewKey }, create: { userId: document.userId, documentId: document.id, analysisVersion: document.analysisVersion, idempotencyKey: previewKey, status: validation.valid ? 'READY_FOR_REVIEW' : 'PENDING', extractedData: preview as unknown as Prisma.InputJsonValue, validationWarnings: validation.warnings }, update: { extractedData: preview as unknown as Prisma.InputJsonValue, validationWarnings: validation.warnings, status: validation.valid ? 'READY_FOR_REVIEW' : 'PENDING' } });
       await tx.storedDocument.update({ where: { id: document.id }, data: { analysisStatus: validation.valid ? 'COMPLETED' : 'NEEDS_REVIEW', analysisCompletedAt: new Date(), analysisErrorCode: null, analysisErrorMessage: null } });
@@ -176,8 +216,11 @@ export async function processNextDocumentAnalysisJob() {
     });
     if (!committed) return { jobId: job.id, skipped: true };
     const { proposal, existingProposal } = committed;
-    await auditDocument({ userId: document.userId, documentId: document.id, proposalId: proposal.id, operation: existingProposal ? 'PREVIEW_UPDATED' : 'PREVIEW_CREATED', source: 'system', entityType: 'document_preview', entityId: proposal.id, after: { valid: validation.valid, warnings: validation.warnings } });
-    await auditDocument({ userId: document.userId, documentId: document.id, proposalId: proposal.id, operation: 'DOCUMENT_ANALYZED', source: 'system', entityType: 'document', entityId: document.id, after: { valid: validation.valid } }); return { jobId: job.id, proposalId: proposal.id };
+    if (proposal) {
+      await auditDocument({ userId: document.userId, documentId: document.id, proposalId: proposal.id, operation: existingProposal ? 'PREVIEW_UPDATED' : 'PREVIEW_CREATED', source: 'system', entityType: 'document_preview', entityId: proposal.id, after: { valid: validation.valid, warnings: validation.warnings } });
+    }
+    await auditDocument({ userId: document.userId, documentId: document.id, ...(proposal ? { proposalId: proposal.id } : {}), operation: 'DOCUMENT_ANALYZED', source: 'system', entityType: 'document', entityId: document.id, after: { valid: validation.valid, documentType: preview.documentType, proposalType: preview.proposalType, financialOperationDetected: preview.financialOperationDetected, summary: preview.summary } });
+    return proposal ? { jobId: job.id, proposalId: proposal.id } : { jobId: job.id, documentType: preview.documentType, financial: false };
   } catch (error) {
     const code = error instanceof DocumentError ? error.code : 'UNKNOWN';
     // Preferir a mensagem real da OpenAI (já sanitizada/truncada por

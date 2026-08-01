@@ -29,6 +29,9 @@ export function syntheticPng(name = 'imagem-sintetica.png'): File {
 }
 
 export const SYNTHETIC_CONTRACT_PREVIEW = {
+  documentType: 'CONTRATO_FINANCEIRO' as const,
+  proposalType: 'FINANCIAL_INSTALLMENT' as const,
+  financialOperationDetected: true,
   creditorName: 'Credor Sintético',
   contractNumber: 'TEST-001',
   totalAmount: 1200,
