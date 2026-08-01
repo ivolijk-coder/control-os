@@ -21,6 +21,14 @@ export interface NovaConversationProps {
   onConfirmPending?: () => void;
   onCancelPending?: () => void;
   /**
+   * Handlers de botões de `ConversationTask` (Fase D — "NOVA como centro
+   * da experiência"). Diferente de `onConfirmPending`/`onCancelPending`,
+   * plugados em TODA mensagem com `taskId` — várias tasks podem estar
+   * pendentes na conversa ao mesmo tempo, cada bolha resolve a sua.
+   */
+  onTaskAction?: (taskId: string, actionId: string) => void;
+  onDismissTask?: (taskId: string) => void;
+  /**
    * Identidade ATIVA agora (CONTROL OS — Etapa 16E) — colore o avatar de
    * toda mensagem da NOVA e do indicador "Pensando/Executando". Como a
    * conversa é uma única linha do tempo compartilhada entre NOVA e
@@ -49,6 +57,8 @@ export function NovaConversation({
   thinkingStatus,
   onConfirmPending,
   onCancelPending,
+  onTaskAction,
+  onDismissTask,
   persona = 'nova',
 }: NovaConversationProps) {
   if (messages.length === 0 && !isThinking) return null;
@@ -64,6 +74,8 @@ export function NovaConversation({
             message={message}
             onConfirm={message.id === lastMessageId ? onConfirmPending : undefined}
             onCancel={message.id === lastMessageId ? onCancelPending : undefined}
+            onTaskAction={onTaskAction}
+            onDismissTask={onDismissTask}
             persona={persona}
           />
         ))}

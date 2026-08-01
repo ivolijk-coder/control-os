@@ -17,6 +17,17 @@ import { PersonaIdentityMark } from '@/components/nova/persona-identity-mark';
  */
 export type ConversationMessageStatus = 'success' | 'error' | 'pending_confirmation';
 
+/**
+ * Botão genérico de uma `ConversationTask` (Fase D — "NOVA como centro da
+ * experiência"). `id`/`label` vêm de quem criou a task (ex.:
+ * `buildDocumentConversationTaskContent`, em `services/documents`) — este
+ * componente nunca sabe o que cada `id` significa, só repassa de volta em
+ * `onTaskAction`. Nenhum campo aqui é específico de Documentos ou de
+ * qualquer outro produtor: o mesmo shape serve pra email, PIX, fatura,
+ * viagem, meta ou qualquer `ConversationTask` futura.
+ */
+export type ConversationMessageAction = { id: string; label: string };
+
 export interface ConversationMessage {
   id: string;
   role: 'user' | 'nova';
@@ -26,6 +37,15 @@ export interface ConversationMessage {
   status?: ConversationMessageStatus;
   /** Arquivo privado que a NOVA encontrou para o usuário baixar. */
   attachment?: { label: string; href: string };
+  /**
+   * Presente só em mensagens que apresentam uma `ConversationTask` ainda
+   * pendente (Fase D). `taskId` é o id real da task (nunca o `id` desta
+   * mensagem/bolha, que é só uma chave de render) — `onTaskAction`/
+   * `onDismissTask` o devolvem pra quem chama saber qual task resolver.
+   */
+  taskId?: string;
+  /** Ações específicas da task, além do botão genérico "Depois" que a própria bolha já oferece. */
+  taskActions?: ConversationMessageAction[];
 }
 
 export interface NovaMessageBubbleProps {
@@ -39,6 +59,16 @@ export interface NovaMessageBubbleProps {
    */
   onConfirm?: () => void;
   onCancel?: () => void;
+  /**
+   * Botões de `message.taskActions` (Fase D). Diferente de
+   * `onConfirm`/`onCancel` (binário, só a última mensagem, um único
+   * `PendingTurn` por sessão em `ConversationService`), várias
+   * `ConversationTask`s podem estar pendentes ao mesmo tempo — cada bolha
+   * que tem `taskId` recebe o handler, não só a última.
+   */
+  onTaskAction?: (taskId: string, actionId: string) => void;
+  /** Botão "Depois" — sempre disponível em qualquer bolha com `taskId`, nunca parte de `taskActions`. */
+  onDismissTask?: (taskId: string) => void;
   /**
    * Identidade que respondeu esta mensagem (CONTROL OS — Etapa 16E). Colore
    * só o avatar da NOVA (roxo/dourado) — nunca a bolha em si, que continua
@@ -58,11 +88,12 @@ export interface NovaMessageBubbleProps {
  * Quando `status === 'error'`, reaproveita o padrão visual de `FormError`
  * (borda/fundo vermelhos + microinteração de shake).
  */
-export function NovaMessageBubble({ message, onConfirm, onCancel, persona = 'nova' }: NovaMessageBubbleProps) {
+export function NovaMessageBubble({ message, onConfirm, onCancel, onTaskAction, onDismissTask, persona = 'nova' }: NovaMessageBubbleProps) {
   const isUser = message.role === 'user';
   const isError = message.status === 'error';
   const isPendingConfirmation = message.status === 'pending_confirmation';
   const isLegendary = persona === 'legendary';
+  const hasTaskActions = Boolean(message.taskId) && (onTaskAction || onDismissTask);
 
   return (
     <motion.div
@@ -123,6 +154,23 @@ export function NovaMessageBubble({ message, onConfirm, onCancel, persona = 'nov
             </Button>
             <Button size="sm" variant="secondary" onClick={onCancel}>
               Cancelar
+            </Button>
+          </div>
+        )}
+        {hasTaskActions && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {message.taskActions?.map((action, index) => (
+              <Button
+                key={action.id}
+                size="sm"
+                variant={index === 0 ? 'primary' : 'secondary'}
+                onClick={() => onTaskAction?.(message.taskId as string, action.id)}
+              >
+                {action.label}
+              </Button>
+            ))}
+            <Button size="sm" variant="secondary" onClick={() => onDismissTask?.(message.taskId as string)}>
+              Depois
             </Button>
           </div>
         )}

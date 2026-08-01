@@ -282,10 +282,13 @@ export function buildDocumentConversationTaskContent(
       title: `Financiamento identificado: ${financialOperation.creditor}`,
       message: `Identifiquei ${tipo} ${financialOperation.creditor} de ${formatBRL(preview.totalAmount as number)} em ${preview.installments}x. Quer que eu cadastre?`,
       priority: 'HIGH',
+      // "Depois"/dispensar é um botão genérico da própria bolha da NOVA
+      // (Fase D — `nova-message-bubble.tsx`), nunca uma ação aqui: qualquer
+      // ConversationTask futura ganha o mesmo botão de graça, sem precisar
+      // declarar seu próprio "depois".
       actions: [
         { id: 'cadastrar_financiamento', label: 'Cadastrar financiamento' },
         { id: 'guardar_documento', label: 'Só guardar' },
-        { id: 'depois', label: 'Depois' },
       ],
     };
   }
@@ -299,7 +302,6 @@ export function buildDocumentConversationTaskContent(
       actions: [
         { id: 'revisar_documento', label: 'Revisar documento' },
         { id: 'guardar_documento', label: 'Só guardar' },
-        { id: 'depois', label: 'Depois' },
       ],
     };
   }

@@ -349,6 +349,104 @@ export function NovaWorkspace({
   }, [novaContext, addNovaMessage, effectivePersona]);
 
   /**
+   * `ConversationTask`s pendentes (Fase D — "NOVA como centro da
+   * experiência"): documento analisado (e, no futuro, qualquer outro
+   * produtor) que ainda espera uma decisão do usuário. Diferente de
+   * `buildProactiveOpening` acima (só fala quando a conversa está vazia),
+   * isto roda uma vez por montagem INDEPENDENTE de já haver conversa —
+   * "algo aconteceu e a NOVA precisa falar sobre isso" não é uma abertura
+   * de papo, é um recado concreto que não deve ficar escondido só porque o
+   * usuário já estava conversando de outra coisa. Sem streaming ainda
+   * (Fase F): a task só aparece na próxima vez que a NOVA é aberta, igual
+   * ao mecanismo anterior de `DocumentInsight` que este substitui.
+   */
+  const hasCheckedConversationTasksRef = React.useRef(false);
+  React.useEffect(() => {
+    if (hasCheckedConversationTasksRef.current) return;
+    hasCheckedConversationTasksRef.current = true;
+
+    void (async () => {
+      try {
+        const response = await fetch('/api/nova/conversation-tasks');
+        if (!response.ok) return;
+        const payload = await response.json() as {
+          success?: boolean;
+          tasks?: Array<{ id: string; message: string; actions: { id: string; label: string }[] }>;
+        };
+        for (const task of payload.tasks ?? []) {
+          addNovaMessage(effectivePersona, {
+            id: nextMessageId('nova'),
+            role: 'nova',
+            content: task.message,
+            status: 'success',
+            taskId: task.id,
+            taskActions: task.actions,
+          });
+        }
+      } catch {
+        // Silêncio é o estado seguro — nunca inventa uma pendência quando a busca falha.
+      }
+    })();
+  }, [effectivePersona, addNovaMessage]);
+
+  /**
+   * Botão de uma `ConversationTask` (Fase D). Nenhum conhecimento de
+   * Documentos ou de qualquer outro produtor aqui — só chama a rota
+   * genérica de resolução e narra a resposta que ela devolver. A Fase E
+   * troca o QUE a rota faz por dentro (handler registry real); esta função
+   * não muda.
+   */
+  const handleTaskAction = React.useCallback((taskId: string, actionId: string) => {
+    setIsThinking(true);
+    setThinkingStatus('executando');
+    void (async () => {
+      try {
+        const response = await fetch(`/api/nova/conversation-tasks/${taskId}/resolve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ actionId }),
+        });
+        const payload = await response.json().catch(() => null) as { success?: boolean; reply?: string; message?: string } | null;
+        addNovaMessage(effectivePersona, {
+          id: nextMessageId('nova'),
+          role: 'nova',
+          content: (response.ok ? payload?.reply : payload?.message) ?? 'Não consegui concluir agora — tenta de novo daqui a pouco.',
+          status: response.ok ? 'success' : 'error',
+        });
+      } catch {
+        addNovaMessage(effectivePersona, {
+          id: nextMessageId('nova'),
+          role: 'nova',
+          content: 'Não consegui falar com o servidor agora — tenta de novo daqui a pouco.',
+          status: 'error',
+        });
+      } finally {
+        setIsThinking(false);
+      }
+    })();
+  }, [addNovaMessage, effectivePersona]);
+
+  /** Botão "Depois" — sempre genérico, nunca sabe o que a task representa. */
+  const handleDismissTask = React.useCallback((taskId: string) => {
+    void (async () => {
+      try {
+        const response = await fetch(`/api/nova/conversation-tasks/${taskId}/dismiss`, { method: 'POST' });
+        const payload = await response.json().catch(() => null) as { reply?: string } | null;
+        if (response.ok) {
+          addNovaMessage(effectivePersona, {
+            id: nextMessageId('nova'),
+            role: 'nova',
+            content: payload?.reply ?? 'Tudo bem, deixo pra depois.',
+            status: 'success',
+          });
+        }
+      } catch {
+        // Silêncio: falha ao descartar não deve quebrar a conversa.
+      }
+    })();
+  }, [addNovaMessage, effectivePersona]);
+
+  /**
    * Sugestões da Home (CONTROL OS — Etapa 9): "nunca sugestões aleatórias,
    * sempre baseadas nos dados" — reaproveita o Recommendation Engine
    * (`generateRecommendations`, Etapa 7) em vez do `QUICK_ACTIONS` estático.
@@ -629,6 +727,8 @@ export function NovaWorkspace({
           thinkingStatus={thinkingStatus}
           onConfirmPending={handleConfirmPending}
           onCancelPending={handleCancelPending}
+          onTaskAction={handleTaskAction}
+          onDismissTask={handleDismissTask}
           persona={effectivePersona}
         />
       </div>

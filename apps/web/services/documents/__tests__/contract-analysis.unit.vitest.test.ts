@@ -165,14 +165,14 @@ describe('buildDocumentConversationTaskContent: conteúdo da ConversationTask po
     expect(content.priority).toBe('HIGH');
     expect(content.message).toContain('Credor Sintético');
     expect(content.message).toContain('12x');
-    expect(content.actions.map((action) => action.id)).toEqual(['cadastrar_financiamento', 'guardar_documento', 'depois']);
+    expect(content.actions.map((action) => action.id)).toEqual(['cadastrar_financiamento', 'guardar_documento']);
   });
 
   it('ASK_USER -> prioridade MEDIUM e ação de revisão, nunca de cadastro direto', async () => {
     const { buildDocumentConversationTaskContent } = await import('../contract-analysis');
     const content = buildDocumentConversationTaskContent({ ...SYNTHETIC_CONTRACT_PREVIEW, documentType: 'LEGAL_DOCUMENT' }, 'ASK_USER', false);
     expect(content.priority).toBe('MEDIUM');
-    expect(content.actions.map((action) => action.id)).toEqual(['revisar_documento', 'guardar_documento', 'depois']);
+    expect(content.actions.map((action) => action.id)).toEqual(['revisar_documento', 'guardar_documento']);
     expect(content.actions.some((action) => action.id === 'cadastrar_financiamento')).toBe(false);
   });
 
