@@ -96,10 +96,10 @@ export function buildHomeInsights(ctx: NovaReadOnlyContext): string[] {
  * sem ser perguntada").
  */
 const PROACTIVE_OPENING_PRIORITY: NovaRecommendationCategory[] = [
-  // Ponte Documentos -> NOVA: um achado novo e concreto sobre um documento
-  // específico (ex.: "identifiquei um financiamento") vem primeiro — mais
-  // acionável e mais recente do que uma leitura recorrente como fluxo de caixa.
-  'documento_analisado',
+  // 'documento_analisado' foi retirada nesta evolução: documento analisado
+  // agora é uma `ConversationTask` (ver `services/conversation-tasks`),
+  // apresentada pela NOVA por um caminho próprio (Fase D), fora do
+  // Recommendation Engine — os dois mecanismos nunca coexistem.
   'revisar_fluxo_caixa',
   'priorizar_tarefas',
   'acompanhar_meta',

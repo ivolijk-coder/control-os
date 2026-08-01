@@ -1,5 +1,4 @@
 import { toLocalDateString } from '../date';
-import { buildDocumentInsightMessage } from '../conversation/document-insight-message';
 import type { NovaReadOnlyContext } from '../interfaces';
 
 /**
@@ -28,10 +27,12 @@ export type NovaRecommendationCategory =
   | 'revisar_fluxo_caixa'
   | 'acompanhar_meta'
   | 'acompanhar_projeto'
-  | 'viagem_proxima'
-  // Ponte Documentos -> NOVA: um documento analisado ainda aguarda decisão
-  // do usuário (financeiro ou não) — ver `DocumentInsight`/`buildDocumentInsightMessage`.
-  | 'documento_analisado';
+  | 'viagem_proxima';
+// 'documento_analisado' (ponte Documentos -> NOVA via `DocumentInsight`)
+// foi retirada nesta evolução: documento analisado agora vira uma
+// `ConversationTask` (ver `services/conversation-tasks`), consumida
+// diretamente pela NOVA (Fase D) — não mais uma `NovaRecommendation`
+// calculada a cada `useNovaContext`. Os dois mecanismos nunca coexistem.
 
 export interface NovaRecommendation {
   category: NovaRecommendationCategory;
@@ -70,17 +71,6 @@ export function generateRecommendations(ctx: NovaReadOnlyContext): NovaRecommend
   // Bugfix: `toISOString().slice(0, 10)` extraía a data em UTC — ver `services/nova/date.ts`.
   const today = toLocalDateString();
   const monthPrefix = monthPrefixOf(today);
-
-  // Ponte Documentos -> NOVA (evento interno "documento analisado"): um
-  // achado novo e concreto sobre um documento específico vem primeiro —
-  // nunca inventado, é a mesma classificação que já decidiu não criar a
-  // proposta financeira sozinha (`decideDocumentAction`, ver
-  // `services/documents/contract-analysis.ts`). Uma recomendação por
-  // documento pendente; `buildProactiveOpening` só fala a de maior
-  // prioridade por vez, nunca todas de uma vez.
-  for (const insight of ctx.documentInsights) {
-    recommendations.push({ category: 'documento_analisado', message: buildDocumentInsightMessage(insight) });
-  }
 
   const despesasMes = ctx.financeEntries.filter((entry) => entry.type === 'despesa' && entry.date.startsWith(monthPrefix));
   const receitasMes = ctx.financeEntries.filter((entry) => entry.type === 'receita' && entry.date.startsWith(monthPrefix));

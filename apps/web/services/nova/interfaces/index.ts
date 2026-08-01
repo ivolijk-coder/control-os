@@ -329,27 +329,6 @@ export interface NovaDataActions {
   addNote: (note: Omit<Note, 'id'>) => Note;
 }
 
-/**
- * Ponte Documentos -> NOVA (evento interno "documento analisado"):
- * projeção somente-leitura de uma `DocumentImportProposal` ainda pendente
- * de atenção do usuário (status READY_FOR_REVIEW — nunca ARCHIVED, que já
- * não precisa de ação nenhuma). Espelha os mesmos campos aditivos de
- * `ContractPreview` (`services/documents/contract-analysis.ts`) que
- * interessam a uma frase da Nova: nunca inclui os campos financeiros flat
- * inteiros (não é este código que decide criar um financeiro — isso
- * continua sendo só `confirm/route.ts`, depois de o usuário escolher conta
- * e categoria em Documentos).
- */
-export type DocumentInsight = {
-  documentId: string;
-  proposalId: string;
-  documentType: string;
-  summary: string;
-  entities: { company: string | null; people: string[]; dates: string[]; amounts: number[] };
-  financialOperation: { detected: boolean; type: string | null; creditor: string | null; amount: number | null; installments: number | null };
-  suggestedActions: string[];
-};
-
 export interface NovaContext {
   actions: NovaDataActions;
   /** Space padrão para lançamentos criados por conversa (Fase 1: fixo, sem seleção manual ainda). */
@@ -375,15 +354,6 @@ export interface NovaContext {
   documents: PersonalDocument[];
   assets: Asset[];
   notes: Note[];
-  /**
-   * Ponte Documentos -> NOVA: documentos analisados que ainda aguardam
-   * decisão do usuário (financeiro ou não). `[]` quando não há nenhum —
-   * `buildProactiveOpening`/`generateRecommendations` nunca fala sobre
-   * documento nenhum nesse caso. Populado por `useNovaContext`
-   * (`apps/web/lib/use-nova-context.ts`) a partir de GET /api/documents —
-   * o mesmo endpoint que a tela de Documentos já usa.
-   */
-  documentInsights: DocumentInsight[];
   /**
    * Adicionado na Etapa 13 (NOVA Proativa) — `Mission` não tem campo de
    * criação (`createdAt`); a Timeline (`addTimelineEvent`, sempre escrita

@@ -5,6 +5,8 @@ import { randomUUID } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
 import { auditDocument, documentStorage, DocumentError } from './document-core';
 import { dequeueDocumentAnalysisJobSafely, enqueueDocumentAnalysisJob } from './document-analysis-queue';
+import { createConversationTask } from '@/services/conversation-tasks';
+import type { ConversationTaskAction, ConversationTaskPriority } from '@/services/conversation-tasks';
 
 export type DocumentClassificationType =
   | 'CONTRACT_SOCIAL' | 'FINANCING_CONTRACT' | 'LOAN_CONTRACT' | 'INVOICE' | 'RECEIPT'
@@ -234,6 +236,85 @@ export function decideDocumentAction(preview: ContractPreview): DocumentAction {
   return 'ARCHIVE';
 }
 
+const DOCUMENT_TYPE_LABELS: Record<DocumentClassificationType, string> = {
+  CONTRACT_SOCIAL: 'um Contrato Social',
+  FINANCING_CONTRACT: 'um contrato de financiamento',
+  LOAN_CONTRACT: 'um contrato de empréstimo',
+  INVOICE: 'uma nota fiscal',
+  RECEIPT: 'um recibo',
+  PAYMENT_PROOF: 'um comprovante de pagamento',
+  TAX_DOCUMENT: 'um documento fiscal',
+  PERSONAL_DOCUMENT: 'um documento pessoal',
+  LEGAL_DOCUMENT: 'um documento jurídico',
+  OTHER: 'um documento',
+};
+
+function formatBRL(value: number): string {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+}
+
+/**
+ * Conteúdo apresentável da `ConversationTask` que a NOVA mostra quando um
+ * documento termina de ser analisado (Fase C — "NOVA como centro da
+ * experiência"). Vive aqui, não em `services/conversation-tasks`, porque
+ * só quem conhece `ContractPreview`/`DocumentAction` sabe traduzir a
+ * decisão em título/mensagem/ações — a infraestrutura genérica de
+ * `ConversationTask` nunca sabe o que é um documento.
+ *
+ * `actions` usa sempre o mesmo shape genérico `{ id, label }` (ver
+ * `ConversationTaskAction`) — nenhum campo específico de Documentos
+ * vaza para fora daqui. `proposalValid` decide entre convidar para o
+ * cadastro em chat (dados mínimos de crédito confirmados) ou pedir
+ * revisão manual (dados insuficientes ou confiança baixa) — nunca
+ * inventa um valor que a IA não confirmou.
+ */
+export function buildDocumentConversationTaskContent(
+  preview: ContractPreview,
+  decision: DocumentAction,
+  proposalValid: boolean
+): { title: string; message: string; priority: ConversationTaskPriority; actions: ConversationTaskAction[] } {
+  const tipoLabel = DOCUMENT_TYPE_LABELS[preview.documentType] ?? 'um documento';
+
+  if (decision === 'CREATE_FINANCIAL_PROPOSAL' && proposalValid) {
+    const { financialOperation } = preview;
+    const tipo = financialOperation.type ? financialOperation.type.toLocaleLowerCase('pt-BR').replace(/_/g, ' ') : 'financiamento';
+    return {
+      title: `Financiamento identificado: ${financialOperation.creditor}`,
+      message: `Identifiquei ${tipo} ${financialOperation.creditor} de ${formatBRL(preview.totalAmount as number)} em ${preview.installments}x. Quer que eu cadastre?`,
+      priority: 'HIGH',
+      actions: [
+        { id: 'cadastrar_financiamento', label: 'Cadastrar financiamento' },
+        { id: 'guardar_documento', label: 'Só guardar' },
+        { id: 'depois', label: 'Depois' },
+      ],
+    };
+  }
+
+  if (decision === 'ASK_USER' || (decision === 'CREATE_FINANCIAL_PROPOSAL' && !proposalValid)) {
+    const resumo = preview.summary ? ` ${preview.summary}` : '';
+    return {
+      title: `Preciso da sua confirmação: ${tipoLabel}`,
+      message: `Analisei ${tipoLabel} que você enviou, mas não tenho certeza suficiente pra agir sozinha.${resumo} Pode revisar e confirmar?`,
+      priority: 'MEDIUM',
+      actions: [
+        { id: 'revisar_documento', label: 'Revisar documento' },
+        { id: 'guardar_documento', label: 'Só guardar' },
+        { id: 'depois', label: 'Depois' },
+      ],
+    };
+  }
+
+  // ARCHIVE: informativo, sem ação financeira associada.
+  const resumo = preview.summary ? ` ${preview.summary}` : '';
+  const acaoSugerida = preview.suggestedActions[0];
+  return {
+    title: `Documento arquivado: ${tipoLabel}`,
+    message: `Analisei ${tipoLabel} que você guardou.${resumo}${acaoSugerida ? ` ${acaoSugerida}` : ''}`,
+    priority: 'LOW',
+    actions: [{ id: 'ver_documento', label: 'Ver documento' }],
+  };
+}
+
 /** Um worker chama isto. A API pública só enfileira; ela não processa. */
 async function recoverInterruptedDocumentAnalysisJobs() {
   const lockTimeoutMs = Math.max(60_000, Number(process.env.DOCUMENT_ANALYSIS_LOCK_TIMEOUT_MS ?? 10 * 60_000));
@@ -285,19 +366,47 @@ export async function processNextDocumentAnalysisJob() {
     const proposalStatus: 'READY_FOR_REVIEW' | 'PENDING' | 'ARCHIVED' = decision === 'ARCHIVE' ? 'ARCHIVED' : (isFinancial && !validation.valid ? 'PENDING' : 'READY_FOR_REVIEW');
     const documentAnalysisStatus: 'COMPLETED' | 'NEEDS_REVIEW' = isFinancial && !validation.valid ? 'NEEDS_REVIEW' : 'COMPLETED';
     const previewKey = `document-preview:${document.id}:v${document.analysisVersion}`;
+    // Mesma idempotencyKey "por versão de análise" do preview, só com um
+    // prefixo diferente — nasce na MESMA transação que a proposta, então
+    // as duas existem juntas ou nenhuma existe.
+    const conversationTaskKey = `conversation-task:document-analysis:${document.id}:v${document.analysisVersion}`;
+    const conversationTaskContent = buildDocumentConversationTaskContent(preview, decision, isFinancial && validation.valid);
     const committed = await prisma.$transaction(async (tx) => {
       const ownership = await tx.documentAnalysisJob.updateMany({ where: { id: job.id, status: 'PROCESSING', lockedBy: runnerId }, data: { status: 'COMPLETED', lockedAt: null, lockedBy: null } });
       if (!ownership.count) return null;
       const existingProposal = await tx.documentImportProposal.findFirst({ where: { idempotencyKey: previewKey }, select: { id: true } });
       const proposal = await tx.documentImportProposal.upsert({ where: { idempotencyKey: previewKey }, create: { userId: document.userId, documentId: document.id, analysisVersion: document.analysisVersion, idempotencyKey: previewKey, status: proposalStatus, extractedData: preview as unknown as Prisma.InputJsonValue, validationWarnings: validation.warnings }, update: { extractedData: preview as unknown as Prisma.InputJsonValue, validationWarnings: validation.warnings, status: proposalStatus } });
       await tx.storedDocument.update({ where: { id: document.id }, data: { analysisStatus: documentAnalysisStatus, analysisCompletedAt: new Date(), analysisErrorCode: null, analysisErrorMessage: null } });
-      return { proposal, existingProposal };
+      // "A NOVA só conversa consumindo ConversationTasks" — todo documento
+      // classificado gera uma task (mesmo ARCHIVE, que fica com prioridade
+      // baixa e uma única ação informativa), nunca só quando é financeiro.
+      const conversationTask = await createConversationTask({
+        userId: document.userId,
+        type: 'DOCUMENT_ANALYSIS_COMPLETED',
+        priority: conversationTaskContent.priority,
+        title: conversationTaskContent.title,
+        message: conversationTaskContent.message,
+        payload: { proposalId: proposal.id, documentId: document.id, documentType: preview.documentType, decision },
+        actions: conversationTaskContent.actions,
+        sourceType: 'document_import_proposal',
+        sourceId: proposal.id,
+        idempotencyKey: conversationTaskKey,
+      }, tx);
+      return { proposal, existingProposal, conversationTask };
     });
     if (!committed) return { jobId: job.id, skipped: true };
-    const { proposal, existingProposal } = committed;
+    const { proposal, existingProposal, conversationTask } = committed;
     await auditDocument({ userId: document.userId, documentId: document.id, proposalId: proposal.id, operation: existingProposal ? 'PREVIEW_UPDATED' : 'PREVIEW_CREATED', source: 'system', entityType: 'document_preview', entityId: proposal.id, after: { valid: validation.valid, warnings: validation.warnings, status: proposalStatus } });
     await auditDocument({ userId: document.userId, documentId: document.id, proposalId: proposal.id, operation: 'DOCUMENT_CLASSIFIED', source: 'system', entityType: 'document', entityId: document.id, after: { documentType: preview.documentType, documentIntent: preview.documentIntent, confidence: preview.confidence, decision } });
     await auditDocument({ userId: document.userId, documentId: document.id, proposalId: proposal.id, operation: 'DOCUMENT_ANALYZED', source: 'system', entityType: 'document', entityId: document.id, after: { valid: validation.valid, documentType: preview.documentType, documentIntent: preview.documentIntent, decision, summary: preview.summary } });
+    // correlationId da task = task.id: o mesmo id serve de correlationId
+    // durante toda a cadeia de resolução (CONVERSATION_TASK_PRESENTED na
+    // Fase D, CONVERSATION_TASK_USER_CONFIRMED/DISMISSED e
+    // PREVIEW_CONFIRMED na Fase E) — nenhuma tabela nova, nenhum estado
+    // extra pra carregar entre requisições HTTP separadas no tempo.
+    if (conversationTask.created) {
+      await auditDocument({ userId: document.userId, documentId: document.id, proposalId: proposal.id, operation: 'CONVERSATION_TASK_CREATED', source: 'system', entityType: 'conversation_task', entityId: conversationTask.task.id, correlationId: conversationTask.task.id, after: { type: conversationTask.task.type, priority: conversationTask.task.priority, sourceId: conversationTask.task.sourceId } });
+    }
     return { jobId: job.id, proposalId: proposal.id, decision };
   } catch (error) {
     const code = error instanceof DocumentError ? error.code : 'UNKNOWN';

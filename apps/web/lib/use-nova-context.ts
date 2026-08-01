@@ -1,5 +1,5 @@
 import * as React from 'react';
-import type { DocumentInsight, NovaContext } from '@/services/nova';
+import type { NovaContext } from '@/services/nova';
 import { useDataStore } from '@/lib/data-store';
 import { MOCK_USER } from '@/lib/mock-data';
 
@@ -9,60 +9,6 @@ const NOVA_USER_FIRST_NAME = MOCK_USER.name.split(' ')[0] ?? MOCK_USER.name;
 // Sem seletor de Space na conversa ainda — toda ação criada pela Nova cai
 // num Space padrão (ver mesma constante em `nova-workspace.tsx`).
 const DEFAULT_SPACE_ID = 'sp_vida';
-
-type DocumentProposalPayload = {
-  id: string;
-  status: string;
-  extractedData: {
-    documentType?: string;
-    summary?: string | null;
-    entities?: { company?: string | null; people?: string[]; dates?: string[]; amounts?: number[] };
-    financialOperation?: { detected?: boolean; type?: string | null; creditor?: string | null; amount?: number | null; installments?: number | null };
-    suggestedActions?: string[];
-  };
-};
-type DocumentPayload = { id: string; importProposals: DocumentProposalPayload[] };
-
-/**
- * Ponte Documentos -> NOVA (evento interno "documento analisado"):
- * reaproveita `GET /api/documents` — o mesmo endpoint que a tela de
- * Documentos já usa — para achar propostas ainda com `status:
- * 'READY_FOR_REVIEW'` (financeiras aguardando confirmação OU classificação
- * ambígua aguardando decisão manual; nunca `ARCHIVED`, que já não precisa
- * de atenção nenhuma — ver `decideDocumentAction` em
- * `services/documents/contract-analysis.ts`). Falha em silêncio (devolve
- * `[]`): a Nova nunca trava nem inventa um achado quando a API de
- * documentos está indisponível.
- */
-function toDocumentInsights(documents: DocumentPayload[]): DocumentInsight[] {
-  const insights: DocumentInsight[] = [];
-  for (const document of documents) {
-    const proposal = document.importProposals.find((candidate) => candidate.status === 'READY_FOR_REVIEW');
-    if (!proposal) continue;
-    const data = proposal.extractedData;
-    insights.push({
-      documentId: document.id,
-      proposalId: proposal.id,
-      documentType: data.documentType ?? 'OTHER',
-      summary: data.summary ?? '',
-      entities: {
-        company: data.entities?.company ?? null,
-        people: data.entities?.people ?? [],
-        dates: data.entities?.dates ?? [],
-        amounts: data.entities?.amounts ?? [],
-      },
-      financialOperation: {
-        detected: data.financialOperation?.detected === true,
-        type: data.financialOperation?.type ?? null,
-        creditor: data.financialOperation?.creditor ?? null,
-        amount: data.financialOperation?.amount ?? null,
-        installments: data.financialOperation?.installments ?? null,
-      },
-      suggestedActions: data.suggestedActions ?? [],
-    });
-  }
-  return insights;
-}
 
 /**
  * `useNovaContext` — monta o `NovaContext` real a partir do `useDataStore`
@@ -75,11 +21,12 @@ function toDocumentInsights(documents: DocumentPayload[]): DocumentInsight[] {
  * — este hook não cria nenhum dado novo nem nenhuma ação nova, só reaproveita
  * o que `NovaWorkspace` já montava.
  *
- * `documentInsights` é a única exceção que não vem de `useDataStore`: os
- * documentos analisados vivem em Postgres (`DocumentImportProposal`), não
- * no estado do cliente. Busca uma vez por montagem — mesmo espírito de
- * "sem estado próprio dentro de services/nova": este hook só busca e
- * projeta, nunca decide nada.
+ * Este hook não busca mais "documento analisado" nenhum — a ponte
+ * Documentos -> NOVA que existia aqui (`DocumentInsight`, via
+ * `GET /api/documents`) foi retirada nesta evolução ("NOVA como centro da
+ * experiência"): documento analisado agora vira uma `ConversationTask`
+ * (ver `services/conversation-tasks`), que a NOVA passa a consumir por um
+ * caminho próprio (Fase D), fora de `NovaContext`.
  */
 export function useNovaContext(): NovaContext {
   const addMission = useDataStore((state) => state.addMission);
@@ -105,23 +52,6 @@ export function useNovaContext(): NovaContext {
   const notes = useDataStore((state) => state.notes);
   // Etapa 13 (NOVA Proativa) — ver comentário de `timeline` em `NovaContext`.
   const timeline = useDataStore((state) => state.timeline);
-
-  const [documentInsights, setDocumentInsights] = React.useState<DocumentInsight[]>([]);
-  React.useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const response = await fetch('/api/documents');
-        if (!response.ok) return;
-        const payload = await response.json() as { success?: boolean; documents?: DocumentPayload[] };
-        if (!cancelled) setDocumentInsights(toDocumentInsights(payload.documents ?? []));
-      } catch {
-        // Sem achado nenhum é o estado seguro — nunca inventa um documento
-        // analisado quando a busca falha.
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
 
   return React.useMemo(
     () => ({
@@ -149,7 +79,6 @@ export function useNovaContext(): NovaContext {
       documents,
       assets,
       notes,
-      documentInsights,
       timeline,
       userName: NOVA_USER_FIRST_NAME,
     }),
@@ -175,7 +104,6 @@ export function useNovaContext(): NovaContext {
       documents,
       assets,
       notes,
-      documentInsights,
       timeline,
     ]
   );

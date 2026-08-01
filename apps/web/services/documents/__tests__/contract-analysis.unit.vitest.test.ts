@@ -153,6 +153,44 @@ describe('decideDocumentAction: destino de um documento classificado', () => {
   });
 });
 
+// buildDocumentConversationTaskContent() é o que processNextDocumentAnalysisJob
+// usa pra montar a ConversationTask (Fase C — "NOVA como centro da
+// experiência") dentro da MESMA transação que grava o DocumentImportProposal.
+// actions sempre no shape genérico { id, label } — nada específico de
+// Documentos vaza pra fora do payload/actions.
+describe('buildDocumentConversationTaskContent: conteúdo da ConversationTask por decisão', () => {
+  it('CREATE_FINANCIAL_PROPOSAL com dados válidos -> prioridade HIGH e ação de cadastro', async () => {
+    const { buildDocumentConversationTaskContent } = await import('../contract-analysis');
+    const content = buildDocumentConversationTaskContent(SYNTHETIC_CONTRACT_PREVIEW, 'CREATE_FINANCIAL_PROPOSAL', true);
+    expect(content.priority).toBe('HIGH');
+    expect(content.message).toContain('Credor Sintético');
+    expect(content.message).toContain('12x');
+    expect(content.actions.map((action) => action.id)).toEqual(['cadastrar_financiamento', 'guardar_documento', 'depois']);
+  });
+
+  it('ASK_USER -> prioridade MEDIUM e ação de revisão, nunca de cadastro direto', async () => {
+    const { buildDocumentConversationTaskContent } = await import('../contract-analysis');
+    const content = buildDocumentConversationTaskContent({ ...SYNTHETIC_CONTRACT_PREVIEW, documentType: 'LEGAL_DOCUMENT' }, 'ASK_USER', false);
+    expect(content.priority).toBe('MEDIUM');
+    expect(content.actions.map((action) => action.id)).toEqual(['revisar_documento', 'guardar_documento', 'depois']);
+    expect(content.actions.some((action) => action.id === 'cadastrar_financiamento')).toBe(false);
+  });
+
+  it('CREATE_FINANCIAL_PROPOSAL com dados financeiros insuficientes cai na mesma trilha de ASK_USER', async () => {
+    const { buildDocumentConversationTaskContent } = await import('../contract-analysis');
+    const content = buildDocumentConversationTaskContent(SYNTHETIC_CONTRACT_PREVIEW, 'CREATE_FINANCIAL_PROPOSAL', false);
+    expect(content.priority).toBe('MEDIUM');
+    expect(content.actions.some((action) => action.id === 'cadastrar_financiamento')).toBe(false);
+  });
+
+  it('ARCHIVE -> prioridade LOW, sem ação financeira, só a de visualizar', async () => {
+    const { buildDocumentConversationTaskContent } = await import('../contract-analysis');
+    const content = buildDocumentConversationTaskContent({ ...SYNTHETIC_CONTRACT_PREVIEW, documentType: 'CONTRACT_SOCIAL' }, 'ARCHIVE', false);
+    expect(content.priority).toBe('LOW');
+    expect(content.actions).toEqual([{ id: 'ver_documento', label: 'Ver documento' }]);
+  });
+});
+
 describe('OpenAI opt-in', () => {
   beforeEach(() => {
     vi.stubEnv('OPENAI_DOCUMENT_ANALYSIS_ENABLED', 'false');
