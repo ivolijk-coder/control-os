@@ -48,6 +48,7 @@ export { generateRecommendations, buildQuickAnalysis } from './recommendations';
 export type { NovaRecommendation, NovaRecommendationCategory } from './recommendations';
 export { buildHomeInsights, buildProactiveOpening } from './insights';
 export type {
+  DocumentInsight,
   NovaAction,
   NovaActionKind,
   NovaActionResult,

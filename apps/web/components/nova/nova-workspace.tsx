@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import {
   Activity,
   CalendarClock,
+  FileText,
   Flag,
   Plane,
   Receipt,
@@ -58,6 +59,8 @@ const QUICK_ACTIONS = [
 // `generateRecommendations`) vira uma pergunta curta e clicável — o ícone
 // reaproveita os 5 já importados acima (nenhum ícone novo).
 const SUGGESTION_ICON_BY_CATEGORY: Record<NovaRecommendationCategory, LucideIcon> = {
+  // Ponte Documentos -> NOVA.
+  documento_analisado: FileText,
   reduzir_gastos: Wallet,
   revisar_gastos: Wallet,
   concluir_habitos: Activity,
@@ -75,6 +78,8 @@ const SUGGESTION_ICON_BY_CATEGORY: Record<NovaRecommendationCategory, LucideIcon
 };
 
 const SUGGESTION_LABEL_BY_CATEGORY: Record<NovaRecommendationCategory, string> = {
+  // Ponte Documentos -> NOVA.
+  documento_analisado: 'Ver documento analisado',
   reduzir_gastos: 'Quer revisar seus gastos deste mês?',
   revisar_gastos: 'Quer revisar essa categoria de gasto?',
   concluir_habitos: 'Quer ver seus hábitos pendentes?',
