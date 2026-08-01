@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
 const hasDatabase = Boolean(process.env.TEST_DATABASE_URL);
@@ -32,5 +33,22 @@ describe.skipIf(!hasStorage)('Storage S3/R2 real de teste', () => {
 });
 
 describe.skipIf(!hasClamAV)('ClamAV real de teste', () => {
-  it.todo('valida arquivo limpo e assinatura EICAR sintética');
+  it('classifica arquivo sintético limpo', async () => {
+    process.env.DOCUMENT_SCANNER_PROVIDER = 'clamav';
+    process.env.DOCUMENT_CLAMAV_HOST = process.env.TEST_CLAMAV_HOST;
+    process.env.DOCUMENT_CLAMAV_PORT = process.env.TEST_CLAMAV_PORT;
+    const { scanDocument, validateUploadedDocument } = await import('@/services/documents/document-core');
+    const upload = await validateUploadedDocument(new File(['conteudo sintetico limpo'], 'clean.txt', { type: 'text/plain' }));
+    await expect(scanDocument(upload)).resolves.toMatchObject({ status: 'CLEAN' });
+  });
+
+  it.skipIf(!process.env.TEST_EICAR_FILE)('classifica fixture EICAR temporária sem persistir seu conteúdo no repositório', async () => {
+    process.env.DOCUMENT_SCANNER_PROVIDER = 'clamav';
+    process.env.DOCUMENT_CLAMAV_HOST = process.env.TEST_CLAMAV_HOST;
+    process.env.DOCUMENT_CLAMAV_PORT = process.env.TEST_CLAMAV_PORT;
+    const content = await readFile(process.env.TEST_EICAR_FILE as string);
+    const { scanDocument, validateUploadedDocument } = await import('@/services/documents/document-core');
+    const upload = await validateUploadedDocument(new File([content], 'fixture.txt', { type: 'text/plain' }));
+    await expect(scanDocument(upload)).resolves.toMatchObject({ status: 'INFECTED' });
+  });
 });

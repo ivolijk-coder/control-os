@@ -76,6 +76,8 @@ volumes:
     name: controlos_evolution_redis_data
   evolution_instances:
     name: controlos_evolution_instances
+  clamav_data:
+    name: controlos_clamav_data
 
 services:
   # ============================================================
@@ -269,6 +271,46 @@ services:
       start_period: 10s
 
   # ============================================================
+  # CLAMAV — scanner privado de documentos (clamd + FreshClam)
+  # ============================================================
+  clamav:
+    # Versao 1.5.2 oficial linux/amd64 fixada pelo digest publicado.
+    # A variante _base usa o volume abaixo para persistir as assinaturas.
+    image: clamav/clamav:1.5.2_base@sha256:3aa0c6d6a966dc062899e070fb13f87485acf0cbb710fccaae9a848cd5f5b09a
+    platform: linux/amd64
+    container_name: controlos_clamav
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      CLAMD_CONF_StreamMaxLength: "20M"
+      CLAMD_STARTUP_TIMEOUT: "600"
+      FRESHCLAM_CHECKS: "12"
+    volumes:
+      - clamav_data:/var/lib/clamav
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "1.50"
+          memory: 4G
+        reservations:
+          cpus: "0.50"
+          memory: 2G
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD-SHELL", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10m
+
+  # ============================================================
   # WEB — CONTROL OS (Next.js, apps/web)
   # ============================================================
   web:
@@ -285,6 +327,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      clamav:
         condition: service_healthy
     environment:
       DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
@@ -316,10 +360,11 @@ services:
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
       R2_ENDPOINT: ${R2_ENDPOINT:-}
-      DOCUMENT_SCANNER_PROVIDER: ${DOCUMENT_SCANNER_PROVIDER:-}
+      DOCUMENT_SCANNER_PROVIDER: ${DOCUMENT_SCANNER_PROVIDER:-clamav}
       DOCUMENT_SCANNER_ENDPOINT: ${DOCUMENT_SCANNER_ENDPOINT:-}
-      DOCUMENT_CLAMAV_HOST: ${DOCUMENT_CLAMAV_HOST:-}
+      DOCUMENT_CLAMAV_HOST: ${DOCUMENT_CLAMAV_HOST:-clamav}
       DOCUMENT_CLAMAV_PORT: ${DOCUMENT_CLAMAV_PORT:-3310}
+      DOCUMENT_CLAMAV_STREAM_MAX_BYTES: ${DOCUMENT_CLAMAV_STREAM_MAX_BYTES:-20971520}
       DOCUMENT_SCANNER_TIMEOUT_MS: ${DOCUMENT_SCANNER_TIMEOUT_MS:-30000}
       DOCUMENT_ANALYSIS_TIMEOUT_MS: ${DOCUMENT_ANALYSIS_TIMEOUT_MS:-90000}
       DOCUMENT_JOB_RUNNER_SECRET: ${DOCUMENT_JOB_RUNNER_SECRET:-}

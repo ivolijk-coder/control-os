@@ -124,6 +124,31 @@ O serviço temporário `migrate` usa a mesma versão do Prisma e os mesmos
 arquivos de migration usados para construir o app. Ele termina sozinho após
 aplicar (ou confirmar que não há) migrations e não fica exposto na internet.
 
+### Scanner privado de documentos (ClamAV)
+
+O serviço `clamav` executa `clamd` e `freshclam` exclusivamente na rede
+interna `backend`: não publica portas no host e não possui labels do Traefik.
+As assinaturas ficam no volume nomeado `controlos_clamav_data`, portanto
+reiniciar ou recriar o container não força uma nova base vazia.
+
+O primeiro start pode levar vários minutos enquanto a base é baixada e
+carregada. O health check somente fica saudável quando `clamdcheck.sh`
+recebe uma resposta válida do daemon. O `web` aguarda esse estado antes de
+iniciar e conversa com `clamav:3310` usando o protocolo INSTREAM.
+
+O limite do upload da aplicação é 15 MiB e `StreamMaxLength` fica em 20 MiB,
+mantendo margem controlada sem aceitar streams arbitrariamente grandes. O
+container tem **teto máximo configurado** de 4 GiB, não consumo esperado, e
+reserva de 2 GiB: a documentação oficial do
+ClamAV recomenda 4 GiB porque a carga e a recarga das assinaturas podem usar
+mais de 2 GiB temporariamente. Reavalie esses valores antes de usar em uma VPS
+menor. Se o scanner estiver indisponível, expirar ou devolver resposta
+inválida, o fluxo falha fechado: nenhum byte é enviado ao storage privado,
+download ou análise de IA sem resultado `CLEAN`.
+
+`NOT_CONFIGURED` permanece uma dívida técnica deliberada. Sem scanner
+configurado, o comportamento compatível continua sendo `scanStatus=PENDING`.
+
 ### 8. Criar a primeira instância de WhatsApp na Evolution API
 
 ```bash

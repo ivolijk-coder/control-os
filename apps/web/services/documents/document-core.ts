@@ -7,6 +7,8 @@ import { join } from 'node:path';
 import { prisma } from '@/lib/prisma';
 
 const MAX_UPLOAD_BYTES = Number(process.env.DOCUMENT_MAX_UPLOAD_BYTES ?? 15 * 1024 * 1024);
+const DEFAULT_CLAMAV_STREAM_MAX_BYTES = 20 * 1024 * 1024;
+const CLAMAV_CHUNK_BYTES = 64 * 1024;
 const MIN_UPLOAD_BYTES = 8;
 const ALLOWED_EXTENSIONS = new Set(['pdf', 'jpg', 'jpeg', 'png', 'webp', 'txt']);
 
@@ -304,6 +306,10 @@ async function scanWithClamAV(content: Buffer): Promise<{ status: 'CLEAN' | 'INF
   const host = process.env.DOCUMENT_CLAMAV_HOST ?? 'clamav';
   const port = Number(process.env.DOCUMENT_CLAMAV_PORT ?? 3310);
   const timeout = Math.max(1_000, Number(process.env.DOCUMENT_SCANNER_TIMEOUT_MS ?? 30_000));
+  const streamMaxBytes = Math.max(1, Number(process.env.DOCUMENT_CLAMAV_STREAM_MAX_BYTES ?? DEFAULT_CLAMAV_STREAM_MAX_BYTES));
+  if (content.length > streamMaxBytes) {
+    return { status: 'FAILED', details: { reason: 'clamav_stream_limit' } };
+  }
   return new Promise((resolve) => {
     const socket = createConnection({ host, port });
     let response = '';
@@ -315,18 +321,40 @@ async function scanWithClamAV(content: Buffer): Promise<{ status: 'CLEAN' | 'INF
       socket.destroy();
       resolve(result);
     };
-    const timer = setTimeout(() => finish({ status: 'FAILED', details: { reason: 'clamav_timeout', host } }), timeout);
-    socket.once('error', () => finish({ status: 'FAILED', details: { reason: 'clamav_unavailable', host } }));
-    socket.on('data', (chunk) => { response += chunk.toString('utf8'); });
-    socket.once('end', () => {
-      if (/\bOK\b/.test(response)) finish({ status: 'CLEAN', details: { scanner: 'clamav', host } });
-      else if (/\bFOUND\b/.test(response)) finish({ status: 'INFECTED', details: { scanner: 'clamav', host, result: response.trim().slice(0, 240) } });
-      else finish({ status: 'FAILED', details: { reason: 'clamav_invalid_response', result: response.trim().slice(0, 240) } });
+    const classifyResponse = () => {
+      const normalized = response.replace(/\0/g, '').trim();
+      if (/\bOK$/.test(normalized)) finish({ status: 'CLEAN', details: { scanner: 'clamav' } });
+      else if (/\bFOUND$/.test(normalized)) {
+        const signature = normalized.match(/^stream:\s+(.+?)\s+FOUND$/)?.[1]
+          ?.replace(/[^a-zA-Z0-9._:+-]/g, '_')
+          .slice(0, 120);
+        finish({
+          status: 'INFECTED',
+          details: {
+            scanner: 'clamav',
+            reason: 'scanner_detected_threat',
+            ...(signature ? { signature } : {}),
+          },
+        });
+      } else finish({ status: 'FAILED', details: { reason: 'clamav_invalid_response' } });
+    };
+    const timer = setTimeout(() => finish({ status: 'FAILED', details: { reason: 'clamav_timeout' } }), timeout);
+    socket.once('error', () => finish({ status: 'FAILED', details: { reason: 'clamav_unavailable' } }));
+    socket.on('data', (chunk) => {
+      response = `${response}${chunk.toString('utf8')}`.slice(0, 512);
+      if (response.includes('\0') || response.includes('\n')) classifyResponse();
     });
+    socket.once('end', classifyResponse);
     socket.once('connect', () => {
-      const header = Buffer.from('zINSTREAM\0');
-      const size = Buffer.alloc(4); size.writeUInt32BE(content.length);
-      socket.write(Buffer.concat([header, size, content, Buffer.alloc(4)]));
+      socket.write(Buffer.from('zINSTREAM\0'));
+      for (let offset = 0; offset < content.length; offset += CLAMAV_CHUNK_BYTES) {
+        const chunk = content.subarray(offset, Math.min(offset + CLAMAV_CHUNK_BYTES, content.length));
+        const size = Buffer.alloc(4);
+        size.writeUInt32BE(chunk.length);
+        socket.write(size);
+        socket.write(chunk);
+      }
+      socket.write(Buffer.alloc(4));
       socket.end();
     });
   });

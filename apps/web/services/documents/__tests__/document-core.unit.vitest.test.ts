@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { createServer } from 'node:net';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { syntheticPdf, syntheticPng } from './fixtures';
 
@@ -109,6 +110,99 @@ describe('scanner com falha fechada', () => {
     await expect(scanDocument(await validated())).resolves.toEqual({
       status: 'FAILED',
       details: { reason },
+    });
+  });
+});
+
+describe('scanner ClamAV via INSTREAM', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.stubEnv('DOCUMENT_SCANNER_PROVIDER', 'clamav');
+    vi.stubEnv('DOCUMENT_CLAMAV_HOST', '127.0.0.1');
+    vi.stubEnv('DOCUMENT_SCANNER_TIMEOUT_MS', '1000');
+  });
+
+  async function validated() {
+    const { validateUploadedDocument } = await import('../document-core');
+    return validateUploadedDocument(syntheticPdf());
+  }
+
+  async function scanAgainst(response?: string) {
+    const received: Buffer[] = [];
+    const sockets = new Set<import('node:net').Socket>();
+    const server = createServer({ allowHalfOpen: true }, (socket) => {
+      sockets.add(socket);
+      socket.once('close', () => sockets.delete(socket));
+      socket.on('data', (chunk) => received.push(chunk));
+      if (response !== undefined) socket.on('end', () => socket.end(response));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('porta de teste indisponível');
+    vi.stubEnv('DOCUMENT_CLAMAV_PORT', String(address.port));
+    try {
+      const { scanDocument } = await import('../document-core');
+      return { result: await scanDocument(await validated()), received: Buffer.concat(received) };
+    } finally {
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  }
+
+  it('classifica arquivo limpo e envia chunks INSTREAM terminados corretamente', async () => {
+    const { result, received } = await scanAgainst('stream: OK\0');
+    expect(result).toEqual({ status: 'CLEAN', details: { scanner: 'clamav' } });
+    expect(received.subarray(0, 10).toString()).toBe('zINSTREAM\0');
+    expect(received.subarray(-4)).toEqual(Buffer.alloc(4));
+  });
+
+  it('classifica infectado sem preservar a resposta interna completa', async () => {
+    const { result } = await scanAgainst('stream: Synthetic-Test-Signature FOUND\0');
+    expect(result).toEqual({
+      status: 'INFECTED',
+      details: {
+        scanner: 'clamav',
+        reason: 'scanner_detected_threat',
+        signature: 'Synthetic-Test-Signature',
+      },
+    });
+    expect(result.details).not.toHaveProperty('result');
+    expect(result.details).not.toHaveProperty('host');
+  });
+
+  it('falha fechado para resposta inválida', async () => {
+    const { result } = await scanAgainst('resposta inesperada\0');
+    expect(result).toEqual({ status: 'FAILED', details: { reason: 'clamav_invalid_response' } });
+  });
+
+  it('falha fechado quando a porta está indisponível', async () => {
+    const server = createServer();
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('porta de teste indisponível');
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    vi.stubEnv('DOCUMENT_CLAMAV_PORT', String(address.port));
+    const { scanDocument } = await import('../document-core');
+    await expect(scanDocument(await validated())).resolves.toEqual({
+      status: 'FAILED',
+      details: { reason: 'clamav_unavailable' },
+    });
+  });
+
+  it('falha fechado em timeout', async () => {
+    const { result } = await scanAgainst();
+    expect(result).toEqual({ status: 'FAILED', details: { reason: 'clamav_timeout' } });
+  });
+
+  it('bloqueia o stream antes da conexão quando excede o limite', async () => {
+    vi.stubEnv('DOCUMENT_CLAMAV_STREAM_MAX_BYTES', '8');
+    vi.stubEnv('DOCUMENT_CLAMAV_PORT', '1');
+    const { scanDocument } = await import('../document-core');
+    await expect(scanDocument(await validated())).resolves.toEqual({
+      status: 'FAILED',
+      details: { reason: 'clamav_stream_limit' },
     });
   });
 });
