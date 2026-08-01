@@ -477,6 +477,7 @@ model AppUser {
   verifications           WhatsAppVerification[]
   documents               StoredDocument[]
   documentImportProposals DocumentImportProposal[]
+  conversationTasks       ConversationTask[]
 
   @@map("app_users")
 }
@@ -641,4 +642,64 @@ model DocumentAuditEvent {
   @@index([documentId, createdAt])
   @@index([correlationId])
   @@map("document_audit_events")
+}
+
+/// "Algo aconteceu e a NOVA precisa falar sobre isso com o usuário" —
+/// fonte única de interações proativas da NOVA (evolução "NOVA como centro
+/// da experiência"). Documento analisado (`DOCUMENT_ANALYSIS_COMPLETED`) é
+/// o primeiro produtor; tipos futuros (email recebido, fatura vencida, PIX
+/// recebido, conta atrasada, viagem próxima, meta atingida, evento de Open
+/// Finance) reaproveitam esta MESMA tabela sem migration nova.
+enum ConversationTaskStatus {
+  PENDING
+  IN_PROGRESS
+  WAITING_USER
+  COMPLETED
+  DISMISSED
+  FAILED
+}
+
+enum ConversationTaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+/// `type` e `sourceType` são `String`, não enum do Postgres: crescem sem
+/// migration a cada produtor novo (validados por union type + switch
+/// exaustivo em TypeScript, ver `services/conversation-tasks`). `status` e
+/// `priority` continuam enum porque esse conjunto é estável e pequeno.
+///
+/// Sem foreign key formal para `sourceId`: o mesmo campo aponta para
+/// tabelas diferentes dependendo de `sourceType` (hoje só
+/// "document_import_proposal"). Handlers de resolução NUNCA decidem
+/// dinheiro só com base no `payload` congelado aqui — sempre buscam de
+/// novo o registro de origem atual antes de agir.
+///
+/// `idempotencyKey` é `@unique`: garante que o mesmo evento de origem
+/// nunca cria duas tasks, mesmo sob retry (upsert na mesma transação que
+/// grava a origem).
+model ConversationTask {
+  id             String                   @id @default(uuid()) @db.Uuid
+  userId         String                   @map("user_id") @db.Uuid
+  user           AppUser                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type           String
+  status         ConversationTaskStatus   @default(PENDING)
+  priority       ConversationTaskPriority @default(MEDIUM)
+  title          String
+  message        String
+  payload        Json
+  actions        Json
+  sourceType     String                   @map("source_type")
+  sourceId       String                   @map("source_id")
+  idempotencyKey String                   @unique @map("idempotency_key")
+  createdAt      DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+  completedAt    DateTime?                @map("completed_at") @db.Timestamptz(3)
+  dismissedAt    DateTime?                @map("dismissed_at") @db.Timestamptz(3)
+
+  @@index([userId, status])
+  @@index([sourceType, sourceId])
+  @@map("conversation_tasks")
 }
