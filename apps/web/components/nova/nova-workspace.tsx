@@ -111,6 +111,20 @@ const SUGGESTION_LABEL_BY_CATEGORY: Record<NovaRecommendationCategory, string> =
 // puramente cosmético, cancelado assim que a resposta real chega.
 const EXECUTING_SWITCH_MS = 700;
 
+/**
+ * Pergunta de cada campo do wizard de coleta em chat (Fase E). Nível de
+ * módulo (não dentro do componente) de propósito: é um valor fixo, sem
+ * dependência de props/estado — mantê-lo aqui dá a ele identidade estável
+ * entre renders, então `presentFieldQuestion` (useCallback) pode
+ * referenciá-lo sem precisar entrar no array de dependências (e sem o
+ * warning de `react-hooks/exhaustive-deps` que uma constante recriada a
+ * cada render dentro do componente geraria).
+ */
+const FIELD_QUESTIONS: Record<'accountId' | 'categoryId', string> = {
+  accountId: 'Qual conta usar?',
+  categoryId: 'Qual categoria usar?',
+};
+
 let messageIdCounter = 0;
 
 /** Gera um id sequencial estável para mensagens da conversa (sem `crypto`). */
@@ -431,11 +445,6 @@ export function NovaWorkspace({
     selections: Partial<Record<FieldKey, { id: string; label: string }>>;
   };
   const fieldWizardsRef = React.useRef<Record<string, FieldWizardState>>({});
-
-  const FIELD_QUESTIONS: Record<FieldKey, string> = {
-    accountId: 'Qual conta usar?',
-    categoryId: 'Qual categoria usar?',
-  };
 
   const fetchFieldOptions = React.useCallback(async (field: FieldKey): Promise<{ id: string; label: string }[]> => {
     if (field === 'accountId') {

@@ -31,7 +31,35 @@ import type {
  *   a ação de novo.
  */
 
-type TransactionClient = typeof prisma;
+/**
+ * Contrato mínimo necessário para `createConversationTask` — só o
+ * delegate `.conversationTask`, nunca o `PrismaClient` inteiro.
+ *
+ * Causa raiz do bug corrigido aqui: `tx`, o parâmetro que
+ * `prisma.$transaction(async (tx) => ...)` entrega, tem o tipo
+ * `Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction'
+ * | '$use' | '$extends'>` (o "cliente de transação" do Prisma) — que NUNCA
+ * é atribuível a `PrismaClient` completo, porque falta justamente esses
+ * métodos de nível de client. O alias antigo (`type TransactionClient =
+ * typeof prisma`) media o contrato pelo tipo do SINGLETON `prisma`
+ * (`PrismaClient` completo), não pelo tipo real de `tx` — por isso
+ * compilava neste sandbox (geração do Prisma Client bloqueada, o alias
+ * nunca era checado contra um client de verdade) mas falhava no build
+ * real da VPS, exatamente na chamada `createConversationTask(..., tx)`
+ * dentro da transação de `contract-analysis.ts`.
+ *
+ * A correção tipa a dependência pelo MENOR contrato necessário: qualquer
+ * objeto com um `.conversationTask` compatível serve — o `PrismaClient`
+ * inteiro (fora de transação) e o `tx` de `$transaction` (dentro dela)
+ * satisfazem os dois, porque o Prisma só omite métodos de nível de
+ * client no tipo de transação; os delegates de modelo (`.conversationTask`,
+ * `.documentAuditEvent`, etc.) continuam com o mesmo tipo nos dois casos.
+ * Nenhuma outra função deste arquivo aceita um client/tx como parâmetro
+ * (todas usam o singleton `prisma` direto) — só `createConversationTask`
+ * corre esse risco, porque é a única pensada para ser chamada dentro de
+ * uma transação alheia.
+ */
+type ConversationTaskDb = Pick<typeof prisma, 'conversationTask'>;
 
 type ConversationTaskRow = {
   id: string;
@@ -97,7 +125,7 @@ export type CreateConversationTaskInput = {
  */
 export async function createConversationTask(
   input: CreateConversationTaskInput,
-  tx?: TransactionClient
+  tx?: ConversationTaskDb
 ): Promise<{ task: ConversationTask; created: boolean }> {
   const client = tx ?? prisma;
   const existing = await client.conversationTask.findFirst({ where: { idempotencyKey: input.idempotencyKey }, select: { id: true } });
