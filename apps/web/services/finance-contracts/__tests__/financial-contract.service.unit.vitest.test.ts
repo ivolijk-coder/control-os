@@ -127,12 +127,36 @@ const tx = {
       });
       return { ...row, installments: created };
     }),
-    update: vi.fn(async ({ where, data }: { where: { id: string }; data: { paidInstallments?: { increment?: number; decrement?: number } } }) => {
+    update: vi.fn(
+      async ({
+        where,
+        data,
+        include,
+      }: {
+        where: { id: string };
+        data: { paidInstallments?: { increment?: number; decrement?: number }; status?: string };
+        include?: { installments?: unknown };
+      }) => {
+        const row = contracts.get(where.id);
+        if (!row) throw new Error('contract not found');
+        if (data.paidInstallments?.increment) row.paidInstallments += data.paidInstallments.increment;
+        if (data.paidInstallments?.decrement) row.paidInstallments -= data.paidInstallments.decrement;
+        if (data.status) row.status = data.status;
+        row.updatedAt = new Date();
+        if (include?.installments) {
+          const rowInstallments = [...installments.values()].filter((item) => item.contractId === where.id).sort((a, b) => a.number - b.number);
+          return { ...row, installments: rowInstallments };
+        }
+        return row;
+      }
+    ),
+    findFirst: vi.fn(async ({ where, include }: { where: { id: string; userId: string }; include?: { installments?: unknown } }) => {
       const row = contracts.get(where.id);
-      if (!row) throw new Error('contract not found');
-      if (data.paidInstallments?.increment) row.paidInstallments += data.paidInstallments.increment;
-      if (data.paidInstallments?.decrement) row.paidInstallments -= data.paidInstallments.decrement;
-      row.updatedAt = new Date();
+      if (!row || row.userId !== where.userId) return null;
+      if (include?.installments) {
+        const rowInstallments = [...installments.values()].filter((item) => item.contractId === where.id).sort((a, b) => a.number - b.number);
+        return { ...row, installments: rowInstallments };
+      }
       return row;
     }),
   },
@@ -144,11 +168,25 @@ const tx = {
       if (!contract || contract.userId !== where.contract.userId) return null;
       return { ...row, contract };
     }),
-    updateMany: vi.fn(async ({ where, data }: { where: { id: string; status: string }; data: Partial<InstallmentRow> }) => {
-      const row = installments.get(where.id);
-      if (!row || row.status !== where.status) return { count: 0 };
-      Object.assign(row, data);
-      return { count: 1 };
+    updateMany: vi.fn(async ({ where, data }: { where: { id?: string; status?: string | { in: string[] }; contractId?: string }; data: Partial<InstallmentRow> }) => {
+      if (typeof where.id === 'string') {
+        const row = installments.get(where.id);
+        if (!row || row.status !== where.status) return { count: 0 };
+        Object.assign(row, data);
+        return { count: 1 };
+      }
+      if (typeof where.contractId === 'string' && where.status && typeof where.status === 'object' && 'in' in where.status) {
+        const statuses = where.status.in;
+        let count = 0;
+        for (const row of installments.values()) {
+          if (row.contractId === where.contractId && statuses.includes(row.status)) {
+            Object.assign(row, data);
+            count += 1;
+          }
+        }
+        return { count };
+      }
+      return { count: 0 };
     }),
     update: vi.fn(async ({ where, data }: { where: { id: string }; data: Partial<InstallmentRow> }) => {
       const row = installments.get(where.id);
@@ -160,6 +198,9 @@ const tx = {
       const row = installments.get(where.id);
       if (!row) throw new Error('installment not found');
       return row;
+    }),
+    count: vi.fn(async ({ where }: { where: { contractId: string; status: { in: string[] } } }) => {
+      return [...installments.values()].filter((row) => row.contractId === where.contractId && where.status.in.includes(row.status)).length;
     }),
   },
   financeAuditEvent: { create: auditCreate },
@@ -395,5 +436,149 @@ describe('getFinancialDashboard', () => {
     expect(dashboard.overdue[0]!.amount).toBe(700);
     expect(dashboard.paidThisMonth).toEqual({ count: 1, total: 400 });
     expect(dashboard.outstandingBalance.count).toBe(3);
+  });
+});
+
+describe('buildFinancialContractSummary', () => {
+  it('calcula pago/restante/percentual, próxima parcela e parcelas vencidas (Fase 3, "contract detail")', async () => {
+    const { buildFinancialContractSummary } = await import('../financial-contract.service');
+    const reference = new Date(2026, 7, 10); // 10/08/2026
+    const contract = {
+      id: 'contract-a',
+      userId: 'user-a',
+      name: 'Pronampe Santander',
+      institution: 'Santander',
+      type: 'LOAN' as const,
+      origin: 'PERSONAL' as const,
+      categoryId: null,
+      accountId: null,
+      totalAmount: 400,
+      financedAmount: null,
+      installmentAmount: 100,
+      totalInstallments: 4,
+      paidInstallments: 1,
+      dueDay: 24,
+      startDate: reference.toISOString(),
+      endDate: null,
+      interestRate: null,
+      status: 'ACTIVE' as const,
+      source: 'MANUAL' as const,
+      documentId: null,
+      createdAt: reference.toISOString(),
+      updatedAt: reference.toISOString(),
+      installments: [
+        { id: 'i1', contractId: 'contract-a', number: 1, amount: 100, dueDate: new Date(2026, 6, 24).toISOString(), status: 'PAID' as const, paidAt: reference.toISOString(), paymentTransactionId: 'tx-1', createdAt: reference.toISOString() },
+        { id: 'i2', contractId: 'contract-a', number: 2, amount: 100, dueDate: new Date(2026, 7, 5).toISOString(), status: 'PENDING' as const, paidAt: null, paymentTransactionId: null, createdAt: reference.toISOString() }, // vencida (antes de 10/08)
+        { id: 'i3', contractId: 'contract-a', number: 3, amount: 100, dueDate: new Date(2026, 7, 24).toISOString(), status: 'PENDING' as const, paidAt: null, paymentTransactionId: null, createdAt: reference.toISOString() },
+        { id: 'i4', contractId: 'contract-a', number: 4, amount: 100, dueDate: new Date(2026, 8, 24).toISOString(), status: 'CANCELLED' as const, paidAt: null, paymentTransactionId: null, createdAt: reference.toISOString() },
+      ],
+    };
+
+    const summary = buildFinancialContractSummary(contract, reference);
+
+    expect(summary.totalAmount).toBe(400);
+    expect(summary.paidAmount).toBe(100);
+    expect(summary.remainingAmount).toBe(200); // i2 + i3, nunca a i4 CANCELLED
+    expect(summary.percentagePaid).toBe(25);
+    expect(summary.nextInstallment?.id).toBe('i2'); // mais próxima em aberto por número
+    expect(summary.overdueInstallments.map((item) => item.id)).toEqual(['i2']);
+  });
+
+  it('não quebra sem installments/totalAmount (defensivo contra payload parcial)', async () => {
+    const { buildFinancialContractSummary } = await import('../financial-contract.service');
+    // @ts-expect-error — payload propositalmente incompleto, mesmo shape que a rota pode receber de um mock/edge case
+    const summary = buildFinancialContractSummary({ id: 'contract-a' });
+    expect(summary).toEqual({ totalAmount: 0, paidAmount: 0, remainingAmount: 0, percentagePaid: 0, nextInstallment: null, overdueInstallments: [] });
+  });
+});
+
+describe('ciclo de vida do contrato (Fase 3, seção 2 — ACTIVE <-> PAID_OFF automático)', () => {
+  beforeEach(() => {
+    contracts = new Map();
+    installments = new Map();
+    nextId = 0;
+    financeEffects = { expenses: 0, reversals: 0 };
+    auditCreate.mockClear();
+  });
+
+  async function createTwoInstallmentContract() {
+    const { createFinancialContract } = await import('../financial-contract.service');
+    return createFinancialContract({ userId: 'user-a', name: 'Financiamento curto', type: 'FINANCING', totalAmount: 200, totalInstallments: 2, dueDay: 10, startDate: '2026-08-01' });
+  }
+
+  it('paga a ÚLTIMA parcela em aberto: contrato sai de ACTIVE pra PAID_OFF e audita CONTRACT_PAID_OFF', async () => {
+    const contract = await createTwoInstallmentContract();
+    const { payFinancialInstallment } = await import('../financial-contract.service');
+
+    const first = await payFinancialInstallment({ userId: 'user-a', installmentId: contract.installments![0]!.id });
+    expect(first.contract.status).toBe('ACTIVE'); // ainda falta 1 parcela
+
+    const second = await payFinancialInstallment({ userId: 'user-a', installmentId: contract.installments![1]!.id });
+    expect(second.contract.status).toBe('PAID_OFF');
+    expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ operation: 'CONTRACT_PAID_OFF', entityId: contract.id, entityType: 'financial_contract' }) }));
+  });
+
+  it('desfazer o pagamento da última parcela de um contrato PAID_OFF reabre pra ACTIVE e audita CONTRACT_REOPENED', async () => {
+    const contract = await createTwoInstallmentContract();
+    const { payFinancialInstallment, undoFinancialInstallmentPayment } = await import('../financial-contract.service');
+
+    await payFinancialInstallment({ userId: 'user-a', installmentId: contract.installments![0]!.id });
+    const settled = await payFinancialInstallment({ userId: 'user-a', installmentId: contract.installments![1]!.id });
+    expect(settled.contract.status).toBe('PAID_OFF');
+
+    const reopened = await undoFinancialInstallmentPayment({ userId: 'user-a', installmentId: contract.installments![1]!.id });
+    expect(reopened.contract.status).toBe('ACTIVE');
+    expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ operation: 'CONTRACT_REOPENED', entityId: contract.id, entityType: 'financial_contract' }) }));
+  });
+});
+
+describe('settleFinancialContract (Fase 3, seção 3 — quitação antecipada)', () => {
+  beforeEach(() => {
+    contracts = new Map();
+    installments = new Map();
+    nextId = 0;
+    financeEffects = { expenses: 0, reversals: 0 };
+    auditCreate.mockClear();
+  });
+
+  async function createPronampeContract() {
+    const { createFinancialContract } = await import('../financial-contract.service');
+    return createFinancialContract({ userId: 'user-a', name: 'Pronampe Santander', institution: 'Santander', type: 'LOAN', totalAmount: 252000, installmentAmount: 6000, totalInstallments: 42, dueDay: 24, startDate: '2026-08-01' });
+  }
+
+  it('cancela só as parcelas futuras não liquidadas, preserva as pagas e move o contrato pra PAID_OFF', async () => {
+    const contract = await createPronampeContract();
+    const { payFinancialInstallment, settleFinancialContract } = await import('../financial-contract.service');
+
+    await payFinancialInstallment({ userId: 'user-a', installmentId: contract.installments![0]!.id });
+    await payFinancialInstallment({ userId: 'user-a', installmentId: contract.installments![1]!.id });
+
+    const result = await settleFinancialContract({ userId: 'user-a', contractId: contract.id });
+
+    expect(result.contract.status).toBe('PAID_OFF');
+    expect(result.cancelledInstallments).toHaveLength(40); // 42 - 2 já pagas
+    expect(result.cancelledInstallments.every((item) => item.status === 'CANCELLED')).toBe(true);
+    const stillPaid = result.contract.installments!.filter((item) => item.status === 'PAID');
+    expect(stillPaid).toHaveLength(2); // histórico preservado, nunca reescrito
+    expect(auditCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ operation: 'CONTRACT_SETTLED', entityId: contract.id, entityType: 'financial_contract' }) })
+    );
+  });
+
+  it('rejeita quitar um contrato que já está PAID_OFF', async () => {
+    const contract = await createPronampeContract();
+    const { settleFinancialContract, FinancialContractError } = await import('../financial-contract.service');
+
+    await settleFinancialContract({ userId: 'user-a', contractId: contract.id });
+    await expect(settleFinancialContract({ userId: 'user-a', contractId: contract.id })).rejects.toBeInstanceOf(FinancialContractError);
+  });
+
+  it('contrato de outro usuário nunca é encontrado nem quitado', async () => {
+    const contract = await createPronampeContract();
+    const { settleFinancialContract, FinancialContractError } = await import('../financial-contract.service');
+
+    await expect(settleFinancialContract({ userId: 'user-b', contractId: contract.id })).rejects.toBeInstanceOf(FinancialContractError);
+    const stillActive = contracts.get(contract.id);
+    expect(stillActive?.status).toBe('ACTIVE');
   });
 });

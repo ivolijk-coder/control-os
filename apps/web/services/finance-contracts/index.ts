@@ -1,10 +1,12 @@
 export {
   FinancialContractError,
+  buildFinancialContractSummary,
   createFinancialContract,
   getFinancialContract,
   getFinancialDashboard,
   listFinancialContracts,
   payFinancialInstallment,
+  settleFinancialContract,
   undoFinancialInstallmentPayment,
 } from './financial-contract.service';
 export { buildFinancialOverdueReminder, buildFinancialWeeklyReminder } from './financial-reminder.service';
@@ -14,6 +16,7 @@ export type {
   FinancialContractOrigin,
   FinancialContractSource,
   FinancialContractStatus,
+  FinancialContractSummary,
   FinancialContractType,
   FinancialDashboard,
   FinancialInstallment,
@@ -21,6 +24,8 @@ export type {
   FinancialInstallmentWithContract,
   PayFinancialInstallmentInput,
   PayFinancialInstallmentResult,
+  SettleFinancialContractInput,
+  SettleFinancialContractResult,
   UndoFinancialInstallmentPaymentInput,
   UndoFinancialInstallmentPaymentResult,
 } from './financial-contract.types';

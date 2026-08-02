@@ -8,7 +8,7 @@
 export type FinancialContractType = 'LOAN' | 'FINANCING' | 'CARD_INSTALLMENT' | 'SUPPLIER';
 export type FinancialContractOrigin = 'PERSONAL' | 'COMPANY';
 export type FinancialContractSource = 'MANUAL' | 'NOVA' | 'DOCUMENT';
-export type FinancialContractStatus = 'ACTIVE' | 'FINISHED' | 'CANCELLED';
+export type FinancialContractStatus = 'ACTIVE' | 'PAID_OFF' | 'CANCELLED';
 export type FinancialInstallmentStatus = 'PENDING' | 'PAID' | 'OVERDUE' | 'CANCELLED';
 
 export type FinancialInstallment = {
@@ -117,4 +117,38 @@ export type FinancialDashboard = {
   dueToday: FinancialInstallmentWithContract[];
   dueThisWeek: FinancialInstallmentWithContract[];
   overdue: FinancialInstallmentWithContract[];
+};
+
+/**
+ * Resumo de um contrato (Fase 3, "contract detail") — derivado só das
+ * parcelas já carregadas em `FinancialContract.installments`, nenhuma
+ * consulta própria (mesmo princípio de `financial-reminder.service.ts`:
+ * "nunca duplicar regras").
+ */
+export type FinancialContractSummary = {
+  totalAmount: number;
+  /** Soma das parcelas PAID. */
+  paidAmount: number;
+  /** Soma das parcelas PENDING/OVERDUE (exclui CANCELLED — quitação antecipada não é dívida em aberto). */
+  remainingAmount: number;
+  /** `paidAmount / totalAmount * 100`, 0-100, arredondado a 2 casas. `0` quando `totalAmount` é 0. */
+  percentagePaid: number;
+  /** Próxima parcela PENDING/OVERDUE por número. `null` quando não há nenhuma em aberto. */
+  nextInstallment: FinancialInstallment | null;
+  /** Parcelas PENDING/OVERDUE com `dueDate` antes de hoje. */
+  overdueInstallments: FinancialInstallment[];
+};
+
+export type SettleFinancialContractInput = {
+  userId: string;
+  contractId: string;
+  /** ISO — ausente = agora. Data de referência da quitação, vai para a auditoria. */
+  settledAt?: string;
+  source?: 'manual' | 'nova' | 'whatsapp' | 'api';
+};
+
+export type SettleFinancialContractResult = {
+  contract: FinancialContract;
+  /** Parcelas PENDING/OVERDUE que foram canceladas pela quitação (nunca inclui PAID — histórico é preservado). */
+  cancelledInstallments: FinancialInstallment[];
 };
