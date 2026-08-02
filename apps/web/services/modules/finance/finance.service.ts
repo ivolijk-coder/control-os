@@ -51,6 +51,11 @@ import {
  */
 const DEFAULT_FINANCE_CATEGORIES = [
   ['Alimentação', 'despesa', 'utensils', '#F97316'], ['Mercado', 'despesa', 'shopping-basket', '#22C55E'], ['Combustível', 'despesa', 'fuel', '#EAB308'], ['Saúde', 'despesa', 'heart-pulse', '#EF4444'], ['Educação', 'despesa', 'graduation-cap', '#8B5CF6'], ['Trabalho', 'despesa', 'briefcase', '#3B82F6'], ['Moradia', 'despesa', 'house', '#06B6D4'], ['Internet', 'despesa', 'wifi', '#0EA5E9'], ['Energia', 'despesa', 'zap', '#F59E0B'], ['Água', 'despesa', 'droplets', '#38BDF8'], ['Investimentos', 'receita', 'trending-up', '#10B981'], ['Salário', 'receita', 'wallet-cards', '#22C55E'], ['Freelance', 'receita', 'rocket', '#6366F1'],
+  // Evolução "Parcelas & Empréstimos": categoria padrão usada por
+  // `FinancialContractService.payInstallment` ao criar a despesa real de
+  // cada parcela paga — mesmo mecanismo de materialização das demais
+  // categorias padrão acima, nenhum novo caminho.
+  ['Empréstimos e Financiamentos', 'despesa', 'landmark', '#DC2626'],
 ] as const;
 
 
