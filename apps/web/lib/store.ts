@@ -80,6 +80,21 @@ interface AppState {
    * outra persona. Diferente de `addNovaMessage` (só anexa).
    */
   replaceNovaMessages: (persona: NovaPersona, messages: ConversationMessage[]) => void;
+  /**
+   * Atualiza UMA mensagem no lugar, por id (Fase F — "NOVA como centro da
+   * experiência"). Diferente de `addNovaMessage` (sempre anexa) e
+   * `replaceNovaMessages` (troca o histórico inteiro): usado pela bolha de
+   * progresso de análise de documento — o polling curto reescreve o mesmo
+   * `id` várias vezes (estágio a estágio) e, ao chegar em COMPLETED, a
+   * troca pelo resultado final também é uma chamada desta função, nunca
+   * uma mensagem nova. Vive no store (não em estado local do componente)
+   * pelo mesmo motivo de sempre: o `set` do Zustand sempre lê o estado mais
+   * recente, então o `setInterval` do polling nunca corre risco de
+   * trabalhar com um array de mensagens desatualizado (closure obsoleta).
+   * Sem correspondência por id: no-op (mensagem já pode ter sido removida
+   * por um resumo de conversa nesse meio-tempo).
+   */
+  updateNovaMessage: (persona: NovaPersona, id: string, patch: Partial<ConversationMessage>) => void;
 
   /**
    * Persona ativa — qual identidade conduz o próximo turno / qual balde de
@@ -129,6 +144,13 @@ export const useAppStore = create<AppState>()(
       replaceNovaMessages: (persona, messages) =>
         set((state) => ({
           novaMessagesByPersona: { ...state.novaMessagesByPersona, [persona]: messages },
+        })),
+      updateNovaMessage: (persona, id, patch) =>
+        set((state) => ({
+          novaMessagesByPersona: {
+            ...state.novaMessagesByPersona,
+            [persona]: state.novaMessagesByPersona[persona].map((message) => (message.id === id ? { ...message, ...patch } : message)),
+          },
         })),
 
       activePersona: 'nova',

@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { auditDocument, documentStorage, DocumentError, newStorageKey, scanDocument, validateUploadedDocument } from './document-core';
 import { enqueueDocumentAnalysisJob } from './document-analysis-queue';
+import type { DocumentAnalysisProgressStage } from './contract-analysis';
 
 function titleFromName(fileName: string): string { return fileName.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').trim().slice(0, 160) || 'Documento sem título'; }
 
@@ -121,12 +122,58 @@ export async function enqueueDocumentAnalysis(userId: string, id: string) {
   const job = await prisma.documentAnalysisJob.upsert({
     where: { documentId_analysisVersion: { documentId: document.id, analysisVersion: document.analysisVersion } },
     create: { documentId: document.id, analysisVersion: document.analysisVersion },
-    update: { status: 'QUEUED', runAfter: new Date(), attempts: 0, lockedAt: null, lockedBy: null, lastErrorCode: null, lastErrorMessage: null },
+    // progressStage volta pro início (Fase F) — um reenfileiramento (nova
+    // versão de análise, ou repetir depois de FAILED) refaz o pipeline
+    // inteiro; o estágio da tentativa anterior nunca é reaproveitado.
+    update: { status: 'QUEUED', progressStage: 'READING_DOCUMENT', runAfter: new Date(), attempts: 0, lockedAt: null, lockedBy: null, lastErrorCode: null, lastErrorMessage: null },
   });
   await prisma.storedDocument.update({ where: { id }, data: { analysisStatus: 'QUEUED', analysisErrorCode: null, analysisErrorMessage: null } });
   await auditDocument({ userId, documentId: id, operation: 'DOCUMENT_ANALYSIS_QUEUED', source: 'manual', entityType: 'document', entityId: id, after: { jobId: job.id, version: document.analysisVersion } });
   await enqueueDocumentAnalysisJob(job.id);
   return job;
+}
+
+export type DocumentAnalysisProgress = {
+  documentId: string;
+  analysisStatus: string;
+  progressStage: DocumentAnalysisProgressStage | null;
+  jobStatus: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+};
+
+/**
+ * Leitura pra polling curto (Fase F — "NOVA como centro da experiência").
+ * Deliberadamente barata: um `findFirst` pelo documento (já com índice por
+ * `id`/`userId` no schema) e outro pelo job da versão de análise atual —
+ * nunca a lista inteira de documentos, que é o que a tela de Documentos já
+ * usa e seria cara demais pra chamar a cada poucos segundos.
+ *
+ * `progressStage`/`jobStatus` só existem enquanto houve pelo menos um job
+ * pra esta versão (`null` se a análise nunca foi pedida). `analysisStatus`
+ * (em `StoredDocument`) continua a fonte de verdade pro estado geral —
+ * `progressStage` só refina o "PROCESSING" com o estágio humano; o
+ * cliente para de sondar assim que `analysisStatus` sai de
+ * QUEUED/PROCESSING.
+ */
+export async function getDocumentAnalysisProgress(userId: string, id: string): Promise<DocumentAnalysisProgress | undefined> {
+  const document = await prisma.storedDocument.findFirst({
+    where: { id, userId },
+    select: { id: true, analysisStatus: true, analysisVersion: true, analysisErrorCode: true, analysisErrorMessage: true },
+  });
+  if (!document) return undefined;
+  const job = await prisma.documentAnalysisJob.findFirst({
+    where: { documentId: document.id, analysisVersion: document.analysisVersion },
+    select: { status: true, progressStage: true },
+  });
+  return {
+    documentId: document.id,
+    analysisStatus: document.analysisStatus,
+    progressStage: job?.progressStage ?? null,
+    jobStatus: job?.status ?? null,
+    errorCode: document.analysisErrorCode,
+    errorMessage: document.analysisErrorMessage,
+  };
 }
 
 export async function cancelDocumentAnalysis(userId: string, id: string) {

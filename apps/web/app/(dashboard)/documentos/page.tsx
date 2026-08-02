@@ -6,6 +6,7 @@ import { FadeIn } from '@/components/dashboard/fade-in';
 import { GlassCard } from '@/components/ui/glass-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { SectionHeader } from '@/components/dashboard/section-header';
+import { pollDocumentAnalysisProgress } from '@/lib/use-document-analysis-progress';
 
 type DocumentType = 'CONTRACT_SOCIAL' | 'FINANCING_CONTRACT' | 'LOAN_CONTRACT' | 'INVOICE' | 'RECEIPT' | 'PAYMENT_PROOF' | 'TAX_DOCUMENT' | 'PERSONAL_DOCUMENT' | 'LEGAL_DOCUMENT' | 'OTHER';
 type DocumentEntities = { company?: string | null; people?: string[]; dates?: string[]; amounts?: number[] };
@@ -86,6 +87,34 @@ export default function DocumentosPage() {
 
   React.useEffect(() => { void load(); }, [load]);
 
+  /**
+   * Fase F ("NOVA como centro da experiência"): a mesma UI humana de
+   * progresso da NOVA (polling curto, sem SSE/WebSocket), aplicada aqui
+   * pra substituir o antigo "Atualize esta página em alguns instantes" por
+   * um estágio de verdade. `activePollsRef` evita iniciar um segundo
+   * polling pro mesmo documento a cada re-render; o poll de cada documento
+   * se encerra sozinho (`onSettled`) assim que sai de QUEUED/PROCESSING —
+   * o efeito abaixo só PRECISA rodar de novo pra pegar documentos novos
+   * (upload) ou reenfileirados (retry), nunca reinicia um poll em curso.
+   */
+  const [progressLabels, setProgressLabels] = React.useState<Record<string, string>>({});
+  const activePollsRef = React.useRef<Record<string, () => void>>({});
+  React.useEffect(() => {
+    for (const document of documents) {
+      const inProgress = document.analysisStatus === 'QUEUED' || document.analysisStatus === 'PROCESSING';
+      if (!inProgress || activePollsRef.current[document.id]) continue;
+      activePollsRef.current[document.id] = pollDocumentAnalysisProgress(document.id, {
+        onUpdate: (result) => setProgressLabels((current) => ({ ...current, [document.id]: result.label })),
+        onSettled: () => {
+          delete activePollsRef.current[document.id];
+          setProgressLabels((current) => { const next = { ...current }; delete next[document.id]; return next; });
+          void load();
+        },
+      });
+    }
+  }, [documents, load]);
+  React.useEffect(() => () => { Object.values(activePollsRef.current).forEach((stop) => stop()); }, []);
+
   const upload = async (file: File) => {
     setIsUploading(true); setMessage(null);
     try {
@@ -160,7 +189,7 @@ export default function DocumentosPage() {
             {proposal!.status !== 'ARCHIVED' && proposal!.validationWarnings?.length ? <p className="mt-3 text-xs text-accent-gold">{proposal!.validationWarnings.join(' ')}</p> : null}
             {proposal!.status !== 'ARCHIVED' && <div className="mt-4"><button onClick={() => void rejectProposal(proposal!.id)} className="inline-flex items-center gap-2 rounded-lg border border-white/[0.12] px-3 py-2 text-sm text-text-primary hover:bg-white/[0.06]"><X className="h-4 w-4" /> Descartar</button></div>}
           </div>}
-          {document.analysisStatus === 'QUEUED' || document.analysisStatus === 'PROCESSING' ? <p className="mt-4 text-sm text-text-secondary">A análise está em andamento. Atualize esta página em alguns instantes para revisar a prévia.</p> : null}
+          {document.analysisStatus === 'QUEUED' || document.analysisStatus === 'PROCESSING' ? <p className="mt-4 flex items-center gap-2 text-sm text-text-secondary"><Loader2 className="h-3.5 w-3.5 animate-spin" /> {progressLabels[document.id] ?? 'Lendo documento…'}</p> : null}
           {document.analysisStatus === 'NEEDS_REVIEW' && !showsClassificationCard && !financialActionable ? <p className="mt-4 text-sm text-accent-gold">O documento foi guardado, mas aguarda a verificação de segurança antes da análise.</p> : null}
           {document.analysisStatus === 'FAILED' ? <p className="mt-4 text-sm text-accent-red">A análise falhou: {document.analysisErrorMessage ?? 'tente novamente mais tarde.'}</p> : null}
           {proposal?.status === 'CONFIRMED' && <p className="mt-4 text-sm text-accent-green">Este contrato já foi confirmado e gerou um parcelamento.</p>}

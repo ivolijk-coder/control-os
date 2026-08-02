@@ -78,6 +78,21 @@ export async function claimDocumentAnalysisJob(jobId: string, runnerId: string):
   return claimed.count === 1;
 }
 
+export type DocumentAnalysisProgressStage = 'READING_DOCUMENT' | 'IDENTIFYING_TYPE' | 'EXTRACTING_DATA' | 'PREPARING_RECOMMENDATION' | 'COMPLETED' | 'FAILED';
+
+/**
+ * Avança o `progressStage` humano de um job (Fase F). Só o worker chama
+ * isto — nunca o cliente. É puramente cosmético (alimenta o polling curto
+ * da UI, ver `app/api/documents/[id]/analysis-progress/route.ts`): uma
+ * falha aqui nunca deve derrubar a análise real, por isso é best-effort
+ * (`.catch`). `lockedBy: runnerId` evita pisar no progresso se este job já
+ * foi liberado por outro runner (timeout/recovery) enquanto este seguia
+ * processando.
+ */
+async function setDocumentAnalysisProgressStage(jobId: string, runnerId: string, stage: DocumentAnalysisProgressStage): Promise<void> {
+  await prisma.documentAnalysisJob.updateMany({ where: { id: jobId, lockedBy: runnerId }, data: { progressStage: stage } }).catch(() => undefined);
+}
+
 function assertDocumentAnalysisEnabled(): void {
   if (process.env.OPENAI_DOCUMENT_ANALYSIS_ENABLED !== 'true') {
     throw new DocumentError(
@@ -332,7 +347,9 @@ async function recoverInterruptedDocumentAnalysisJobs() {
   for (const staleJob of staleJobs) {
     const released = await prisma.documentAnalysisJob.updateMany({
       where: { id: staleJob.id, status: 'PROCESSING', lockedAt: { lt: before } },
-      data: { status: 'QUEUED', lockedAt: null, lockedBy: null, runAfter: new Date(), lastErrorCode: 'WORKER_INTERRUPTED', lastErrorMessage: 'A análise foi retomada após interrupção do worker.' },
+      // progressStage volta pro início (Fase F): o próximo runner refaz o
+      // pipeline inteiro, o estágio salvo do worker interrompido não vale mais.
+      data: { status: 'QUEUED', progressStage: 'READING_DOCUMENT', lockedAt: null, lockedBy: null, runAfter: new Date(), lastErrorCode: 'WORKER_INTERRUPTED', lastErrorMessage: 'A análise foi retomada após interrupção do worker.' },
     });
     if (!released.count) continue;
     await prisma.storedDocument.updateMany({ where: { id: staleJob.documentId, analysisStatus: 'PROCESSING' }, data: { analysisStatus: 'QUEUED' } });
@@ -353,7 +370,18 @@ export async function processNextDocumentAnalysisJob() {
     if (!document.storageKey || document.scanStatus !== 'CLEAN') throw new DocumentError('SECURITY_SCAN_PENDING', 'A análise exige arquivo limpo no storage privado.');
     await prisma.storedDocument.update({ where: { id: document.id }, data: { analysisStatus: 'PROCESSING', analysisStartedAt: new Date(), analysisAttempts: { increment: 1 } } });
     await auditDocument({ userId: document.userId, documentId: document.id, operation: 'DOCUMENT_ANALYSIS_STARTED', source: 'system', entityType: 'document', entityId: document.id });
-    const content = await documentStorage().get(document.storageKey); const text = await new OpenAITemporaryTextExtractor().extract({ content, fileName: document.originalFileName, mimeType: document.detectedMimeType || document.mimeType }); const preview = await new OpenAIContractDataExtractor().extract(text);
+    // Fase F: progressStage já nasce em READING_DOCUMENT (default do schema
+    // e reset a cada reenfileiramento — ver enqueueDocumentAnalysis) e cobre
+    // esta etapa inteira, sem escrita própria aqui.
+    const content = await documentStorage().get(document.storageKey);
+    const text = await new OpenAITemporaryTextExtractor().extract({ content, fileName: document.originalFileName, mimeType: document.detectedMimeType || document.mimeType });
+    // IDENTIFYING_TYPE/EXTRACTING_DATA (Fase F): a mesma chamada única à IA
+    // classifica E extrai — ver doc do enum em schema.prisma. IDENTIFYING_TYPE
+    // cobre a chamada de rede (a parte lenta); EXTRACTING_DATA marca que a
+    // resposta já chegou estruturada, antes de decidir o destino do documento.
+    await setDocumentAnalysisProgressStage(job.id, runnerId, 'IDENTIFYING_TYPE');
+    const preview = await new OpenAIContractDataExtractor().extract(text);
+    await setDocumentAnalysisProgressStage(job.id, runnerId, 'EXTRACTING_DATA');
     // decideDocumentAction é o único portão: ARCHIVE (guarda com
     // classificação/resumo, sem proposta acionável), CREATE_FINANCIAL_PROPOSAL
     // (dados mínimos de crédito confirmados) ou ASK_USER (baixa confiança,
@@ -376,8 +404,13 @@ export async function processNextDocumentAnalysisJob() {
     // as duas existem juntas ou nenhuma existe.
     const conversationTaskKey = `conversation-task:document-analysis:${document.id}:v${document.analysisVersion}`;
     const conversationTaskContent = buildDocumentConversationTaskContent(preview, decision, isFinancial && validation.valid);
+    // PREPARING_RECOMMENDATION (Fase F): decisão, validação e o texto da
+    // ConversationTask já estão prontos — o que falta é persistir tudo na
+    // mesma transação abaixo (proposta + task), a etapa que a UI narra como
+    // "preparando recomendação".
+    await setDocumentAnalysisProgressStage(job.id, runnerId, 'PREPARING_RECOMMENDATION');
     const committed = await prisma.$transaction(async (tx) => {
-      const ownership = await tx.documentAnalysisJob.updateMany({ where: { id: job.id, status: 'PROCESSING', lockedBy: runnerId }, data: { status: 'COMPLETED', lockedAt: null, lockedBy: null } });
+      const ownership = await tx.documentAnalysisJob.updateMany({ where: { id: job.id, status: 'PROCESSING', lockedBy: runnerId }, data: { status: 'COMPLETED', progressStage: 'COMPLETED', lockedAt: null, lockedBy: null } });
       if (!ownership.count) return null;
       const existingProposal = await tx.documentImportProposal.findFirst({ where: { idempotencyKey: previewKey }, select: { id: true } });
       const proposal = await tx.documentImportProposal.upsert({ where: { idempotencyKey: previewKey }, create: { userId: document.userId, documentId: document.id, analysisVersion: document.analysisVersion, idempotencyKey: previewKey, status: proposalStatus, extractedData: preview as unknown as Prisma.InputJsonValue, validationWarnings: validation.warnings }, update: { extractedData: preview as unknown as Prisma.InputJsonValue, validationWarnings: validation.warnings, status: proposalStatus } });
@@ -438,7 +471,10 @@ export async function processNextDocumentAnalysisJob() {
     const attempt = job.attempts + 1;
     const retry = shouldRetryDocumentAnalysis(error, attempt);
     const runAfter = retry ? new Date(Date.now() + documentAnalysisBackoffMs(attempt)) : new Date();
-    const released = await prisma.documentAnalysisJob.updateMany({ where: { id: job.id, status: 'PROCESSING', lockedBy: runnerId }, data: { status: retry ? 'QUEUED' : 'FAILED', runAfter, lastErrorCode: code, lastErrorMessage: message.slice(0, 500), lockedAt: null, lockedBy: null } });
+    // progressStage (Fase F): tentativa nova volta pro início do pipeline
+    // (READING_DOCUMENT) — o próximo runner refaz tudo, nenhum estágio
+    // anterior ainda é válido; falha definitiva marca FAILED, terminal.
+    const released = await prisma.documentAnalysisJob.updateMany({ where: { id: job.id, status: 'PROCESSING', lockedBy: runnerId }, data: { status: retry ? 'QUEUED' : 'FAILED', progressStage: retry ? 'READING_DOCUMENT' : 'FAILED', runAfter, lastErrorCode: code, lastErrorMessage: message.slice(0, 500), lockedAt: null, lockedBy: null } });
     if (!released.count) return { jobId: job.id, skipped: true };
     await prisma.storedDocument.update({ where: { id: document.id }, data: { analysisStatus: retry ? 'QUEUED' : 'FAILED', analysisErrorCode: code, analysisErrorMessage: message.slice(0, 500) } });
     if (retry) await enqueueDocumentAnalysisJob(job.id).catch(() => undefined);

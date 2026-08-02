@@ -34,6 +34,8 @@ import { useAppStore } from '@/lib/store';
 import { useNovaContext } from '@/lib/use-nova-context';
 import { transitionOut, transitionSpring } from '@/lib/motion';
 import { formatCurrency } from '@/lib/utils';
+import { pollDocumentAnalysisProgress } from '@/lib/use-document-analysis-progress';
+import { progressStageLabel } from '@/lib/document-analysis-progress';
 
 // CONTROL OS — HERO SCENE REBOOT: qual tecnologia renderiza o Hero Object
 // agora depende da persona — decisão isolada em `NovaHeroStage`. NOVA usa
@@ -217,6 +219,7 @@ export function NovaWorkspace({
   // fechar/reabrir o painel flutuante. Ver comentário em `lib/store.ts`.
   const addNovaMessage = useAppStore((state) => state.addNovaMessage);
   const replaceNovaMessages = useAppStore((state) => state.replaceNovaMessages);
+  const updateNovaMessage = useAppStore((state) => state.updateNovaMessage);
   // CONTROL OS — Etapa 15 (LEGENDARY): qual identidade conduz o PRÓXIMO
   // turno — vive no `useAppStore` (não `useState` local) pelo mesmo motivo
   // de `novaMessagesByPersona`: sobrevive a fechar/reabrir o painel
@@ -367,6 +370,22 @@ export function NovaWorkspace({
   // dinheiro: quem decide é sempre o handler no servidor, buscando o
   // registro de origem de novo.
   const taskPayloadsRef = React.useRef<Record<string, Record<string, unknown>>>({});
+
+  type ConversationTaskSummary = { id: string; message: string; actions: ConversationMessageAction[]; payload?: Record<string, unknown> };
+
+  /**
+   * Converte uma `ConversationTask` (vinda de `GET /api/nova/conversation-tasks`)
+   * no conteúdo de bolha que a NOVA mostra — usado tanto pela checagem ao
+   * montar (abaixo) quanto pela substituição em tempo real da bolha de
+   * progresso quando uma análise de documento termina (Fase F). Sempre
+   * guarda o `payload` em `taskPayloadsRef` primeiro — o wizard de campos
+   * (Fase E) depende dele existir antes do clique em qualquer ação.
+   */
+  const applyConversationTask = React.useCallback((task: ConversationTaskSummary): Omit<ConversationMessage, 'id' | 'role'> => {
+    taskPayloadsRef.current[task.id] = task.payload ?? {};
+    return { content: task.message, status: 'success', taskId: task.id, taskActions: task.actions, hideDismiss: false };
+  }, []);
+
   React.useEffect(() => {
     if (hasCheckedConversationTasksRef.current) return;
     hasCheckedConversationTasksRef.current = true;
@@ -375,26 +394,15 @@ export function NovaWorkspace({
       try {
         const response = await fetch('/api/nova/conversation-tasks');
         if (!response.ok) return;
-        const payload = await response.json() as {
-          success?: boolean;
-          tasks?: Array<{ id: string; message: string; actions: ConversationMessageAction[]; payload?: Record<string, unknown> }>;
-        };
+        const payload = await response.json() as { success?: boolean; tasks?: ConversationTaskSummary[] };
         for (const task of payload.tasks ?? []) {
-          taskPayloadsRef.current[task.id] = task.payload ?? {};
-          addNovaMessage(effectivePersona, {
-            id: nextMessageId('nova'),
-            role: 'nova',
-            content: task.message,
-            status: 'success',
-            taskId: task.id,
-            taskActions: task.actions,
-          });
+          addNovaMessage(effectivePersona, { id: nextMessageId('nova'), role: 'nova', ...applyConversationTask(task) });
         }
       } catch {
         // Silêncio é o estado seguro — nunca inventa uma pendência quando a busca falha.
       }
     })();
-  }, [effectivePersona, addNovaMessage]);
+  }, [effectivePersona, addNovaMessage, applyConversationTask]);
 
   /**
    * Coleta de campos em chat (Fase E — "concluir 100% no chat", "coletar
@@ -771,6 +779,16 @@ export function NovaWorkspace({
       setIsThinking(true);
       setThinkingStatus('executando');
 
+      // Fase F ("NOVA como centro da experiência"): UMA bolha acompanha o
+      // arquivo do início ao fim — "Verificando segurança…" (o scan roda
+      // durante o próprio upload, sem job ainda pra sondar), depois os
+      // estágios reais do worker via polling curto, até ser substituída
+      // pelo resultado final (a ConversationTask de verdade, Fase C/D/E,
+      // ou uma mensagem de erro). Nunca manda o usuário "atualizar a
+      // página" ou reabrir a NOVA pra saber o que aconteceu.
+      const progressMessageId = nextMessageId('nova');
+      addNovaMessage(effectivePersona, { id: progressMessageId, role: 'nova', content: progressStageLabel('VERIFYING_SECURITY') });
+
       void (async () => {
         try {
           const formData = new FormData();
@@ -780,37 +798,66 @@ export function NovaWorkspace({
           if (!uploadResponse.ok || !uploadPayload.success || !uploadPayload.document) throw new Error(uploadPayload.message ?? 'Não foi possível guardar o arquivo.');
 
           const document = uploadPayload.document;
-          if (document.mimeType === 'application/pdf') {
-            const proposalResponse = await fetch(`/api/documents/${document.id}/contract-proposal`, { method: 'POST' });
-            const proposalPayload = await proposalResponse.json() as { success?: boolean; message?: string };
-            if (!proposalResponse.ok || !proposalPayload.success) throw new Error(proposalPayload.message ?? 'O PDF foi guardado, mas não consegui ler o contrato agora.');
-            addNovaMessage(effectivePersona, {
-              id: nextMessageId('nova'),
-              role: 'nova',
-              content: `Guardei “${document.title}”. A análise foi colocada na fila e só será liberada depois da verificação de segurança. Quando a prévia estiver pronta, revise os dados em Documentos e confirme. Nada financeiro foi criado ainda.`,
-              status: 'success',
-            });
-          } else {
-            addNovaMessage(effectivePersona, {
-              id: nextMessageId('nova'),
-              role: 'nova',
+          if (document.mimeType !== 'application/pdf') {
+            updateNovaMessage(effectivePersona, progressMessageId, {
               content: `Guardei “${document.title}” na sua área privada de Documentos. Quando quiser, peça este arquivo pelo chat que eu preparo o download.`,
               status: 'success',
             });
+            setIsThinking(false);
+            return;
           }
+
+          const proposalResponse = await fetch(`/api/documents/${document.id}/contract-proposal`, { method: 'POST' });
+          const proposalPayload = await proposalResponse.json() as { success?: boolean; message?: string };
+          if (!proposalResponse.ok || !proposalPayload.success) throw new Error(proposalPayload.message ?? 'O PDF foi guardado, mas não consegui ler o contrato agora.');
+
+          updateNovaMessage(effectivePersona, progressMessageId, { content: `Guardei “${document.title}”. ${progressStageLabel('READING_DOCUMENT')}` });
+          setIsThinking(false);
+
+          pollDocumentAnalysisProgress(document.id, {
+            onUpdate: (result) => {
+              updateNovaMessage(effectivePersona, progressMessageId, { content: `Guardei “${document.title}”. ${result.label}` });
+            },
+            onSettled: (result) => {
+              if (result.failed) {
+                updateNovaMessage(effectivePersona, progressMessageId, {
+                  content: `Não consegui concluir a análise de “${document.title}” agora. Revise em Documentos quando quiser tentar de novo.`,
+                  status: 'error',
+                });
+                return;
+              }
+              void (async () => {
+                try {
+                  const tasksResponse = await fetch('/api/nova/conversation-tasks');
+                  const tasksPayload = await tasksResponse.json() as { success?: boolean; tasks?: ConversationTaskSummary[] };
+                  // Documento acabou de terminar — a ConversationTask criada
+                  // na mesma transação do worker (Fase C) é a mais nova pra
+                  // este documentId; nunca inventa conteúdo se ela não
+                  // aparecer ainda (poll seguinte do endpoint de progresso já
+                  // teria pego COMPLETED só depois de a transação commitar).
+                  const task = (tasksPayload.tasks ?? []).find((candidate) => candidate.payload?.documentId === document.id);
+                  updateNovaMessage(effectivePersona, progressMessageId, task
+                    ? applyConversationTask(task)
+                    : { content: `Terminei de analisar “${document.title}”. Dá uma olhada em Documentos quando quiser.`, status: 'success' });
+                } catch {
+                  updateNovaMessage(effectivePersona, progressMessageId, {
+                    content: `Terminei de analisar “${document.title}”. Dá uma olhada em Documentos quando quiser.`,
+                    status: 'success',
+                  });
+                }
+              })();
+            },
+          });
         } catch (error) {
-          addNovaMessage(effectivePersona, {
-            id: nextMessageId('nova'),
-            role: 'nova',
+          updateNovaMessage(effectivePersona, progressMessageId, {
             content: error instanceof Error ? error.message : 'Não consegui guardar o arquivo agora.',
             status: 'error',
           });
-        } finally {
           setIsThinking(false);
         }
       })();
     },
-    [addNovaMessage, effectivePersona]
+    [addNovaMessage, updateNovaMessage, applyConversationTask, effectivePersona]
   );
 
   const handleConfirmPending = React.useCallback(() => {

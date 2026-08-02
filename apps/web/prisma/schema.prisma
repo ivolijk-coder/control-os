@@ -145,6 +145,28 @@ enum DocumentAnalysisJobStatus {
   CANCELLED
 }
 
+/// Estágio humano do processamento de um `DocumentAnalysisJob` (Fase F —
+/// "NOVA como centro da experiência"). Não inclui um estágio de
+/// "verificando segurança": o scan de vírus roda de forma síncrona durante
+/// o upload (`persistent-document.service.ts`), ANTES de qualquer job
+/// existir — `enqueueDocumentAnalysis` já exige `scanStatus === 'CLEAN'`
+/// como pré-condição. Esse rótulo é só do cliente, mostrado enquanto o
+/// upload em si está em voo, nunca escrito aqui.
+/// `READING_DOCUMENT` é o default: cobre tanto QUEUED quanto o início de
+/// PROCESSING (extração de texto), porque o próximo passo real do job,
+/// sempre, é ler o documento. `IDENTIFYING_TYPE`/`EXTRACTING_DATA` marcam
+/// a mesma chamada única à IA (que classifica e extrai no mesmo request) —
+/// dois estágios, uma chamada de rede: nenhum dos dois é fabricado, só
+/// podem passar rápido demais pro polling pegar os dois, o que é esperado.
+enum DocumentAnalysisProgressStage {
+  READING_DOCUMENT
+  IDENTIFYING_TYPE
+  EXTRACTING_DATA
+  PREPARING_RECOMMENDATION
+  COMPLETED
+  FAILED
+}
+
 /// Origem técnica de um lançamento. O saldo de abertura é uma movimentação
 /// financeira normal, não um campo solto da conta.
 enum TransactionOrigin {
@@ -607,6 +629,10 @@ model DocumentAnalysisJob {
   document         StoredDocument            @relation(fields: [documentId], references: [id], onDelete: Cascade)
   analysisVersion  Int                       @map("analysis_version")
   status           DocumentAnalysisJobStatus @default(QUEUED)
+  /// Fase F — ver doc do enum `DocumentAnalysisProgressStage`. Escrito só
+  /// pelo worker (`processNextDocumentAnalysisJob`), nunca pelo cliente;
+  /// resetado para `READING_DOCUMENT` a cada nova tentativa/reenfileiramento.
+  progressStage    DocumentAnalysisProgressStage @default(READING_DOCUMENT) @map("progress_stage")
   attempts         Int                       @default(0)
   runAfter         DateTime                  @default(now()) @map("run_after") @db.Timestamptz(3)
   lockedAt         DateTime?                 @map("locked_at") @db.Timestamptz(3)
