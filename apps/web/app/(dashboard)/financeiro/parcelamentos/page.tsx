@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { Button } from '@control-os/ui';
 import { AlertTriangle, CalendarCheck, CalendarClock, CalendarDays, Landmark, Layers3, Plus, Wallet, X } from 'lucide-react';
 import { FadeIn } from '@/components/dashboard/fade-in';
 import { GlassCard } from '@/components/ui/glass-card';
@@ -16,6 +17,8 @@ import {
   useFinancialContract,
   useFinancialContracts,
   useFinancialContractsDashboard,
+  usePayFinancialInstallment,
+  useUndoFinancialInstallmentPayment,
   type CreateFinancialContractInput,
   type FinancialContractDto,
   type FinancialContractSource,
@@ -23,6 +26,15 @@ import {
   type FinancialInstallmentDto,
   type FinancialInstallmentWithContractDto,
 } from '@/lib/finance-contracts';
+
+/** Contexto mínimo pra abrir o modal "Confirmar pagamento" (ponto 5 do script) a partir de qualquer lugar da tela (lista, bloco de alerta ou timeline do detalhe). */
+type PayTarget = {
+  installmentId: string;
+  contractName: string;
+  number: number;
+  totalInstallments: number;
+  amount: number;
+};
 
 const SOURCE_LABEL: Record<FinancialContractSource, string> = {
   MANUAL: 'Manual',
@@ -40,12 +52,14 @@ const SOURCE_LABEL: Record<FinancialContractSource, string> = {
  * `financeiro/page.tsx` já dá a lançamentos e `contas/page.tsx` dá a
  * contas).
  *
- * Este commit ("add installments dashboard page") cobre os cards, os
- * blocos de alerta, a lista de contratos, o formulário de novo contrato e
- * o painel de detalhe (progresso/pago/restante/timeline) — tudo em modo de
- * leitura. "Marcar pago"/"Reverter pagamento" (modal de confirmação,
- * rotas de pagamento/estorno, hooks) chegam no próximo commit ("payment
- * and reversal flow"), por cima desta mesma tela.
+ * "Adicionar contrato" expande um formulário inline (mesmo padrão de
+ * `financeiro/contas/page.tsx`); "Marcar pago" abre `PaymentConfirmModal`
+ * (`FloatingPanel`/Radix Dialog — mesmo componente-base de todo overlay do
+ * CONTROL OS) a partir de qualquer lugar da tela (lista, bloco de alerta ou
+ * timeline do detalhe). Cards/lista/detalhe chegaram no commit anterior
+ * ("add installments dashboard page"); este commit ("payment and reversal
+ * flow") acrescenta o modal de pagamento, "Reverter pagamento" na timeline
+ * e as rotas/hooks que os dois usam.
  */
 
 const CONTRACT_TYPES: Array<{ value: FinancialContractType; label: string }> = [
@@ -82,10 +96,15 @@ export default function ParcelamentosPage() {
   const dashboardQuery = useFinancialContractsDashboard();
   const contractsQuery = useFinancialContracts();
   const createContract = useCreateFinancialContract();
+  const payInstallment = usePayFinancialInstallment();
+  const undoPayment = useUndoFinancialInstallmentPayment();
 
   const [formOpen, setFormOpen] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
+  const [payTarget, setPayTarget] = React.useState<PayTarget | null>(null);
+  const [payDate, setPayDate] = React.useState(todayInputValue());
   const [selectedContractId, setSelectedContractId] = React.useState<string | undefined>(undefined);
+  const [actionError, setActionError] = React.useState<string | null>(null);
 
   const loading = dashboardQuery.isPending || contractsQuery.isPending;
   const errorMessage = dashboardQuery.isError
@@ -101,6 +120,32 @@ export default function ParcelamentosPage() {
       setFormOpen(false);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Não foi possível criar o contrato agora.');
+    }
+  }
+
+  function openPayModal(target: PayTarget): void {
+    setActionError(null);
+    setPayDate(todayInputValue());
+    setPayTarget(target);
+  }
+
+  async function confirmPay(): Promise<void> {
+    if (!payTarget) return;
+    setActionError(null);
+    try {
+      await payInstallment.mutateAsync({ id: payTarget.installmentId, paidAt: payDate ? `${payDate}T12:00:00.000Z` : undefined });
+      setPayTarget(null);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Não foi possível marcar a parcela como paga.');
+    }
+  }
+
+  async function handleUndo(installmentId: string): Promise<void> {
+    setActionError(null);
+    try {
+      await undoPayment.mutateAsync(installmentId);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Não foi possível desfazer o pagamento.');
     }
   }
 
@@ -169,6 +214,12 @@ export default function ParcelamentosPage() {
         </div>
       </FadeIn>
 
+      {actionError && (
+        <FadeIn>
+          <FormError message={actionError} />
+        </FadeIn>
+      )}
+
       <FadeIn delay={0.13}>
         <div className="flex flex-col gap-3">
           <SectionHeader title="Parcelas do mês" meta={`${dashboard.dueThisMonth.items.length}`} />
@@ -177,7 +228,19 @@ export default function ParcelamentosPage() {
           ) : (
             <div className="flex flex-col gap-2">
               {dashboard.dueThisMonth.items.map((installment) => (
-                <InstallmentRow key={installment.id} installment={installment} />
+                <InstallmentRow
+                  key={installment.id}
+                  installment={installment}
+                  onStartPay={() =>
+                    openPayModal({
+                      installmentId: installment.id,
+                      contractName: installment.contractInstitution ? `${installment.contractInstitution} — ${installment.contractName}` : installment.contractName,
+                      number: installment.number,
+                      totalInstallments: contracts.find((item) => item.id === installment.contractId)?.totalInstallments ?? installment.number,
+                      amount: installment.amount,
+                    })
+                  }
+                />
               ))}
             </div>
           )}
@@ -192,14 +255,44 @@ export default function ParcelamentosPage() {
           ) : (
             <div className="flex flex-col gap-2">
               {contracts.map((contract) => (
-                <ContractRow key={contract.id} contract={contract} onOpenDetail={() => setSelectedContractId(contract.id)} />
+                <ContractRow
+                  key={contract.id}
+                  contract={contract}
+                  onOpenDetail={() => setSelectedContractId(contract.id)}
+                  onStartPay={() => {
+                    const next = nextPendingInstallment(contract);
+                    if (!next) return;
+                    openPayModal({
+                      installmentId: next.id,
+                      contractName: contract.name,
+                      number: next.number,
+                      totalInstallments: contract.totalInstallments,
+                      amount: next.amount,
+                    });
+                  }}
+                />
               ))}
             </div>
           )}
         </div>
       </FadeIn>
 
-      <ContractDetailPanel contractId={selectedContractId} onClose={() => setSelectedContractId(undefined)} />
+      <PaymentConfirmModal
+        target={payTarget}
+        payDate={payDate}
+        onPayDateChange={setPayDate}
+        submitting={payInstallment.isPending}
+        onCancel={() => setPayTarget(null)}
+        onConfirm={() => void confirmPay()}
+      />
+
+      <ContractDetailPanel
+        contractId={selectedContractId}
+        onClose={() => setSelectedContractId(undefined)}
+        onStartPay={(target) => openPayModal(target)}
+        onUndo={(installmentId) => void handleUndo(installmentId)}
+        undoSubmitting={undoPayment.isPending}
+      />
     </div>
   );
 }
@@ -264,7 +357,7 @@ function OriginBadge({ source }: { source: FinancialContractSource }) {
   return <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-xs font-medium', className)}>{SOURCE_LABEL[source]}</span>;
 }
 
-function InstallmentRow({ installment }: { installment: FinancialInstallmentWithContractDto }) {
+function InstallmentRow({ installment, onStartPay }: { installment: FinancialInstallmentWithContractDto; onStartPay: () => void }) {
   return (
     <GlassCard interactive={false} className="p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -277,6 +370,15 @@ function InstallmentRow({ installment }: { installment: FinancialInstallmentWith
         <div className="flex shrink-0 items-center gap-3">
           <span className="font-mono text-sm text-text-primary">{formatCurrency(installment.amount)}</span>
           <StatusBadge status={installment.status} />
+          {installment.status !== 'PAID' && installment.status !== 'CANCELLED' && (
+            <button
+              type="button"
+              onClick={onStartPay}
+              className="rounded-lg border border-accent-green/30 px-3 py-1.5 text-xs font-medium text-accent-green hover:bg-accent-green/10"
+            >
+              ✓ Marcar pago
+            </button>
+          )}
         </div>
       </div>
     </GlassCard>
@@ -286,9 +388,11 @@ function InstallmentRow({ installment }: { installment: FinancialInstallmentWith
 function ContractRow({
   contract,
   onOpenDetail,
+  onStartPay,
 }: {
   contract: FinancialContractDto;
   onOpenDetail: () => void;
+  onStartPay: () => void;
 }) {
   const next = nextPendingInstallment(contract);
 
@@ -311,9 +415,78 @@ function ContractRow({
             <span className="font-mono text-sm text-text-primary">{formatCurrency(contract.installmentAmount)}</span>
             <span className="text-[11px] text-text-tertiary">de {formatCurrency(contract.totalAmount)} contratados</span>
           </div>
+          {next && (
+            <button type="button" onClick={onStartPay} className="rounded-lg border border-accent-green/30 px-3 py-1.5 text-xs font-medium text-accent-green hover:bg-accent-green/10">
+              ✓ Marcar pago
+            </button>
+          )}
         </div>
       </div>
     </GlassCard>
+  );
+}
+
+/**
+ * Modal "Confirmar pagamento" (seção 5 do script): Contrato / Parcela /
+ * Valor / Data + Confirmar. Usa `FloatingPanel` (Radix Dialog) — mesmo
+ * componente-base de todo overlay do CONTROL OS (ex.: detalhe de
+ * transação/confirmação de estorno em `financeiro/transacoes/page.tsx`),
+ * não um expand inline.
+ */
+function PaymentConfirmModal({
+  target,
+  payDate,
+  onPayDateChange,
+  submitting,
+  onCancel,
+  onConfirm,
+}: {
+  target: PayTarget | null;
+  payDate: string;
+  onPayDateChange: (value: string) => void;
+  submitting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <FloatingPanel open={Boolean(target)} onOpenChange={(open) => { if (!open && !submitting) onCancel(); }} title="Confirmar pagamento" className="max-w-md">
+      <div className="space-y-5 p-6">
+        <h2 className="text-lg font-semibold text-text-primary">Confirmar pagamento</h2>
+        {target && (
+          <dl className="space-y-3 text-sm">
+            <div className="flex items-center justify-between">
+              <dt className="text-text-tertiary">Contrato</dt>
+              <dd className="text-text-primary">{target.contractName}</dd>
+            </div>
+            <div className="flex items-center justify-between">
+              <dt className="text-text-tertiary">Parcela</dt>
+              <dd className="text-text-primary">{target.number}/{target.totalInstallments}</dd>
+            </div>
+            <div className="flex items-center justify-between">
+              <dt className="text-text-tertiary">Valor</dt>
+              <dd className="font-mono text-text-primary">{formatCurrency(target.amount)}</dd>
+            </div>
+            <div className="flex items-center justify-between">
+              <dt className="text-text-tertiary">Data</dt>
+              <dd>
+                <input
+                  type="date"
+                  value={payDate}
+                  onChange={(event) => onPayDateChange(event.target.value)}
+                  className="rounded-lg border border-border-subtle bg-surface-0 px-2 py-1 text-sm text-text-primary outline-none focus:border-accent-blue"
+                />
+              </dd>
+            </div>
+          </dl>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" disabled={submitting} onClick={onCancel}>Cancelar</Button>
+          <Button type="button" variant="primary" loading={submitting} disabled={!target || submitting} onClick={onConfirm}>
+            {submitting ? 'Confirmando…' : 'Confirmar pagamento'}
+          </Button>
+        </div>
+      </div>
+    </FloatingPanel>
   );
 }
 
@@ -322,15 +495,19 @@ function ContractRow({
  * pago, saldo restante, próxima parcela e timeline completa — exemplo
  * literal do script ("PRONAMPE SANTANDER / 42 parcelas / 18/42 pagas /
  * Pago: R$108.000 / Restante: R$144.000 / Próxima: 24/08/2026 — R$6.000").
- * Usa `FloatingPanel` (Radix Dialog) — mesmo componente-base de todo
- * overlay do CONTROL OS.
  */
 function ContractDetailPanel({
   contractId,
   onClose,
+  onStartPay,
+  onUndo,
+  undoSubmitting,
 }: {
   contractId: string | undefined;
   onClose: () => void;
+  onStartPay: (target: PayTarget) => void;
+  onUndo: (installmentId: string) => void;
+  undoSubmitting: boolean;
 }) {
   const contractQuery = useFinancialContract(contractId);
   const contract = contractQuery.data;
@@ -417,7 +594,21 @@ function ContractDetailPanel({
           <div className="flex flex-col gap-2">
             <SectionHeader title="Timeline das parcelas" meta={`${installments.length}`} />
             {installments.map((installment) => (
-              <TimelineRow key={installment.id} installment={installment} />
+              <TimelineRow
+                key={installment.id}
+                installment={installment}
+                onStartPay={() =>
+                  onStartPay({
+                    installmentId: installment.id,
+                    contractName: contract.name,
+                    number: installment.number,
+                    totalInstallments: contract.totalInstallments,
+                    amount: installment.amount,
+                  })
+                }
+                onUndo={() => onUndo(installment.id)}
+                undoSubmitting={undoSubmitting}
+              />
             ))}
           </div>
         </div>
@@ -426,7 +617,17 @@ function ContractDetailPanel({
   );
 }
 
-function TimelineRow({ installment }: { installment: FinancialInstallmentDto }) {
+function TimelineRow({
+  installment,
+  onStartPay,
+  onUndo,
+  undoSubmitting,
+}: {
+  installment: FinancialInstallmentDto;
+  onStartPay: () => void;
+  onUndo: () => void;
+  undoSubmitting: boolean;
+}) {
   return (
     <div className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle px-3 py-2.5 text-sm">
       <div className="flex min-w-0 flex-col">
@@ -439,6 +640,16 @@ function TimelineRow({ installment }: { installment: FinancialInstallmentDto }) 
       <div className="flex shrink-0 items-center gap-3">
         <span className="font-mono text-text-primary">{formatCurrency(installment.amount)}</span>
         <StatusBadge status={installment.status} />
+        {installment.status !== 'PAID' && installment.status !== 'CANCELLED' && (
+          <button type="button" onClick={onStartPay} className="rounded-lg border border-accent-green/30 px-2.5 py-1 text-xs font-medium text-accent-green hover:bg-accent-green/10">
+            ✓ Marcar pago
+          </button>
+        )}
+        {installment.status === 'PAID' && (
+          <button type="button" disabled={undoSubmitting} onClick={onUndo} className="rounded-lg px-2.5 py-1 text-xs text-text-secondary hover:bg-white/[0.05] disabled:opacity-50">
+            Reverter pagamento
+          </button>
+        )}
       </div>
     </div>
   );

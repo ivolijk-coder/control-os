@@ -44,3 +44,19 @@ export function useCreateFinancialContract() {
     onSuccess: () => invalidateFinancialContractsQueries(queryClient),
   });
 }
+
+export function usePayFinancialInstallment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, paidAt }: { id: string; paidAt?: string }) => financialContractsApiClient.payInstallment(id, paidAt),
+    onSuccess: () => invalidateFinancialContractsQueries(queryClient),
+  });
+}
+
+export function useUndoFinancialInstallmentPayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => financialContractsApiClient.undoInstallmentPayment(id),
+    onSuccess: () => invalidateFinancialContractsQueries(queryClient),
+  });
+}

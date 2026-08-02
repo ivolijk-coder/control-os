@@ -85,6 +85,17 @@ export type CreateFinancialContractInput = {
   documentId?: string;
 };
 
+export type PayFinancialInstallmentResult = {
+  alreadyPaid: boolean;
+  installment: FinancialInstallmentDto;
+  contract: FinancialContractDto;
+};
+
+export type UndoFinancialInstallmentPaymentResult = {
+  installment: FinancialInstallmentDto;
+  contract: FinancialContractDto;
+};
+
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 const defaultFetcher: Fetcher = (input, init) => fetch(input, init);
@@ -115,6 +126,22 @@ export class FinancialContractsApiClient {
       signal,
     });
     return payload.contract;
+  }
+
+  async payInstallment(id: string, paidAt?: string, signal?: AbortSignal): Promise<PayFinancialInstallmentResult> {
+    return this.request<PayFinancialInstallmentResult>(`/api/finance/installments/${encodeURIComponent(id)}/pay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(paidAt ? { paidAt } : {}),
+      signal,
+    });
+  }
+
+  async undoInstallmentPayment(id: string, signal?: AbortSignal): Promise<UndoFinancialInstallmentPaymentResult> {
+    return this.request<UndoFinancialInstallmentPaymentResult>(`/api/finance/installments/${encodeURIComponent(id)}/undo-pay`, {
+      method: 'POST',
+      signal,
+    });
   }
 
   private async request<T>(url: string, init?: RequestInit): Promise<T> {
