@@ -342,6 +342,7 @@ model Category {
   transactions        Transaction[]
   fixedAccounts       FixedAccount[]
   occurrenceSnapshots FixedAccountOccurrence[]
+  financialContracts  FinancialContract[]
   createdAt           DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt           DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -371,6 +372,7 @@ model Account {
   fixedAccountsAsDestination       FixedAccount[]           @relation("FixedAccountDestination")
   occurrenceSnapshotsAsSource      FixedAccountOccurrence[] @relation("OccurrenceSourceAccount")
   occurrenceSnapshotsAsDestination FixedAccountOccurrence[] @relation("OccurrenceDestinationAccount")
+  financialContracts               FinancialContract[]
   createdAt                        DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                        DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -463,6 +465,131 @@ model FixedAccountOccurrencePayment {
 
   @@index([occurrenceId])
   @@map("finance_fixed_account_occurrence_payments")
+}
+
+/// CONTROL OS — evolução "Parcelas & Empréstimos": tipo do contrato
+/// financeiro representado por `FinancialContract`.
+enum ContractType {
+  LOAN
+  FINANCING
+  CARD_INSTALLMENT
+  SUPPLIER
+}
+
+/// Mesma semântica de `FixedAccountOrigin` (pessoal vs. empresa) — nome
+/// próprio (`ContractOrigin`) para não acoplar os dois domínios.
+enum ContractOrigin {
+  PERSONAL
+  COMPANY
+}
+
+/// Quem criou o contrato — mesma tríade de `TransactionSource`, sem `WHATSAPP`/`API`
+/// porque nenhum destes dois canais cria contrato nesta fase.
+enum ContractSource {
+  MANUAL
+  NOVA
+  DOCUMENT
+}
+
+enum ContractStatus {
+  ACTIVE
+  FINISHED
+  CANCELLED
+}
+
+enum InstallmentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+/// Contrato financeiro (empréstimo, financiamento, parcelamento de cartão,
+/// fornecedor) — a "cabeça" que falta hoje: o mecanismo pré-existente
+/// (`Transaction.installmentGroupId`, usado por `PersistentFinanceService.
+/// createInstallment`/`confirmDocumentProposal`) cria só as PERNAS
+/// (`Transaction`), nenhuma linha de cabeçalho. `FinancialContract` não
+/// substitui aquele mecanismo — é uma camada NOVA por cima do mesmo domínio
+/// financeiro: cada parcela (`FinancialInstallment`) só vira uma
+/// `Transaction` de verdade no momento em que é paga (via
+/// `PersistentFinanceService.createExpense`, o mesmo caminho usado por
+/// qualquer despesa manual), ligada de volta por `paymentTransactionId`
+/// (bare, mesmo padrão de `FixedAccountOccurrence.transactionId` — sem
+/// `@relation`, para não forçar política de `onDelete`).
+model FinancialContract {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @map("user_id") @db.Uuid
+
+  name        String
+  institution String?
+  type        ContractType
+  origin      ContractOrigin @default(PERSONAL)
+
+  categoryId String?   @map("category_id") @db.Uuid
+  category   Category? @relation(fields: [categoryId], references: [id])
+
+  /// Conta debitada quando uma parcela é paga. Opcional na criação (mesma
+  /// regra de `FinanceService.resolveAccountId`: se ausente, resolve para a
+  /// única conta ativa do usuário no momento do pagamento; se houver
+  /// zero/mais de uma, o pagamento pede a conta).
+  accountId String?  @map("account_id") @db.Uuid
+  account   Account? @relation(fields: [accountId], references: [id])
+
+  totalAmount       Decimal  @map("total_amount") @db.Decimal(12, 2)
+  financedAmount    Decimal? @map("financed_amount") @db.Decimal(12, 2)
+  installmentAmount Decimal  @map("installment_amount") @db.Decimal(12, 2)
+  totalInstallments Int      @map("total_installments")
+  paidInstallments  Int      @default(0) @map("paid_installments")
+  dueDay            Int      @map("due_day")
+
+  startDate    DateTime  @map("start_date") @db.Timestamptz(3)
+  endDate      DateTime? @map("end_date") @db.Timestamptz(3)
+  interestRate Decimal?  @map("interest_rate") @db.Decimal(6, 4)
+
+  status ContractStatus @default(ACTIVE)
+  source ContractSource @default(MANUAL)
+
+  /// Origem documental (Fase futura: `contract-analysis.ts` -> NOVA
+  /// confirma -> aqui). Bare, mesmo padrão de
+  /// `DocumentImportProposal.resultingInstallmentGroupId` — sem `@relation`
+  /// para não acoplar o domínio financeiro ao de documentos.
+  documentId String? @map("document_id") @db.Uuid
+
+  installments FinancialInstallment[]
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([userId, status])
+  @@index([documentId])
+  @@map("financial_contracts")
+}
+
+/// Uma parcela de um `FinancialContract`. Nasce PENDING (nenhuma
+/// `Transaction` ainda) — só ganha `paymentTransactionId` quando marcada
+/// como paga.
+model FinancialInstallment {
+  id         String @id @default(uuid()) @db.Uuid
+  contractId String @map("contract_id") @db.Uuid
+
+  number  Int
+  amount  Decimal  @db.Decimal(12, 2)
+  dueDate DateTime @map("due_date") @db.Timestamptz(3)
+
+  status InstallmentStatus @default(PENDING)
+
+  paidAt               DateTime? @map("paid_at") @db.Timestamptz(3)
+  paymentTransactionId String?   @map("payment_transaction_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  contract FinancialContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@unique([contractId, number])
+  @@index([contractId, status])
+  @@index([status, dueDate])
+  @@map("financial_installments")
 }
 
 /// Trilho genérico e extensível de auditoria do domínio financeiro. Não tem
