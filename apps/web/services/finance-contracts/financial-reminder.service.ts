@@ -19,8 +19,16 @@ function formatCurrencyBRL(amount: number): string {
 }
 
 function formatDueDay(iso: string): string {
+  // `dueDate` é gravado como meia-noite UTC (mesma convenção de
+  // `startDate`/`dueDay` em `financial-contract.service.ts`). `getDate()`
+  // lê no fuso LOCAL do processo — num fuso atrás de UTC (ex.: America/
+  // Sao_Paulo, UTC-3), meia-noite UTC ainda é o dia anterior às 21h local,
+  // e o dia exibido ficava sempre 1 a menos do que o dia real do
+  // vencimento. `getUTCDate()` lê o mesmo componente sempre em UTC —
+  // resultado igual em qualquer fuso onde o processo rodar (dev local,
+  // CI, produção), nunca dependente de `TZ`.
   const date = new Date(iso);
-  return String(date.getDate()).padStart(2, '0');
+  return String(date.getUTCDate()).padStart(2, '0');
 }
 
 function describeInstallment(installment: FinancialInstallmentWithContract): string {
