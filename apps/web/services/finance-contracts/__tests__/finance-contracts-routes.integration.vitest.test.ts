@@ -21,6 +21,7 @@ const createFinancialContract = vi.fn();
 const listFinancialContracts = vi.fn();
 const getFinancialContract = vi.fn();
 const getFinancialDashboard = vi.fn();
+const settleFinancialContract = vi.fn();
 
 vi.mock('next/server', () => ({
   NextResponse: { json: (body: unknown, init?: { status?: number }) => ({ body, status: init?.status ?? 200 }) },
@@ -44,7 +45,7 @@ vi.mock('@/services/modules', () => ({ PersistentFinanceService: class {} }));
 vi.mock('@/services/repositories', () => ({ PrismaFinanceRepository: class {} }));
 vi.mock('@/services/finance-contracts', async () => {
   const actual = await vi.importActual<typeof import('@/services/finance-contracts')>('@/services/finance-contracts');
-  return { ...actual, createFinancialContract, listFinancialContracts, getFinancialContract, getFinancialDashboard };
+  return { ...actual, createFinancialContract, listFinancialContracts, getFinancialContract, getFinancialDashboard, settleFinancialContract };
 });
 
 function jsonRequest(body: unknown): Request {
@@ -131,6 +132,63 @@ describe('GET /api/finance/contracts/:id', () => {
     const response = await GET(new Request('http://localhost/x'), { params: { id: 'contract-a' } });
     expect(response.status).toBe(200);
     expect(getFinancialContract).toHaveBeenCalledWith('user-a', 'contract-a');
+  });
+
+  it('200 inclui "summary" ao lado de "contract" (Fase 3, "contract detail" — aditivo, nunca troca a chave existente)', async () => {
+    getFinancialContract.mockResolvedValue({
+      id: 'contract-a',
+      totalAmount: 300,
+      installments: [
+        { id: 'i1', number: 1, amount: 100, status: 'PAID', dueDate: '2026-07-01T00:00:00.000Z' },
+        { id: 'i2', number: 2, amount: 200, status: 'PENDING', dueDate: '2026-09-01T00:00:00.000Z' },
+      ],
+    });
+    const { GET } = await import('@/app/api/finance/contracts/[id]/route');
+    const response = await GET(new Request('http://localhost/x'), { params: { id: 'contract-a' } });
+    expect(response.status).toBe(200);
+    const body = response.body as unknown as { contract: { id: string }; summary: { totalAmount: number; paidAmount: number; remainingAmount: number } };
+    expect(body.contract.id).toBe('contract-a');
+    expect(body.summary).toMatchObject({ totalAmount: 300, paidAmount: 100, remainingAmount: 200 });
+  });
+});
+
+describe('POST /api/finance/contracts/:id/settle', () => {
+  beforeEach(() => {
+    currentUserId = 'user-a';
+    settleFinancialContract.mockReset();
+  });
+
+  it('exige sessão', async () => {
+    currentUserId = null;
+    const { POST } = await import('@/app/api/finance/contracts/[id]/settle/route');
+    const response = await POST(jsonRequest({}), { params: { id: 'contract-a' } });
+    expect(response.status).toBe(401);
+    expect(settleFinancialContract).not.toHaveBeenCalled();
+  });
+
+  it('200 e repassa contractId + userId da sessão (nunca do corpo)', async () => {
+    settleFinancialContract.mockResolvedValue({ contract: { id: 'contract-a', status: 'PAID_OFF' }, cancelledInstallments: [] });
+    const { POST } = await import('@/app/api/finance/contracts/[id]/settle/route');
+    const response = await POST(jsonRequest({}), { params: { id: 'contract-a' } });
+    expect(response.status).toBe(200);
+    expect(settleFinancialContract).toHaveBeenCalledWith({ userId: 'user-a', contractId: 'contract-a', settledAt: undefined, source: 'manual' });
+    expect((response.body as unknown as { contract: { status: string } }).contract.status).toBe('PAID_OFF');
+  });
+
+  it('400 quando settledAt informado é inválido (nunca chama o service)', async () => {
+    const { POST } = await import('@/app/api/finance/contracts/[id]/settle/route');
+    const response = await POST(jsonRequest({ settledAt: 'não é uma data' }), { params: { id: 'contract-a' } });
+    expect(response.status).toBe(400);
+    expect(settleFinancialContract).not.toHaveBeenCalled();
+  });
+
+  it('mapeia FinancialContractError pro status HTTP correto (ex.: contrato já quitado)', async () => {
+    const { FinancialContractError } = await vi.importActual<typeof import('@/services/finance-contracts')>('@/services/finance-contracts');
+    settleFinancialContract.mockRejectedValue(new FinancialContractError(422, 'Este contrato já está quitado.'));
+    const { POST } = await import('@/app/api/finance/contracts/[id]/settle/route');
+    const response = await POST(jsonRequest({}), { params: { id: 'contract-a' } });
+    expect(response.status).toBe(422);
+    expect((response.body as unknown as { message: string }).message).toContain('quitado');
   });
 });
 

@@ -10,7 +10,7 @@ import { FinanceApiError } from '@/lib/finance/finance-api-client';
 export type FinancialContractType = 'LOAN' | 'FINANCING' | 'CARD_INSTALLMENT' | 'SUPPLIER';
 export type FinancialContractOrigin = 'PERSONAL' | 'COMPANY';
 export type FinancialContractSource = 'MANUAL' | 'NOVA' | 'DOCUMENT';
-export type FinancialContractStatus = 'ACTIVE' | 'FINISHED' | 'CANCELLED';
+export type FinancialContractStatus = 'ACTIVE' | 'PAID_OFF' | 'CANCELLED';
 export type FinancialInstallmentStatus = 'PENDING' | 'PAID' | 'OVERDUE' | 'CANCELLED';
 
 export type FinancialInstallmentDto = {

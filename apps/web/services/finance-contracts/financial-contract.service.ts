@@ -8,11 +8,14 @@ import { PrismaFinanceRepository } from '@/services/repositories';
 import type {
   CreateFinancialContractInput,
   FinancialContract,
+  FinancialContractSummary,
   FinancialDashboard,
   FinancialInstallment,
   FinancialInstallmentWithContract,
   PayFinancialInstallmentInput,
   PayFinancialInstallmentResult,
+  SettleFinancialContractInput,
+  SettleFinancialContractResult,
   UndoFinancialInstallmentPaymentInput,
   UndoFinancialInstallmentPaymentResult,
 } from './financial-contract.types';
@@ -259,6 +262,38 @@ export async function getFinancialContract(userId: string, id: string): Promise<
 }
 
 /**
+ * "Contract detail" (Fase 3, seção 1): total/pago/restante/percentual/
+ * próxima parcela/parcelas vencidas — tudo derivado de `contract.
+ * installments` já carregado por `getFinancialContract`, nenhuma consulta
+ * própria. Função pura para ser fácil de testar isolada e reaproveitável
+ * pela rota sem duplicar a leitura do contrato.
+ */
+export function buildFinancialContractSummary(contract: FinancialContract, reference: Date = new Date()): FinancialContractSummary {
+  const installments = contract.installments ?? [];
+  const totalAmount = contract.totalAmount ?? 0;
+
+  const paidInstallments = installments.filter((installment) => installment.status === 'PAID');
+  const paidAmount = paidInstallments.reduce((sum, installment) => sum + installment.amount, 0);
+
+  const openInstallments = installments.filter((installment) => installment.status === 'PENDING' || installment.status === 'OVERDUE').sort((a, b) => a.number - b.number);
+  const remainingAmount = openInstallments.reduce((sum, installment) => sum + installment.amount, 0);
+
+  const percentagePaid = totalAmount > 0 ? Math.round((paidAmount / totalAmount) * 10000) / 100 : 0;
+
+  const today = startOfDay(reference);
+  const overdueInstallments = openInstallments.filter((installment) => startOfDay(new Date(installment.dueDate)) < today);
+
+  return {
+    totalAmount,
+    paidAmount,
+    remainingAmount,
+    percentagePaid,
+    nextInstallment: openInstallments[0] ?? null,
+    overdueInstallments,
+  };
+}
+
+/**
  * Marca uma parcela como paga: baixa a parcela, lança a despesa real via
  * `PersistentFinanceService.createExpense` (mesma conta/categoria do
  * contrato — cai na regra padrão de "conta única ativa" quando o contrato
@@ -308,7 +343,7 @@ export async function payFinancialInstallment(input: PayFinancialInstallmentInpu
       const entry = result.data as { id: string };
 
       await tx.financialInstallment.update({ where: { id: installmentId }, data: { paymentTransactionId: entry.id } });
-      const updatedContract = await tx.financialContract.update({
+      let updatedContract = await tx.financialContract.update({
         where: { id: installment.contractId },
         data: { paidInstallments: { increment: 1 } },
       });
@@ -325,6 +360,38 @@ export async function payFinancialInstallment(input: PayFinancialInstallmentInpu
           after: { status: 'PAID', paidAt: paidAt.toISOString(), paymentTransactionId: entry.id },
         },
       });
+
+      // Ciclo de vida (Fase 3, seção 2): quando esta era a última parcela em
+      // aberto (nenhuma PENDING/OVERDUE restante — CANCELLED nunca conta,
+      // são parcelas fora do compromisso, ex.: quitação antecipada), o
+      // contrato sai de ACTIVE para PAID_OFF automaticamente. Consulta
+      // separada (não dá pra confiar só em `paidInstallments ===
+      // totalInstallments`: uma quitação antecipada cancela parcelas
+      // futuras sem elas nunca virarem PAID, então a contagem nunca bateria
+      // com o total nesse caminho).
+      if (updatedContract.status === 'ACTIVE') {
+        const remainingOpen = await tx.financialInstallment.count({
+          where: { contractId: installment.contractId, status: { in: ['PENDING', 'OVERDUE'] } },
+        });
+        if (remainingOpen === 0) {
+          updatedContract = await tx.financialContract.update({
+            where: { id: installment.contractId },
+            data: { status: 'PAID_OFF' },
+          });
+          await tx.financeAuditEvent.create({
+            data: {
+              userId,
+              actorUserId: userId,
+              operation: 'CONTRACT_PAID_OFF',
+              source,
+              entityType: 'financial_contract',
+              entityId: installment.contractId,
+              before: { status: 'ACTIVE' },
+              after: { status: 'PAID_OFF', paidInstallments: updatedContract.paidInstallments, totalInstallments: updatedContract.totalInstallments },
+            },
+          });
+        }
+      }
 
       const finalInstallment = await tx.financialInstallment.findUniqueOrThrow({ where: { id: installmentId } });
       return { alreadyPaid: false, installment: toInstallmentDto(finalInstallment), contract: toContractDto(updatedContract) };
@@ -365,7 +432,7 @@ export async function undoFinancialInstallmentPayment(input: UndoFinancialInstal
       const result = await runAsFinanceUser(userId, () => financeService.reverseTransaction(installment.paymentTransactionId as string, source));
       if (!result.success) throw new FinancialContractError(422, result.message);
 
-      const updatedContract = await tx.financialContract.update({
+      let updatedContract = await tx.financialContract.update({
         where: { id: installment.contractId },
         data: { paidInstallments: { decrement: 1 } },
       });
@@ -383,8 +450,97 @@ export async function undoFinancialInstallmentPayment(input: UndoFinancialInstal
         },
       });
 
+      // Ciclo de vida (Fase 3, seção 2), caminho inverso: desfazer o
+      // pagamento da última parcela de um contrato já PAID_OFF reabre uma
+      // pendência de verdade — o contrato volta pra ACTIVE. `installment.
+      // contract.status` é o estado ANTES desta transação (capturado no
+      // `findFirst` acima), nunca reconsultado depois de já ter mudado.
+      if (installment.contract.status === 'PAID_OFF') {
+        updatedContract = await tx.financialContract.update({
+          where: { id: installment.contractId },
+          data: { status: 'ACTIVE' },
+        });
+        await tx.financeAuditEvent.create({
+          data: {
+            userId,
+            actorUserId: userId,
+            operation: 'CONTRACT_REOPENED',
+            source,
+            entityType: 'financial_contract',
+            entityId: installment.contractId,
+            before: { status: 'PAID_OFF' },
+            after: { status: 'ACTIVE' },
+          },
+        });
+      }
+
       const finalInstallment = await tx.financialInstallment.findUniqueOrThrow({ where: { id: installmentId } });
       return { installment: toInstallmentDto(finalInstallment), contract: toContractDto(updatedContract) };
+    },
+    { isolationLevel: 'Serializable' }
+  );
+}
+
+/**
+ * Quitação antecipada (Fase 3, seção 3 / doc 24-financial-domain.md §5.9:
+ * "quitação antecipada cria evento próprio e cancela apenas parcelas
+ * futuras não liquidadas"). NUNCA mexe em parcelas já PAID — histórico
+ * preservado, nada é apagado nem reescrito. Só cancela as parcelas ainda em
+ * aberto (PENDING/OVERDUE) e move o contrato pra PAID_OFF (mesmo estado
+ * terminal de "todas as parcelas pagas" — a Fase 3 não introduz um quarto
+ * status só para este caminho). Não cria `Transaction`: a doc de domínio
+ * não pede lançar a liquidação do saldo devedor como despesa aqui, só
+ * fechar o compromisso futuro — mesmo padrão de "cancelamento" da seção
+ * 5.12 (não gera caixa realizado).
+ */
+export async function settleFinancialContract(input: SettleFinancialContractInput): Promise<SettleFinancialContractResult> {
+  const { userId, contractId } = input;
+  const settledAt = input.settledAt ? new Date(input.settledAt) : new Date();
+  if (Number.isNaN(settledAt.getTime())) throw new FinancialContractError(422, 'A data de quitação informada é inválida.');
+  const source = input.source ?? 'manual';
+
+  return prisma.$transaction(
+    async (tx: Prisma.TransactionClient) => {
+      const contract = await tx.financialContract.findFirst({
+        where: { id: contractId, userId },
+        include: { installments: { orderBy: { number: 'asc' } } },
+      });
+      if (!contract) throw new FinancialContractError(404, 'Contrato não encontrado.');
+      if (contract.status === 'CANCELLED') throw new FinancialContractError(422, 'Este contrato foi cancelado e não pode ser quitado.');
+      if (contract.status === 'PAID_OFF') throw new FinancialContractError(422, 'Este contrato já está quitado.');
+
+      const openInstallments = contract.installments.filter((installment: InstallmentRowFromDb) => installment.status === 'PENDING' || installment.status === 'OVERDUE');
+
+      if (openInstallments.length > 0) {
+        await tx.financialInstallment.updateMany({
+          where: { contractId, status: { in: ['PENDING', 'OVERDUE'] } },
+          data: { status: 'CANCELLED' },
+        });
+      }
+
+      const updatedContract = await tx.financialContract.update({
+        where: { id: contractId },
+        data: { status: 'PAID_OFF' },
+        include: { installments: { orderBy: { number: 'asc' } } },
+      });
+
+      await tx.financeAuditEvent.create({
+        data: {
+          userId,
+          actorUserId: userId,
+          operation: 'CONTRACT_SETTLED',
+          source,
+          entityType: 'financial_contract',
+          entityId: contractId,
+          before: { status: contract.status, openInstallments: openInstallments.length },
+          after: { status: 'PAID_OFF', settledAt: settledAt.toISOString(), cancelledInstallmentIds: openInstallments.map((installment: InstallmentRowFromDb) => installment.id) },
+        },
+      });
+
+      const cancelledIds = new Set(openInstallments.map((installment: InstallmentRowFromDb) => installment.id));
+      const cancelledInstallments = updatedContract.installments.filter((installment: InstallmentRowFromDb) => cancelledIds.has(installment.id)).map(toInstallmentDto);
+
+      return { contract: toContractDto(updatedContract, updatedContract.installments), cancelledInstallments };
     },
     { isolationLevel: 'Serializable' }
   );

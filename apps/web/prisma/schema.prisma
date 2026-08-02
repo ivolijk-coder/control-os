@@ -493,7 +493,7 @@ enum ContractSource {
 
 enum ContractStatus {
   ACTIVE
-  FINISHED
+  PAID_OFF
   CANCELLED
 }
 
