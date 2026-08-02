@@ -28,14 +28,27 @@ export type ConversationTaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
  * Botão de ação genérico. `id` é o identificador que o handler registry
  * (Fase E) usa para decidir o que fazer — nunca um enum fixo, porque cada
  * `ConversationTaskType` define seu próprio vocabulário de ações (ex.:
- * "cadastrar_financiamento"/"guardar_documento"/"depois" para documentos;
- * tipos futuros terão o seu). A UI (`nova-message-bubble.tsx`, Fase D)
- * apenas renderiza `label` e devolve `id` — não sabe nem precisa saber o
- * que cada ação significa.
+ * "cadastrar_financiamento"/"guardar_documento" para documentos; tipos
+ * futuros terão o seu). A UI (`nova-message-bubble.tsx`) apenas renderiza
+ * `label` e devolve `id` — não sabe nem precisa saber o que cada ação
+ * significa. O botão "Depois" nunca faz parte deste array — é genérico
+ * e sempre oferecido pela própria bolha, ver `nova-message-bubble.tsx`.
+ *
+ * `requiresFields` (Fase E — "concluir 100% no chat"): quando presente,
+ * a NOVA precisa coletar esses campos ANTES de resolver a ação — nunca
+ * assume um valor. Coleta é sempre determinística: cada campo vira uma
+ * pergunta com botões de opções reais (ex.: contas/categorias que existem
+ * de verdade), nunca texto livre interpretado por IA. Um conjunto
+ * pequeno e fechado hoje porque só "cadastrar um financiamento" precisa
+ * disso; cresce por tipo de campo (não por produtor de task) se um novo
+ * caso de uso genuinamente precisar de outro dado determinístico.
  */
+export type ConversationTaskRequiredField = 'accountId' | 'categoryId';
+
 export type ConversationTaskAction = {
   id: string;
   label: string;
+  requiresFields?: ConversationTaskRequiredField[];
 };
 
 export type ConversationTask = {

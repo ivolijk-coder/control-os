@@ -48,6 +48,11 @@ export async function GET() {
       title: task.title,
       message: task.message,
       actions: task.actions,
+      // A NOVA usa payload só pra montar o resumo final antes de executar
+      // (Fase E — ex.: credor/valor/parcelas de um financiamento) — nunca
+      // pra decidir dinheiro sozinha; quem decide é sempre o handler de
+      // resolução, buscando o registro de origem de novo.
+      payload: task.payload,
       createdAt: task.createdAt.toISOString(),
     })),
   });

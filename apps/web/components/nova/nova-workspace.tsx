@@ -18,7 +18,7 @@ import {
 import { NovaInput, type NovaInputSource } from '@/components/nova/nova-input';
 import { NovaConversation } from '@/components/nova/nova-conversation';
 import { NovaPersonaSwitch } from '@/components/nova/nova-persona-switch';
-import type { ConversationMessage, ConversationMessageStatus } from '@/components/nova/nova-message-bubble';
+import type { ConversationMessage, ConversationMessageAction, ConversationMessageStatus } from '@/components/nova/nova-message-bubble';
 import type { NovaThinkingStatus } from '@/components/nova/nova-thinking';
 import type { NovaOrbStatus } from '@/components/nova/nova-orb';
 import { QuickAction } from '@/components/ui/quick-action';
@@ -33,6 +33,7 @@ import { getVoiceProvider } from '@/services/voice';
 import { useAppStore } from '@/lib/store';
 import { useNovaContext } from '@/lib/use-nova-context';
 import { transitionOut, transitionSpring } from '@/lib/motion';
+import { formatCurrency } from '@/lib/utils';
 
 // CONTROL OS — HERO SCENE REBOOT: qual tecnologia renderiza o Hero Object
 // agora depende da persona — decisão isolada em `NovaHeroStage`. NOVA usa
@@ -361,6 +362,11 @@ export function NovaWorkspace({
    * ao mecanismo anterior de `DocumentInsight` que este substitui.
    */
   const hasCheckedConversationTasksRef = React.useRef(false);
+  // `payload` de cada task pendente (Fase E) — só pro resumo final do
+  // wizard de campos abaixo (credor/valor/parcelas), nunca pra decidir
+  // dinheiro: quem decide é sempre o handler no servidor, buscando o
+  // registro de origem de novo.
+  const taskPayloadsRef = React.useRef<Record<string, Record<string, unknown>>>({});
   React.useEffect(() => {
     if (hasCheckedConversationTasksRef.current) return;
     hasCheckedConversationTasksRef.current = true;
@@ -371,9 +377,10 @@ export function NovaWorkspace({
         if (!response.ok) return;
         const payload = await response.json() as {
           success?: boolean;
-          tasks?: Array<{ id: string; message: string; actions: { id: string; label: string }[] }>;
+          tasks?: Array<{ id: string; message: string; actions: ConversationMessageAction[]; payload?: Record<string, unknown> }>;
         };
         for (const task of payload.tasks ?? []) {
+          taskPayloadsRef.current[task.id] = task.payload ?? {};
           addNovaMessage(effectivePersona, {
             id: nextMessageId('nova'),
             role: 'nova',
@@ -390,44 +397,211 @@ export function NovaWorkspace({
   }, [effectivePersona, addNovaMessage]);
 
   /**
-   * Botão de uma `ConversationTask` (Fase D). Nenhum conhecimento de
-   * Documentos ou de qualquer outro produtor aqui — só chama a rota
-   * genérica de resolução e narra a resposta que ela devolver. A Fase E
-   * troca o QUE a rota faz por dentro (handler registry real); esta função
-   * não muda.
+   * Coleta de campos em chat (Fase E — "concluir 100% no chat", "coletar
+   * conta/categoria de forma determinística"). Genérico por natureza: uma
+   * `ConversationTaskAction` qualquer pode declarar `requiresFields`
+   * (hoje só `accountId`/`categoryId` existem como campo conhecido, ver
+   * `services/conversation-tasks/conversation-task.types.ts`) — nenhuma
+   * ação específica de Documentos está codificada aqui, só o mecanismo de
+   * perguntar um campo por vez com opções REAIS (nunca texto livre
+   * interpretado por IA) e juntar tudo antes de resolver.
+   *
+   * Cada botão de uma pergunta de campo carrega o id real da opção
+   * prefixado com `wizard:field:` — e os botões da bolha de confirmação
+   * final usam `wizard:confirm`/`wizard:cancel`. Esse prefixo é o que
+   * permite detectar um clique num botão "órfão" depois de um refresh
+   * (perde-se `fieldWizardsRef`, que é só estado local — nunca o
+   * `ConversationTask` em si, que continua `PENDING` no servidor): sem
+   * wizard correspondente, o clique nunca chega a montar uma requisição,
+   * só pede pra recomeçar.
    */
-  const handleTaskAction = React.useCallback((taskId: string, actionId: string) => {
+  type FieldKey = 'accountId' | 'categoryId';
+  type FieldWizardState = {
+    actionId: string;
+    remainingFields: FieldKey[];
+    currentField: FieldKey | null;
+    selections: Partial<Record<FieldKey, { id: string; label: string }>>;
+  };
+  const fieldWizardsRef = React.useRef<Record<string, FieldWizardState>>({});
+
+  const FIELD_QUESTIONS: Record<FieldKey, string> = {
+    accountId: 'Qual conta usar?',
+    categoryId: 'Qual categoria usar?',
+  };
+
+  const fetchFieldOptions = React.useCallback(async (field: FieldKey): Promise<{ id: string; label: string }[]> => {
+    if (field === 'accountId') {
+      const response = await fetch('/api/finance/accounts');
+      if (!response.ok) return [];
+      const payload = await response.json() as { success?: boolean; accounts?: Array<{ id: string; name: string; status: string }> };
+      return (payload.accounts ?? []).filter((account) => account.status !== 'arquivada').map((account) => ({ id: account.id, label: account.name }));
+    }
+    const response = await fetch('/api/finance/categories');
+    if (!response.ok) return [];
+    const payload = await response.json() as { success?: boolean; categories?: Array<{ id: string; name: string; status: string; kind?: string }> };
+    return (payload.categories ?? [])
+      .filter((category) => category.status !== 'arquivada' && (category.kind === 'despesa' || !category.kind))
+      .map((category) => ({ id: category.id, label: category.name }));
+  }, []);
+
+  const resolveTaskAction = React.useCallback(async (
+    taskId: string,
+    actionId: string,
+    extra?: { accountId?: string; categoryId?: string; startDate?: string }
+  ) => {
     setIsThinking(true);
     setThinkingStatus('executando');
-    void (async () => {
-      try {
-        const response = await fetch(`/api/nova/conversation-tasks/${taskId}/resolve`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ actionId }),
-        });
-        const payload = await response.json().catch(() => null) as { success?: boolean; reply?: string; message?: string } | null;
+    try {
+      const response = await fetch(`/api/nova/conversation-tasks/${taskId}/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actionId, ...extra }),
+      });
+      const payload = await response.json().catch(() => null) as { success?: boolean; reply?: string; message?: string } | null;
+      addNovaMessage(effectivePersona, {
+        id: nextMessageId('nova'),
+        role: 'nova',
+        content: (response.ok ? payload?.reply : payload?.message) ?? 'Não consegui concluir agora — tenta de novo daqui a pouco.',
+        status: response.ok ? 'success' : 'error',
+      });
+    } catch {
+      addNovaMessage(effectivePersona, {
+        id: nextMessageId('nova'),
+        role: 'nova',
+        content: 'Não consegui falar com o servidor agora — tenta de novo daqui a pouco.',
+        status: 'error',
+      });
+    } finally {
+      setIsThinking(false);
+    }
+  }, [addNovaMessage, effectivePersona]);
+
+  const presentFieldQuestion = React.useCallback(async (taskId: string, field: FieldKey) => {
+    const options = await fetchFieldOptions(field);
+    if (options.length === 0) {
+      delete fieldWizardsRef.current[taskId];
+      addNovaMessage(effectivePersona, {
+        id: nextMessageId('nova'),
+        role: 'nova',
+        content: 'Não encontrei opções suficientes pra continuar por aqui agora — tenta de novo em instantes.',
+        status: 'error',
+      });
+      return;
+    }
+    addNovaMessage(effectivePersona, {
+      id: nextMessageId('nova'),
+      role: 'nova',
+      content: FIELD_QUESTIONS[field],
+      status: 'success',
+      taskId,
+      taskActions: options.map((option) => ({ id: `wizard:field:${option.id}`, label: option.label })),
+    });
+  }, [addNovaMessage, effectivePersona, fetchFieldOptions]);
+
+  /** Bolha final — "mostrar resumo final antes de executar" — nunca pula direto pra execução. */
+  const presentFieldWizardSummary = React.useCallback((taskId: string, wizard: FieldWizardState) => {
+    const payload = taskPayloadsRef.current[taskId] ?? {};
+    const creditor = typeof payload.creditor === 'string' && payload.creditor ? payload.creditor : 'o credor identificado';
+    const amount = typeof payload.amount === 'number' ? formatCurrency(payload.amount) : 'valor não identificado';
+    const installments = typeof payload.installments === 'number' ? payload.installments : null;
+    const accountLabel = wizard.selections.accountId?.label ?? '—';
+    const categoryLabel = wizard.selections.categoryId?.label ?? '—';
+    addNovaMessage(effectivePersona, {
+      id: nextMessageId('nova'),
+      role: 'nova',
+      content: `Vou cadastrar: ${creditor}, ${amount}${installments ? ` em ${installments}x` : ''}. Conta: ${accountLabel}. Categoria: ${categoryLabel}. Confirmar?`,
+      status: 'success',
+      taskId,
+      taskActions: [
+        { id: 'wizard:confirm', label: 'Confirmar' },
+        { id: 'wizard:cancel', label: 'Cancelar' },
+      ],
+      hideDismiss: true,
+    });
+  }, [addNovaMessage, effectivePersona]);
+
+  const startFieldWizard = React.useCallback(async (taskId: string, action: ConversationMessageAction) => {
+    const fields = action.requiresFields ?? [];
+    if (fields.length === 0) return;
+    fieldWizardsRef.current[taskId] = { actionId: action.id, remainingFields: fields.slice(1), currentField: fields[0] ?? null, selections: {} };
+    if (fields[0]) await presentFieldQuestion(taskId, fields[0]);
+  }, [presentFieldQuestion]);
+
+  const advanceFieldWizard = React.useCallback(async (taskId: string, wizard: FieldWizardState, chosenId: string, chosenLabel: string) => {
+    if (!wizard.currentField) return;
+    const selections = { ...wizard.selections, [wizard.currentField]: { id: chosenId, label: chosenLabel } };
+    const nextField = wizard.remainingFields[0] ?? null;
+    const updated: FieldWizardState = { ...wizard, currentField: nextField, remainingFields: wizard.remainingFields.slice(1), selections };
+    fieldWizardsRef.current[taskId] = updated;
+    if (nextField) {
+      await presentFieldQuestion(taskId, nextField);
+      return;
+    }
+    presentFieldWizardSummary(taskId, updated);
+  }, [presentFieldQuestion, presentFieldWizardSummary]);
+
+  const finishFieldWizard = React.useCallback(async (taskId: string, wizard: FieldWizardState) => {
+    const accountId = wizard.selections.accountId?.id;
+    const categoryId = wizard.selections.categoryId?.id;
+    delete fieldWizardsRef.current[taskId];
+    if (!accountId || !categoryId) {
+      addNovaMessage(effectivePersona, {
+        id: nextMessageId('nova'),
+        role: 'nova',
+        content: 'Faltou escolher conta ou categoria — clique em "Cadastrar financiamento" de novo.',
+        status: 'error',
+      });
+      return;
+    }
+    await resolveTaskAction(taskId, wizard.actionId, { accountId, categoryId });
+  }, [addNovaMessage, effectivePersona, resolveTaskAction]);
+
+  const cancelFieldWizard = React.useCallback((taskId: string) => {
+    delete fieldWizardsRef.current[taskId];
+    addNovaMessage(effectivePersona, {
+      id: nextMessageId('nova'),
+      role: 'nova',
+      content: 'Sem problema, não cadastrei nada. Clique em "Cadastrar financiamento" de novo quando quiser tentar outra vez.',
+      status: 'success',
+    });
+  }, [addNovaMessage, effectivePersona]);
+
+  /**
+   * Botão de uma `ConversationTask` (Fase D, com coleta de campos desde a
+   * Fase E). Continua sem nenhum conhecimento de Documentos ou de
+   * qualquer outro produtor: só decide entre três caminhos genéricos —
+   * avançar um wizard em andamento, começar um wizard novo (a ação
+   * declarou `requiresFields`) ou resolver direto (sem campos extras).
+   */
+  const handleTaskAction = React.useCallback((taskId: string, action: ConversationMessageAction) => {
+    if (action.id.startsWith('wizard:')) {
+      const wizard = fieldWizardsRef.current[taskId];
+      if (!wizard) {
         addNovaMessage(effectivePersona, {
           id: nextMessageId('nova'),
           role: 'nova',
-          content: (response.ok ? payload?.reply : payload?.message) ?? 'Não consegui concluir agora — tenta de novo daqui a pouco.',
-          status: response.ok ? 'success' : 'error',
-        });
-      } catch {
-        addNovaMessage(effectivePersona, {
-          id: nextMessageId('nova'),
-          role: 'nova',
-          content: 'Não consegui falar com o servidor agora — tenta de novo daqui a pouco.',
+          content: 'Essa opção expirou — clique em "Cadastrar financiamento" de novo pra recomeçar.',
           status: 'error',
         });
-      } finally {
-        setIsThinking(false);
+        return;
       }
-    })();
-  }, [addNovaMessage, effectivePersona]);
+      if (action.id === 'wizard:confirm') { void finishFieldWizard(taskId, wizard); return; }
+      if (action.id === 'wizard:cancel') { cancelFieldWizard(taskId); return; }
+      void advanceFieldWizard(taskId, wizard, action.id.slice('wizard:field:'.length), action.label);
+      return;
+    }
+
+    if (action.requiresFields && action.requiresFields.length > 0) {
+      void startFieldWizard(taskId, action);
+      return;
+    }
+
+    void resolveTaskAction(taskId, action.id);
+  }, [addNovaMessage, effectivePersona, finishFieldWizard, cancelFieldWizard, advanceFieldWizard, startFieldWizard, resolveTaskAction]);
 
   /** Botão "Depois" — sempre genérico, nunca sabe o que a task representa. */
   const handleDismissTask = React.useCallback((taskId: string) => {
+    delete fieldWizardsRef.current[taskId];
     void (async () => {
       try {
         const response = await fetch(`/api/nova/conversation-tasks/${taskId}/dismiss`, { method: 'POST' });

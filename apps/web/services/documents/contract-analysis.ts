@@ -286,8 +286,11 @@ export function buildDocumentConversationTaskContent(
       // (Fase D — `nova-message-bubble.tsx`), nunca uma ação aqui: qualquer
       // ConversationTask futura ganha o mesmo botão de graça, sem precisar
       // declarar seu próprio "depois".
+      // "cadastrar_financiamento" exige conta e categoria (Fase E — nunca
+      // assumida, sempre coletada em chat com opções reais antes de
+      // confirmar). "guardar_documento" não precisa de nada além do clique.
       actions: [
-        { id: 'cadastrar_financiamento', label: 'Cadastrar financiamento' },
+        { id: 'cadastrar_financiamento', label: 'Cadastrar financiamento', requiresFields: ['accountId', 'categoryId'] },
         { id: 'guardar_documento', label: 'Só guardar' },
       ],
     };
@@ -388,7 +391,21 @@ export async function processNextDocumentAnalysisJob() {
         priority: conversationTaskContent.priority,
         title: conversationTaskContent.title,
         message: conversationTaskContent.message,
-        payload: { proposalId: proposal.id, documentId: document.id, documentType: preview.documentType, decision },
+        // creditor/amount/installments: só pro resumo final que a NOVA
+        // mostra antes de executar (Fase E — "mostrar resumo antes de
+        // executar"), pra não precisar buscar a proposta de novo só pra
+        // montar uma frase. NUNCA a fonte de verdade pra decidir dinheiro —
+        // o handler de resolução sempre busca o DocumentImportProposal
+        // atual de novo antes de agir (ver services/documents/conversation-task-handler.ts).
+        payload: {
+          proposalId: proposal.id,
+          documentId: document.id,
+          documentType: preview.documentType,
+          decision,
+          creditor: preview.financialOperation.creditor,
+          amount: preview.totalAmount,
+          installments: preview.installments,
+        },
         actions: conversationTaskContent.actions,
         sourceType: 'document_import_proposal',
         sourceId: proposal.id,

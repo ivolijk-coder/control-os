@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { AnimatePresence } from 'framer-motion';
 import type { NovaPersona } from '@/services/nova';
-import { NovaMessageBubble, type ConversationMessage } from './nova-message-bubble';
+import { NovaMessageBubble, type ConversationMessage, type ConversationMessageAction } from './nova-message-bubble';
 import { NovaThinking, type NovaThinkingStatus } from './nova-thinking';
 
 export interface NovaConversationProps {
@@ -26,7 +26,7 @@ export interface NovaConversationProps {
    * plugados em TODA mensagem com `taskId` — várias tasks podem estar
    * pendentes na conversa ao mesmo tempo, cada bolha resolve a sua.
    */
-  onTaskAction?: (taskId: string, actionId: string) => void;
+  onTaskAction?: (taskId: string, action: ConversationMessageAction) => void;
   onDismissTask?: (taskId: string) => void;
   /**
    * Identidade ATIVA agora (CONTROL OS — Etapa 16E) — colore o avatar de

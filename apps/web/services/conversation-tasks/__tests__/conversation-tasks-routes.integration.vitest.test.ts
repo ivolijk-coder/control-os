@@ -18,9 +18,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type TaskState = 'PENDING' | 'IN_PROGRESS' | 'WAITING_USER' | 'COMPLETED' | 'DISMISSED';
 
-let tasks: Record<string, { id: string; userId: string; status: TaskState }>;
+let tasks: Record<string, { id: string; userId: string; status: TaskState; sourceType?: string; payload?: Record<string, unknown> }>;
 let currentUserId: string | null;
 const auditCalls: Array<{ operation: string; entityId: string }> = [];
+
+// `confirmDocumentProposal` (Fase E): mockado no MESMO nível que o teste de
+// unidade de `conversation-task-handler.unit.vitest.test.ts` — aqui o
+// objetivo não é reverificar as regras do service financeiro (já cobertas
+// lá e em `document-proposal-confirmation.service.unit.vitest.test.ts`),
+// e sim provar que a ROTA HTTP chega até ele através do handler real
+// (`resolveDocumentConversationTaskAction`, nunca mockado neste arquivo) e
+// que os eventos de auditoria/idempotência na borda HTTP estão corretos.
+const confirmDocumentProposal = vi.fn();
 
 vi.mock('next/server', () => ({
   NextResponse: {
@@ -36,6 +45,15 @@ vi.mock('@/services/documents/document-core', () => ({
     return 'correlation-id';
   }),
 }));
+vi.mock('server-only', () => ({}));
+vi.mock('@/lib/prisma', () => ({ prisma: {} }));
+vi.mock('@/services/modules', () => ({ PersistentFinanceService: class {} }));
+vi.mock('@/services/modules/finance/finance-user-context', () => ({ runAsFinanceUser: vi.fn() }));
+vi.mock('@/services/repositories', () => ({ PrismaFinanceRepository: class {} }));
+vi.mock('@/services/documents/document-proposal-confirmation.service', async () => {
+  const actual = await vi.importActual<typeof import('@/services/documents/document-proposal-confirmation.service')>('@/services/documents/document-proposal-confirmation.service');
+  return { ConfirmationError: actual.ConfirmationError, confirmDocumentProposal };
+});
 vi.mock('@/services/conversation-tasks', () => ({
   listPendingConversationTasks: vi.fn(async (userId: string) =>
     Object.values(tasks).filter((task) => task.userId === userId && (task.status === 'PENDING' || task.status === 'WAITING_USER')).map((task) => ({
@@ -52,7 +70,7 @@ vi.mock('@/services/conversation-tasks', () => ({
     const task = tasks[id];
     if (!task || task.userId !== userId || !(task.status === 'PENDING' || task.status === 'WAITING_USER')) return null;
     task.status = 'IN_PROGRESS';
-    return { ...task, type: 'DOCUMENT_ANALYSIS_COMPLETED' };
+    return { ...task, type: 'DOCUMENT_ANALYSIS_COMPLETED', sourceType: task.sourceType, payload: task.payload ?? {} };
   }),
   completeConversationTask: vi.fn(async ({ id, userId }: { id: string; userId: string }) => {
     const task = tasks[id];
@@ -148,6 +166,93 @@ describe('POST /api/nova/conversation-tasks/:id/resolve — idempotência (cliqu
     await POST(jsonRequest({ actionId: 'cadastrar_financiamento' }), { params: { id: 'task-a' } });
     const replay = await POST(jsonRequest({ actionId: 'cadastrar_financiamento' }), { params: { id: 'task-a' } });
     expect(replay.status).toBe(409);
+  });
+});
+
+describe('POST /api/nova/conversation-tasks/:id/resolve — cadastrar_financiamento (Fase E)', () => {
+  beforeEach(() => {
+    tasks = {
+      'task-a': {
+        id: 'task-a',
+        userId: 'user-a',
+        status: 'WAITING_USER',
+        sourceType: 'document_import_proposal',
+        payload: { proposalId: 'preview-a' },
+      },
+    };
+    currentUserId = 'user-a';
+    auditCalls.length = 0;
+    confirmDocumentProposal.mockReset();
+  });
+
+  it('chama SOMENTE confirmDocumentProposal (via o handler real) e audita DOCUMENT_PROPOSAL_CONFIRMED + FINANCIAL_ENTITY_CREATED com correlationId = id da task', async () => {
+    confirmDocumentProposal.mockResolvedValue({ alreadyConfirmed: false, installmentGroupId: 'group-a', message: 'Parcelamento criado.' });
+    const { POST } = await import('@/app/api/nova/conversation-tasks/[id]/resolve/route');
+    const response = await POST(
+      jsonRequest({ actionId: 'cadastrar_financiamento', accountId: 'account-a', categoryId: 'category-a' }),
+      { params: { id: 'task-a' } }
+    );
+
+    expect(response.status).toBe(200);
+    expect((response.body as unknown as { reply: string }).reply).toContain('Cadastrado');
+    expect(tasks['task-a']?.status).toBe('COMPLETED');
+    expect(confirmDocumentProposal).toHaveBeenCalledTimes(1);
+    expect(confirmDocumentProposal).toHaveBeenCalledWith({
+      proposalId: 'preview-a',
+      userId: 'user-a',
+      accountId: 'account-a',
+      categoryId: 'category-a',
+      startDate: undefined,
+    });
+    expect(auditCalls).toContainEqual({ operation: 'DOCUMENT_PROPOSAL_CONFIRMED', entityId: 'preview-a' });
+    expect(auditCalls).toContainEqual({ operation: 'FINANCIAL_ENTITY_CREATED', entityId: 'group-a' });
+  });
+
+  it('sem accountId/categoryId: nunca chama confirmDocumentProposal e a task VOLTA pra WAITING_USER (não fica travada em IN_PROGRESS)', async () => {
+    const { POST } = await import('@/app/api/nova/conversation-tasks/[id]/resolve/route');
+    const response = await POST(jsonRequest({ actionId: 'cadastrar_financiamento' }), { params: { id: 'task-a' } });
+
+    expect(response.status).toBe(400);
+    expect(confirmDocumentProposal).not.toHaveBeenCalled();
+    expect(tasks['task-a']?.status).toBe('WAITING_USER');
+  });
+
+  it('duas resoluções concorrentes no caminho financeiro (clique duplo): só uma chama confirmDocumentProposal, a outra recebe 409', async () => {
+    confirmDocumentProposal.mockResolvedValue({ alreadyConfirmed: false, installmentGroupId: 'group-a', message: 'Parcelamento criado.' });
+    const { POST } = await import('@/app/api/nova/conversation-tasks/[id]/resolve/route');
+    const [first, second] = await Promise.all([
+      POST(jsonRequest({ actionId: 'cadastrar_financiamento', accountId: 'account-a', categoryId: 'category-a' }), { params: { id: 'task-a' } }),
+      POST(jsonRequest({ actionId: 'cadastrar_financiamento', accountId: 'account-a', categoryId: 'category-a' }), { params: { id: 'task-a' } }),
+    ]);
+
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual([200, 409]);
+    expect(confirmDocumentProposal).toHaveBeenCalledTimes(1);
+    expect(tasks['task-a']?.status).toBe('COMPLETED');
+  });
+
+  it('proposta já confirmada antes (idempotência do service financeiro): responde 200 sem duplicar e NÃO audita FINANCIAL_ENTITY_CREATED de novo', async () => {
+    confirmDocumentProposal.mockResolvedValue({ alreadyConfirmed: true, installmentGroupId: 'group-a', message: 'Esta prévia já havia sido confirmada.' });
+    const { POST } = await import('@/app/api/nova/conversation-tasks/[id]/resolve/route');
+    const response = await POST(
+      jsonRequest({ actionId: 'cadastrar_financiamento', accountId: 'account-a', categoryId: 'category-a' }),
+      { params: { id: 'task-a' } }
+    );
+
+    expect(response.status).toBe(200);
+    expect((response.body as unknown as { reply: string }).reply).toContain('já tinha sido cadastrado');
+    expect(auditCalls).toContainEqual({ operation: 'DOCUMENT_PROPOSAL_CONFIRMED', entityId: 'preview-a' });
+    expect(auditCalls).not.toContainEqual({ operation: 'FINANCIAL_ENTITY_CREATED', entityId: 'group-a' });
+  });
+
+  it('replay depois de resolvida (refresh/mensagem repetida): segunda chamada recebe 409 e não chama confirmDocumentProposal de novo', async () => {
+    confirmDocumentProposal.mockResolvedValue({ alreadyConfirmed: false, installmentGroupId: 'group-a', message: 'Parcelamento criado.' });
+    const { POST } = await import('@/app/api/nova/conversation-tasks/[id]/resolve/route');
+    await POST(jsonRequest({ actionId: 'cadastrar_financiamento', accountId: 'account-a', categoryId: 'category-a' }), { params: { id: 'task-a' } });
+    const replay = await POST(jsonRequest({ actionId: 'cadastrar_financiamento', accountId: 'account-a', categoryId: 'category-a' }), { params: { id: 'task-a' } });
+
+    expect(replay.status).toBe(409);
+    expect(confirmDocumentProposal).toHaveBeenCalledTimes(1);
   });
 });
 

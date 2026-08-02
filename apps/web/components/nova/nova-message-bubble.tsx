@@ -21,12 +21,15 @@ export type ConversationMessageStatus = 'success' | 'error' | 'pending_confirmat
  * Botão genérico de uma `ConversationTask` (Fase D — "NOVA como centro da
  * experiência"). `id`/`label` vêm de quem criou a task (ex.:
  * `buildDocumentConversationTaskContent`, em `services/documents`) — este
- * componente nunca sabe o que cada `id` significa, só repassa de volta em
- * `onTaskAction`. Nenhum campo aqui é específico de Documentos ou de
- * qualquer outro produtor: o mesmo shape serve pra email, PIX, fatura,
- * viagem, meta ou qualquer `ConversationTask` futura.
+ * componente nunca sabe o que cada `id` significa, só repassa de volta o
+ * objeto inteiro em `onTaskAction`. Nenhum campo aqui é específico de
+ * Documentos ou de qualquer outro produtor: o mesmo shape serve pra
+ * email, PIX, fatura, viagem, meta ou qualquer `ConversationTask` futura.
+ * `requiresFields` (Fase E) é só um sinal pra quem monta a mensagem (ex.:
+ * `nova-workspace.tsx`) decidir se precisa coletar dados antes de
+ * resolver — este componente não interpreta, só repassa.
  */
-export type ConversationMessageAction = { id: string; label: string };
+export type ConversationMessageAction = { id: string; label: string; requiresFields?: ('accountId' | 'categoryId')[] };
 
 export interface ConversationMessage {
   id: string;
@@ -46,6 +49,14 @@ export interface ConversationMessage {
   taskId?: string;
   /** Ações específicas da task, além do botão genérico "Depois" que a própria bolha já oferece. */
   taskActions?: ConversationMessageAction[];
+  /**
+   * Suprime o botão genérico "Depois" nesta bolha (Fase E). Usado só pela
+   * bolha final de confirmação de um wizard em chat (ex.: coleta de
+   * conta/categoria antes de cadastrar um financiamento — ver
+   * `nova-workspace.tsx`), que já tem seu próprio par Confirmar/Cancelar
+   * em `taskActions`; um segundo "Depois" ali seria redundante.
+   */
+  hideDismiss?: boolean;
 }
 
 export interface NovaMessageBubbleProps {
@@ -66,7 +77,7 @@ export interface NovaMessageBubbleProps {
    * `ConversationTask`s podem estar pendentes ao mesmo tempo — cada bolha
    * que tem `taskId` recebe o handler, não só a última.
    */
-  onTaskAction?: (taskId: string, actionId: string) => void;
+  onTaskAction?: (taskId: string, action: ConversationMessageAction) => void;
   /** Botão "Depois" — sempre disponível em qualquer bolha com `taskId`, nunca parte de `taskActions`. */
   onDismissTask?: (taskId: string) => void;
   /**
@@ -94,6 +105,7 @@ export function NovaMessageBubble({ message, onConfirm, onCancel, onTaskAction, 
   const isPendingConfirmation = message.status === 'pending_confirmation';
   const isLegendary = persona === 'legendary';
   const hasTaskActions = Boolean(message.taskId) && (onTaskAction || onDismissTask);
+  const showDismiss = hasTaskActions && !message.hideDismiss;
 
   return (
     <motion.div
@@ -164,14 +176,16 @@ export function NovaMessageBubble({ message, onConfirm, onCancel, onTaskAction, 
                 key={action.id}
                 size="sm"
                 variant={index === 0 ? 'primary' : 'secondary'}
-                onClick={() => onTaskAction?.(message.taskId as string, action.id)}
+                onClick={() => onTaskAction?.(message.taskId as string, action)}
               >
                 {action.label}
               </Button>
             ))}
-            <Button size="sm" variant="secondary" onClick={() => onDismissTask?.(message.taskId as string)}>
-              Depois
-            </Button>
+            {showDismiss && (
+              <Button size="sm" variant="secondary" onClick={() => onDismissTask?.(message.taskId as string)}>
+                Depois
+              </Button>
+            )}
           </div>
         )}
       </div>
