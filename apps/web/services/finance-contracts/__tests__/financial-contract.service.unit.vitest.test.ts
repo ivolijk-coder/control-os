@@ -432,8 +432,8 @@ describe('getFinancialDashboard', () => {
     expect(dashboard.dueToday).toHaveLength(1);
     expect(dashboard.dueToday[0]!.amount).toBe(500);
     expect(dashboard.dueThisWeek.map((item) => item.amount).sort()).toEqual([300, 500]);
-    expect(dashboard.overdue).toHaveLength(1);
-    expect(dashboard.overdue[0]!.amount).toBe(700);
+    expect(dashboard.overdue.items).toHaveLength(1);
+    expect(dashboard.overdue.items[0]!.amount).toBe(700);
     expect(dashboard.paidThisMonth).toEqual({ count: 1, total: 400 });
     expect(dashboard.outstandingBalance.count).toBe(3);
   });

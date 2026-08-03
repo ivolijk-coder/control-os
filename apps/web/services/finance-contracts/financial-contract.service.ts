@@ -585,11 +585,11 @@ export async function getFinancialDashboard(userId: string, reference: Date = ne
 
   return {
     outstandingBalance: { count: outstanding.length, total: sum(outstanding) },
-    dueThisMonth: { count: dueThisMonthRows.length, total: sum(dueThisMonthRows) },
+    dueThisMonth: { count: dueThisMonthRows.length, total: sum(dueThisMonthRows), items: dueThisMonthRows.map(toInstallmentWithContract) },
     paidThisMonth: { count: paidThisMonthRows.length, total: sum(paidThisMonthRows) },
     pending: { count: outstanding.length, total: sum(outstanding) },
     dueToday: dueTodayRows.map(toInstallmentWithContract),
     dueThisWeek: dueThisWeekRows.map(toInstallmentWithContract),
-    overdue: overdueRows.map(toInstallmentWithContract),
+    overdue: { count: overdueRows.length, total: sum(overdueRows), items: overdueRows.map(toInstallmentWithContract) },
   };
 }
