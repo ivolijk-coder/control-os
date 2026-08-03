@@ -48,6 +48,7 @@ export type ActionKind =
   | 'category.create'
   | 'fixed-occurrence.pay'
   | 'fixed-occurrence.list_due'
+  | 'financial_status.get'
   | 'task.create'
   | 'note.create'
   | 'habit.update'

@@ -24,6 +24,7 @@ export { CreateInstallmentAction } from './actions/finance/create-installment.ac
 export { CreateRecurringAction } from './actions/finance/create-recurring.action';
 export { CreateAccountAction } from './actions/finance/create-account.action';
 export { CreateCategoryAction } from './actions/finance/create-category.action';
+export { FinancialStatusAction } from './actions/finance/get-financial-status.action';
 export { CreateTaskAction } from './actions/tasks/create-task.action';
 export { CreateNoteAction } from './actions/notes/create-note.action';
 export { UpdateHabitAction } from './actions/habits/update-habit.action';
