@@ -2,6 +2,8 @@ import { ConversationService } from './ConversationService';
 
 export { ConversationService } from './ConversationService';
 export { IntentResolver } from './IntentResolver';
+export { FinancialIntentGuard, buildFinancialStatusReply, financialIntentGuard } from './FinancialIntentGuard';
+export type { FinancialIntentFamily } from './FinancialIntentGuard';
 export { ActionExecutor } from './ActionExecutor';
 
 /**
