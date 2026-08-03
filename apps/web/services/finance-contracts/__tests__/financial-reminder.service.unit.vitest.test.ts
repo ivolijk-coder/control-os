@@ -11,12 +11,12 @@ vi.mock('../financial-contract.service', () => ({ getFinancialDashboard }));
 function emptyDashboard(): FinancialDashboard {
   return {
     outstandingBalance: { count: 0, total: 0 },
-    dueThisMonth: { count: 0, total: 0 },
+    dueThisMonth: { count: 0, total: 0, items: [] },
     paidThisMonth: { count: 0, total: 0 },
     pending: { count: 0, total: 0 },
     dueToday: [],
     dueThisWeek: [],
-    overdue: [],
+    overdue: { count: 0, total: 0, items: [] },
   };
 }
 
@@ -55,7 +55,8 @@ describe('buildFinancialOverdueReminder', () => {
   });
 
   it('narra as parcelas atrasadas', async () => {
-    dashboard.overdue = [{ id: '1', contractId: 'c1', number: 2, amount: 500, dueDate: '2026-07-20T00:00:00.000Z', status: 'OVERDUE', paidAt: null, paymentTransactionId: null, createdAt: '2026-07-01T00:00:00.000Z', contractName: 'Financiamento', contractInstitution: 'Itaú' }];
+    const overdueItems = [{ id: '1', contractId: 'c1', number: 2, amount: 500, dueDate: '2026-07-20T00:00:00.000Z', status: 'OVERDUE' as const, paidAt: null, paymentTransactionId: null, createdAt: '2026-07-01T00:00:00.000Z', contractName: 'Financiamento', contractInstitution: 'Itaú' }];
+    dashboard.overdue = { count: overdueItems.length, total: overdueItems.reduce((sum, item) => sum + item.amount, 0), items: overdueItems };
 
     const { buildFinancialOverdueReminder } = await import('../financial-reminder.service');
     const message = await buildFinancialOverdueReminder('user-a');

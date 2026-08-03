@@ -111,12 +111,12 @@ export type FinancialInstallmentWithContract = FinancialInstallment & {
 export type FinancialDashboard = {
   /** Soma de todas as parcelas PENDING/OVERDUE (saldo devedor total). */
   outstandingBalance: { count: number; total: number };
-  dueThisMonth: { count: number; total: number };
+  dueThisMonth: { count: number; total: number; items: FinancialInstallmentWithContract[] };
   paidThisMonth: { count: number; total: number };
   pending: { count: number; total: number };
   dueToday: FinancialInstallmentWithContract[];
   dueThisWeek: FinancialInstallmentWithContract[];
-  overdue: FinancialInstallmentWithContract[];
+  overdue: { count: number; total: number; items: FinancialInstallmentWithContract[] };
 };
 
 /**

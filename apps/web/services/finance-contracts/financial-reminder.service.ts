@@ -55,10 +55,10 @@ export async function buildFinancialWeeklyReminder(userId: string, reference?: D
 /** Variante para as parcelas atrasadas — mesmo formato, tom de alerta. */
 export async function buildFinancialOverdueReminder(userId: string, reference?: Date): Promise<string | undefined> {
   const dashboard = await getFinancialDashboard(userId, reference);
-  if (!dashboard.overdue.length) return undefined;
+  if (!dashboard.overdue.items.length) return undefined;
 
-  const lines = dashboard.overdue.map(describeInstallment).join('\n');
-  const count = dashboard.overdue.length;
+  const lines = dashboard.overdue.items.map(describeInstallment).join('\n');
+  const count = dashboard.overdue.count;
   const noun = count === 1 ? 'parcela atrasada' : 'parcelas atrasadas';
   return `Você tem ${count} ${noun}:\n${lines}`;
 }
