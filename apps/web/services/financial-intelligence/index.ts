@@ -1,4 +1,6 @@
 export type { FinancialIntelligenceService, FinancialStatusQuery } from './financial-intelligence.interfaces';
+export { DefaultFinancialIntelligenceService } from './financial-intelligence.service';
+export type { FinancialIntelligenceSources } from './financial-intelligence.sources';
 export {
   DATA_COVERAGE_STATUSES,
   FINANCIAL_DATA_SOURCES,
