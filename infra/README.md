@@ -264,27 +264,52 @@ Para publicar uma atualização do frontend em produção, use a rotina controla
 
 ```bash
 cd /srv/control-os/infra
-chmod +x scripts/deploy-web-safe.sh
+EXPECTED_COMMIT=<HASH_COMPLETO_DO_COMMIT_OPERACIONAL_EM_MAIN> \
+LOW_TRAFFIC_CONFIRMED=true \
 ./scripts/deploy-web-safe.sh
 ```
 
 O script exige a branch `main` e o working tree limpo, atualiza o checkout
-somente por fast-forward, cria um dump do PostgreSQL principal fora do
-repositório e valida o arquivo com `pg_restore -l`. Em seguida, audita o estado
-das migrations, executa exclusivamente `prisma migrate deploy` quando houver
-uma migration pendente reconhecida, reconstrói somente o `web` e aguarda o
-health check antes de executar os smoke tests públicos.
+somente por fast-forward e aborta se `origin/main` ou o commit selecionado não
+forem exatamente `EXPECTED_COMMIT`. O valor deve ser o hash do commit
+operacional que contém esta versão do procedimento. O script também exige que
+o marco de produto
+`74681fd5acaa9327433b67d590d3387be1f8dd7e` seja ancestral desse commit, evitando
+publicar uma rotina operacional correta sobre uma versão de produto errada.
+`LOW_TRAFFIC_CONFIRMED=true` é uma confirmação operacional obrigatória: só
+informe esse valor depois de verificar que a publicação está ocorrendo em uma
+janela de baixo tráfego.
+
+Antes das migrations, a rotina cria um dump do PostgreSQL principal fora do
+repositório, valida o catálogo e executa uma restauração integral em um
+PostgreSQL 16 descartável, sem porta ou rede pública. Também registra o volume
+de `financial_contracts` e interrompe se encontrar transações com mais de 60
+segundos ou locks ativos/aguardando nessa tabela. Em seguida, audita as migrations,
+executa exclusivamente `prisma migrate deploy` quando houver uma migration
+pendente reconhecida, reconstrói somente o `web` e aguarda o health check antes
+de executar os smoke tests públicos.
 
 O processo é interrompido se houver divergência no Git, backup vazio ou
 inválido, estado inesperado de migrations, falha de build/health ou resposta
 inesperada das APIs. Os containers de banco, Redis, Traefik, API e Evolution
 são identificados antes da publicação e devem permanecer os mesmos ao final.
+O mesmo controle inclui ClamAV e o `document-worker` quando este existir. Após
+o restart, o script bloqueia a publicação se
+`ENABLE_NOVA_CONTRACT_CREATION=true` estiver presente no ambiente do web e
+valida também que `/api/finance/intelligence/status` continue protegido por
+autenticação.
+
+Se ocorrer uma falha depois que o novo web for recriado, a imagem anterior é
+retagueada e restaurada automaticamente. O rollback aguarda o container ficar
+saudável, imprime os logs recentes e repete os smoke tests. A migration não é
+revertida automaticamente: as migrations autorizadas para este fluxo devem
+ser aditivas e compatíveis com a imagem anterior.
 
 Por padrão, os backups desta rotina ficam em
 `/srv/control-os-backups/manual`. Esse diretório está fora do checkout Git. A
-cópia externa e o teste periódico de restauração continuam obrigatórios; a
-validação do catálogo prova que o dump pode ser lido pelo `pg_restore`, mas não
-substitui um ensaio completo de restauração isolada.
+cópia externa e o teste periódico de restauração continuam obrigatórios. A
+restauração descartável executada durante o deploy valida aquele dump, mas não
+substitui exercícios periódicos de recuperação completa da infraestrutura.
 
 Não use `docker compose up -d --build` para uma atualização rotineira: esse
 comando tem escopo amplo e pode reconstruir ou recriar serviços que não fazem
