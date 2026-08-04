@@ -49,7 +49,7 @@ vi.mock('@/services/finance-contracts', async () => {
 });
 
 function jsonRequest(body: unknown): Request {
-  return new Request('http://localhost/x', { method: 'POST', body: JSON.stringify(body) });
+  return new Request('http://localhost/x', { method: 'POST', headers: { 'Idempotency-Key': 'operation-test-1' }, body: JSON.stringify(body) });
 }
 
 const PRONAMPE_INPUT = { name: 'Pronampe Santander', institution: 'Santander', type: 'LOAN', totalAmount: 252000, installmentAmount: 6000, totalInstallments: 42, dueDay: 24 };
@@ -85,6 +85,13 @@ describe('GET/POST /api/finance/contracts', () => {
     expect(createFinancialContract).not.toHaveBeenCalled();
   });
 
+  it('POST exige identidade idempotente fora do body', async () => {
+    const { POST } = await import('@/app/api/finance/contracts/route');
+    const response = await POST(new Request('http://localhost/x', { method: 'POST', body: JSON.stringify(PRONAMPE_INPUT) }));
+    expect(response.status).toBe(400);
+    expect(createFinancialContract).not.toHaveBeenCalled();
+  });
+
   it('POST 400 para tipo de contrato inválido', async () => {
     const { POST } = await import('@/app/api/finance/contracts/route');
     const response = await POST(jsonRequest({ ...PRONAMPE_INPUT, type: 'BITCOIN' }));
@@ -99,8 +106,16 @@ describe('GET/POST /api/finance/contracts', () => {
 
     expect(response.status).toBe(201);
     expect(createFinancialContract).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 'user-a', name: 'Pronampe Santander', type: 'LOAN', totalAmount: 252000, installmentAmount: 6000, totalInstallments: 42, dueDay: 24 })
+      expect.objectContaining({ userId: 'user-a', name: 'Pronampe Santander', type: 'LOAN', totalAmount: 252000, installmentAmount: 6000, totalInstallments: 42, dueDay: 24, source: 'MANUAL', idempotencyKey: expect.stringMatching(/^contract:v1:/) })
     );
+  });
+
+  it('POST ignora source/documentId sensíveis enviados pelo cliente', async () => {
+    createFinancialContract.mockResolvedValue({ id: 'contract-a' });
+    const { POST } = await import('@/app/api/finance/contracts/route');
+    await POST(jsonRequest({ ...PRONAMPE_INPUT, source: 'NOVA', documentId: '00000000-0000-4000-8000-000000000099' }));
+    expect(createFinancialContract).toHaveBeenCalledWith(expect.objectContaining({ source: 'MANUAL' }));
+    expect(createFinancialContract.mock.calls[0]?.[0]).not.toHaveProperty('documentId');
   });
 
   it('POST mapeia FinancialContractError pro status HTTP correto', async () => {

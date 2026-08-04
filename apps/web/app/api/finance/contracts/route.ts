@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { currentSessionUserId } from '@/services/auth/session';
 import { runAsFinanceUser } from '@/services/modules/finance/finance-user-context';
-import { createFinancialContract, FinancialContractError, listFinancialContracts } from '@/services/finance-contracts';
-import type { FinancialContractOrigin, FinancialContractSource, FinancialContractType } from '@/services/finance-contracts';
+import { createFinancialContract, deriveFinancialContractIdempotencyKey, FinancialContractError, listFinancialContracts } from '@/services/finance-contracts';
+import type { FinancialContractOrigin, FinancialContractType } from '@/services/finance-contracts';
 
 /**
  * `GET/POST /api/finance/contracts` — evolução "Parcelas & Empréstimos".
@@ -12,7 +12,6 @@ import type { FinancialContractOrigin, FinancialContractSource, FinancialContrac
 
 const TYPES: readonly FinancialContractType[] = ['LOAN', 'FINANCING', 'CARD_INSTALLMENT', 'SUPPLIER'];
 const ORIGINS: readonly FinancialContractOrigin[] = ['PERSONAL', 'COMPANY'];
-const SOURCES: readonly FinancialContractSource[] = ['MANUAL', 'NOVA', 'DOCUMENT'];
 
 function object(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
@@ -52,6 +51,8 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const body = object(await request.json().catch(() => undefined));
   if (!body) return failure('Informe os dados do contrato.', 400);
+  const operationId = text(request.headers.get('idempotency-key'));
+  if (!operationId) return failure('Informe a identidade idempotente da operação.', 400);
 
   const name = text(body.name);
   if (!name) return failure('Informe o nome do contrato.', 400);
@@ -69,10 +70,14 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (body.endDate !== undefined && !endDate) return failure('A data de término informada é inválida.', 400);
   const origin = body.origin === undefined ? undefined : member(body.origin, ORIGINS);
   if (body.origin !== undefined && !origin) return failure('Origem do contrato inválida.', 400);
-  const source = body.source === undefined ? undefined : member(body.source, SOURCES);
-  if (body.source !== undefined && !source) return failure('Origem de criação do contrato inválida.', 400);
 
   try {
+    const idempotencyKey = deriveFinancialContractIdempotencyKey({
+      userId,
+      operationId,
+      channel: 'api',
+      actionKind: 'contract.create',
+    });
     const contract = await runAsFinanceUser(userId, () =>
       createFinancialContract({
         userId,
@@ -90,8 +95,8 @@ export async function POST(request: Request): Promise<NextResponse> {
         startDate,
         endDate,
         interestRate: num(body.interestRate),
-        source,
-        documentId: text(body.documentId),
+        source: 'MANUAL',
+        idempotencyKey,
       })
     );
     return NextResponse.json({ success: true, contract }, { status: 201 });

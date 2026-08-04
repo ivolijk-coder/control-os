@@ -260,6 +260,24 @@ function mapToolCallToIntent(toolCall: NovaAIToolCall, raw: string): NovaIntent 
       const installments = requireNumber(args, 'installments') ?? 1;
       return { kind: 'registrar_divida', raw, totalAmount, installments, description };
     }
+    case 'criar_emprestimo':
+    case 'criar_financiamento': {
+      const totalAmount = requireNumber(args, 'totalAmount');
+      const installments = requireNumber(args, 'installments');
+      const dueDay = requireNumber(args, 'dueDay');
+      const description = requireString(args, 'description');
+      if (totalAmount === undefined || installments === undefined || dueDay === undefined || description === undefined) break;
+      return {
+        kind: name,
+        raw,
+        institution: requireString(args, 'institution'),
+        totalAmount,
+        installments,
+        installmentAmount: requireNumber(args, 'installmentAmount'),
+        dueDay,
+        description,
+      };
+    }
     case 'criar_habito': {
       const title = requireString(args, 'title');
       if (title === undefined) break;

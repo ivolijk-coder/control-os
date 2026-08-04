@@ -8,6 +8,8 @@ import {
   CreateHabitAction,
   CreateIncomeAction,
   CreateInstallmentAction,
+  CreateLoanAction,
+  CreateFinancingAction,
   CreateNoteAction,
   CreateReminderAction,
   CreateTransferAction,
@@ -61,6 +63,24 @@ export class IntentResolver {
         return new CreateInstallmentAction({
           totalAmount: intent.totalAmount,
           installments: intent.installments,
+          description: intent.description,
+        });
+      case 'criar_emprestimo':
+        return new CreateLoanAction({
+          institution: intent.institution,
+          totalAmount: intent.totalAmount,
+          installments: intent.installments,
+          installmentAmount: intent.installmentAmount,
+          dueDay: intent.dueDay,
+          description: intent.description,
+        });
+      case 'criar_financiamento':
+        return new CreateFinancingAction({
+          institution: intent.institution,
+          totalAmount: intent.totalAmount,
+          installments: intent.installments,
+          installmentAmount: intent.installmentAmount,
+          dueDay: intent.dueDay,
           description: intent.description,
         });
       case 'criar_lembrete':

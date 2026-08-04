@@ -41,6 +41,8 @@ export function runIntent(ctx: NovaContext, intent: NovaIntent): NovaActionResul
     case 'criar_nota':
     case 'transferir_conta':
     case 'parcelar_despesa':
+    case 'criar_emprestimo':
+    case 'criar_financiamento':
     case 'pagar_conta_fixa':
     case 'consultar_contas_vencendo':
       // Nunca alcançado em runtime — `IntentResolver` (services/ai) sempre

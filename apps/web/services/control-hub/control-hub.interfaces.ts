@@ -1,4 +1,4 @@
-import type { ActionRequest, ActionResult } from './action-engine.types';
+import type { ActionExecutionMetadata, ActionRequest, ActionResult } from './action-engine.types';
 import type { DecisionResult } from './decision-engine.types';
 import type { NovaGatewayResult } from './nova-gateway.types';
 import type { HubMessage, HubPipelineResult } from './control-hub.types';
@@ -87,7 +87,7 @@ export interface DecisionEngine {
 
 /** Executa as ações que o Decision Engine pediu. Nesta fase só a interface existe — ver `action-engine.ts`. */
 export interface ActionEngine {
-  execute(actions: ActionRequest[], actorUserId?: string): Promise<ActionResult[]>;
+  execute(actions: ActionRequest[], actorUserId?: string, metadata?: ActionExecutionMetadata): Promise<ActionResult[]>;
 }
 
 /**

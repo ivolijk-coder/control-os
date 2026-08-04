@@ -35,7 +35,7 @@ export type {
   DecisionEngine,
   NovaGateway,
 } from './control-hub.interfaces';
-export type { ActionKind, ActionRequest, ActionResult } from './action-engine.types';
+export type { ActionExecutionMetadata, ActionKind, ActionRequest, ActionResult } from './action-engine.types';
 export type { DecisionKind, DecisionResult } from './decision-engine.types';
 export type { NovaGatewayResult } from './nova-gateway.types';
 /**

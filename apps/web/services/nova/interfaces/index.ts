@@ -53,6 +53,8 @@ export type NovaIntentKind =
   | 'registrar_receita'
   | 'transferir_conta'
   | 'parcelar_despesa'
+  | 'criar_emprestimo'
+  | 'criar_financiamento'
   | 'criar_lembrete'
   | 'criar_agenda'
   | 'excluir_agenda'
@@ -106,6 +108,23 @@ export interface InstallmentIntent extends NovaIntentBase {
   totalAmount: number;
   installments: number;
   description: string;
+}
+
+export interface FinancialContractIntentBase extends NovaIntentBase {
+  institution?: string;
+  totalAmount: number;
+  installments: number;
+  installmentAmount?: number;
+  dueDay: number;
+  description: string;
+}
+
+export interface LoanIntent extends FinancialContractIntentBase {
+  kind: 'criar_emprestimo';
+}
+
+export interface FinancingIntent extends FinancialContractIntentBase {
+  kind: 'criar_financiamento';
 }
 
 export interface ReminderIntent extends NovaIntentBase {
@@ -244,6 +263,8 @@ export type NovaIntent =
   | RevenueIntent
   | TransferIntent
   | InstallmentIntent
+  | LoanIntent
+  | FinancingIntent
   | ReminderIntent
   | AgendaIntent
   | DeleteAgendaIntent
@@ -270,6 +291,8 @@ export type NovaActionKind =
   // — ver `CreateTransferAction`/`CreateInstallmentAction` em `services/ai/actions`.
   | 'criar_transferencia'
   | 'criar_parcelamento'
+  | 'criar_emprestimo'
+  | 'criar_financiamento'
   | 'pagar_conta_fixa'
   | 'consultar_contas_vencendo'
   | 'criar_missao'

@@ -18,17 +18,21 @@ import type { ActionResult } from '@/services/action-result.types';
  */
 const FINANCE_ACTIONS_ROUTE = '/api/finance/actions';
 
-export async function postFinanceAction(kind: ActionKind, payload: Record<string, unknown>): Promise<ActionResult> {
+export async function postFinanceAction(
+  kind: ActionKind,
+  payload: Record<string, unknown>,
+  metadata?: { operationId: string },
+): Promise<ActionResult> {
   if (typeof fetch !== 'function') return { success: false, message: 'Não foi possível conectar a NOVA ao financeiro.' };
   try {
     const response = await fetch(FINANCE_ACTIONS_ROUTE, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind, payload, origin: 'nova' }),
+      body: JSON.stringify({ kind, payload, origin: 'nova', operationId: metadata?.operationId }),
     });
     const result = await response.json().catch(() => undefined) as Partial<ActionResult> | undefined;
     if (!response.ok || !result?.success) {
-      return { success: false, message: result?.message ?? 'Não foi possível concluir a operação financeira agora.' };
+      return { success: false, message: result?.message ?? 'Não foi possível concluir a operação financeira agora.', status: response.status };
     }
     return { success: true, message: result.message ?? 'Operação financeira concluída.', data: result.data };
   } catch (error) {

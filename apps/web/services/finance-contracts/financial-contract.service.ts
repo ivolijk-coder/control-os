@@ -1,7 +1,8 @@
 import 'server-only';
 
+import { createHash } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PersistentFinanceService } from '@/services/modules';
 import { runAsFinanceUser } from '@/services/modules/finance/finance-user-context';
 import { PrismaFinanceRepository } from '@/services/repositories';
@@ -54,6 +55,56 @@ export class FinancialContractError extends Error {
 }
 
 type InstallmentRow = { number: number; amount: number; dueDate: Date };
+
+export type FinancialContractOperationIdentity = {
+  userId: string;
+  operationId: string;
+  channel: string;
+  actionKind: 'loan.create' | 'financing.create' | 'contract.create';
+};
+
+/** Derivação server-side: o canal fornece a identidade, nunca a chave persistida. */
+export function deriveFinancialContractIdempotencyKey(identity: FinancialContractOperationIdentity): string {
+  const operationId = identity.operationId.trim();
+  const channel = identity.channel.trim().toLowerCase();
+  if (!operationId || operationId.length > 200 || !/^[a-zA-Z0-9._:-]+$/.test(operationId)) {
+    throw new FinancialContractError(422, 'A identidade da operação financeira é inválida.');
+  }
+  if (!channel || channel.length > 40 || !/^[a-z0-9_-]+$/.test(channel)) {
+    throw new FinancialContractError(422, 'O canal da operação financeira é inválido.');
+  }
+  const digest = createHash('sha256')
+    .update(`financial-contract:v1:${identity.userId}:${channel}:${identity.actionKind}:${operationId}`)
+    .digest('hex');
+  return `contract:v1:${digest}`;
+}
+
+function moneyCents(value: number | undefined): number | null {
+  return value === undefined ? null : Math.round(value * 100);
+}
+
+/** Fingerprint calculado somente a partir do input de domínio normalizado. */
+export function financialContractFingerprint(input: CreateFinancialContractInput): string {
+  const canonical = JSON.stringify({
+    name: input.name.trim(),
+    institution: input.institution?.trim() || null,
+    type: input.type,
+    origin: input.origin ?? 'PERSONAL',
+    categoryId: input.categoryId ?? null,
+    accountId: input.accountId ?? null,
+    totalAmountCents: moneyCents(input.totalAmount),
+    financedAmountCents: moneyCents(input.financedAmount),
+    totalInstallments: input.totalInstallments,
+    installmentAmountCents: moneyCents(input.installmentAmount),
+    dueDay: input.dueDay,
+    startDate: input.startDate ? new Date(input.startDate).toISOString() : null,
+    endDate: input.endDate ? new Date(input.endDate).toISOString() : null,
+    interestRate: input.interestRate ?? null,
+    source: input.source ?? 'MANUAL',
+    documentId: input.documentId ?? null,
+  });
+  return createHash('sha256').update(canonical).digest('hex');
+}
 
 /**
  * Divide `totalAmount` em `totalInstallments` parcelas, em centavos, sem
@@ -179,9 +230,33 @@ export async function createFinancialContract(input: CreateFinancialContractInpu
   if (!(input.totalAmount > 0)) throw new FinancialContractError(422, 'O valor total do contrato precisa ser maior que zero.');
   if (!(input.totalInstallments >= 1)) throw new FinancialContractError(422, 'O contrato precisa ter ao menos 1 parcela.');
   if (!(input.dueDay >= 1 && input.dueDay <= 31)) throw new FinancialContractError(422, 'O dia de vencimento precisa estar entre 1 e 31.');
+  if (input.source === 'NOVA' && !input.idempotencyKey) {
+    throw new FinancialContractError(422, 'A criação de contrato pela NOVA exige uma identidade idempotente.');
+  }
+  if (input.idempotencyKey && (input.idempotencyKey.length > 120 || !input.idempotencyKey.trim())) {
+    throw new FinancialContractError(422, 'A chave idempotente do contrato é inválida.');
+  }
 
   const startDate = input.startDate ? new Date(input.startDate) : new Date();
   if (Number.isNaN(startDate.getTime())) throw new FinancialContractError(422, 'A data de início informada é inválida.');
+  if (input.endDate && Number.isNaN(new Date(input.endDate).getTime())) throw new FinancialContractError(422, 'A data de término informada é inválida.');
+
+  const idempotencyFingerprint = input.idempotencyKey ? financialContractFingerprint(input) : undefined;
+  const findReplay = async (): Promise<FinancialContract | undefined> => {
+    if (!input.idempotencyKey) return undefined;
+    const existing = await prisma.financialContract.findFirst({
+      where: { userId: input.userId, idempotencyKey: input.idempotencyKey },
+      include: { installments: { orderBy: { number: 'asc' } } },
+    });
+    if (!existing) return undefined;
+    if (existing.idempotencyFingerprint !== idempotencyFingerprint) {
+      throw new FinancialContractError(409, 'Esta identidade de operação já foi usada com dados diferentes.');
+    }
+    return toContractDto(existing, existing.installments);
+  };
+
+  const replay = await findReplay();
+  if (replay) return replay;
 
   const rows = buildInstallmentSchedule({
     totalAmount: input.totalAmount,
@@ -195,53 +270,63 @@ export async function createFinancialContract(input: CreateFinancialContractInpu
   }
   const installmentAmount = input.installmentAmount ?? rows[0]?.amount ?? input.totalAmount / input.totalInstallments;
 
-  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    const contract = await tx.financialContract.create({
-      data: {
-        userId: input.userId,
-        name: input.name.trim(),
-        institution: input.institution,
-        type: input.type,
-        origin: input.origin ?? 'PERSONAL',
-        categoryId: input.categoryId,
-        accountId: input.accountId,
-        totalAmount: input.totalAmount,
-        financedAmount: input.financedAmount,
-        installmentAmount,
-        totalInstallments: input.totalInstallments,
-        dueDay: input.dueDay,
-        startDate,
-        endDate: input.endDate ? new Date(input.endDate) : undefined,
-        interestRate: input.interestRate,
-        status: 'ACTIVE',
-        source: input.source ?? 'MANUAL',
-        documentId: input.documentId,
-        installments: { create: rows.map((row) => ({ number: row.number, amount: row.amount, dueDate: row.dueDate })) },
-      },
-      include: { installments: { orderBy: { number: 'asc' } } },
-    });
-
-    await tx.financeAuditEvent.create({
-      data: {
-        userId: input.userId,
-        actorUserId: input.userId,
-        operation: input.documentId ? 'CONTRACT_IMPORTED_FROM_DOCUMENT' : 'CONTRACT_CREATED',
-        source: (input.source ?? 'MANUAL').toLowerCase(),
-        entityType: 'financial_contract',
-        entityId: contract.id,
-        after: {
-          name: contract.name,
-          totalAmount: Number(contract.totalAmount),
-          totalInstallments: contract.totalInstallments,
-          installmentAmount: Number(contract.installmentAmount),
-          dueDay: contract.dueDay,
-          documentId: contract.documentId,
+  try {
+    return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const contract = await tx.financialContract.create({
+        data: {
+          userId: input.userId,
+          name: input.name.trim(),
+          institution: input.institution,
+          type: input.type,
+          origin: input.origin ?? 'PERSONAL',
+          categoryId: input.categoryId,
+          accountId: input.accountId,
+          totalAmount: input.totalAmount,
+          financedAmount: input.financedAmount,
+          installmentAmount,
+          totalInstallments: input.totalInstallments,
+          dueDay: input.dueDay,
+          startDate,
+          endDate: input.endDate ? new Date(input.endDate) : undefined,
+          interestRate: input.interestRate,
+          status: 'ACTIVE',
+          source: input.source ?? 'MANUAL',
+          documentId: input.documentId,
+          idempotencyKey: input.idempotencyKey,
+          idempotencyFingerprint,
+          installments: { create: rows.map((row) => ({ number: row.number, amount: row.amount, dueDate: row.dueDate })) },
         },
-      },
-    });
+        include: { installments: { orderBy: { number: 'asc' } } },
+      });
 
-    return toContractDto(contract, contract.installments);
-  });
+      await tx.financeAuditEvent.create({
+        data: {
+          userId: input.userId,
+          actorUserId: input.userId,
+          operation: input.documentId ? 'CONTRACT_IMPORTED_FROM_DOCUMENT' : 'CONTRACT_CREATED',
+          source: (input.source ?? 'MANUAL').toLowerCase(),
+          entityType: 'financial_contract',
+          entityId: contract.id,
+          after: {
+            name: contract.name,
+            totalAmount: Number(contract.totalAmount),
+            totalInstallments: contract.totalInstallments,
+            installmentAmount: Number(contract.installmentAmount),
+            dueDay: contract.dueDay,
+            documentId: contract.documentId,
+          },
+        },
+      });
+
+      return toContractDto(contract, contract.installments);
+    });
+  } catch (error) {
+    if (input.idempotencyKey && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      const concurrentReplay = await findReplay();
+      if (concurrentReplay) return concurrentReplay;
+    }
+    throw error;
+  }
 }
 
 export async function listFinancialContracts(userId: string): Promise<FinancialContract[]> {

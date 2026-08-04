@@ -29,6 +29,10 @@ export function buildPlan(intent: NovaIntent): NovaAction[] {
       return [{ kind: 'criar_transferencia', label: 'Transferir entre contas' }];
     case 'parcelar_despesa':
       return [{ kind: 'criar_parcelamento', label: 'Parcelar despesa' }];
+    case 'criar_emprestimo':
+      return [{ kind: 'criar_emprestimo', label: 'Cadastrar empréstimo' }];
+    case 'criar_financiamento':
+      return [{ kind: 'criar_financiamento', label: 'Cadastrar financiamento' }];
     case 'criar_lembrete':
       return [
         { kind: 'criar_missao', label: 'Criar missão de lembrete' },

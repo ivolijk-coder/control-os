@@ -31,4 +31,6 @@ export interface ActionResult {
   success: boolean;
   message: string;
   data?: unknown;
+  /** Status HTTP opcional para adapters; handlers de domínio não precisam conhecê-lo. */
+  status?: number;
 }

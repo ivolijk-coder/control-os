@@ -21,6 +21,7 @@ export { UpdateIncomeAction } from './actions/finance/update-income.action';
 export { DeleteIncomeAction } from './actions/finance/delete-income.action';
 export { CreateTransferAction } from './actions/finance/create-transfer.action';
 export { CreateInstallmentAction } from './actions/finance/create-installment.action';
+export { CreateFinancingAction, CreateLoanAction } from './actions/finance/create-financial-contract.action';
 export { CreateRecurringAction } from './actions/finance/create-recurring.action';
 export { CreateAccountAction } from './actions/finance/create-account.action';
 export { CreateCategoryAction } from './actions/finance/create-category.action';

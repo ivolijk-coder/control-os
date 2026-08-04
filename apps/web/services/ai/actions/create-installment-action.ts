@@ -14,7 +14,7 @@ export interface CreateInstallmentInput {
  * Mesmo motivo de `CreateTransferAction`: NÃO escreve em `useDataStore` (só
  * `installmentGroupId`/`installmentNumber`/`installmentTotal` fariam
  * sentido nas páginas atuais se elas soubessem ler parcelamento — fora de
- * escopo nesta fase). Persiste só via `postFinanceAction` (fire-and-forget),
+ * escopo nesta fase). Persiste só via `postFinanceAction`,
  * que executa `installment.create` no Action Engine
  * (`PersistentFinanceService.createInstallment` — N lançamentos ligados,
  * valor dividido em centavos inteiros, resto absorvido pela última parcela).
@@ -22,8 +22,8 @@ export interface CreateInstallmentInput {
 export class CreateInstallmentAction implements Action {
   constructor(private readonly input: CreateInstallmentInput) {}
 
-  execute(_ctx: NovaContext): NovaActionResult[] {
-    postFinanceAction('installment.create', {
+  async execute(_ctx: NovaContext): Promise<NovaActionResult[]> {
+    const result = await postFinanceAction('installment.create', {
       totalAmount: this.input.totalAmount,
       installments: this.input.installments,
       description: this.input.description,
@@ -32,8 +32,8 @@ export class CreateInstallmentAction implements Action {
     return [
       {
         action: { kind: 'criar_parcelamento', label: 'Parcelar despesa' },
-        ok: true,
-        detail: `${this.input.description} em ${this.input.installments}x`,
+        ok: result.success,
+        detail: result.success ? `${this.input.description} em ${this.input.installments}x` : result.message,
       },
     ];
   }

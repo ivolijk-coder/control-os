@@ -29,6 +29,10 @@ export function buildReply(intent: NovaIntent, ok: boolean): string {
       return `Prontinho. Transferi R$ ${intent.amount.toFixed(2)} para ${intent.toAccountName} — seu patrimônio total não muda, só o saldo entre as contas.`;
     case 'parcelar_despesa':
       return `Prontinho. Parcelei "${intent.description}" em ${intent.installments}x de R$ ${(intent.totalAmount / intent.installments).toFixed(2)}.`;
+    case 'criar_emprestimo':
+      return `Prontinho. Cadastrei o empréstimo "${intent.description}" em ${intent.installments}x.`;
+    case 'criar_financiamento':
+      return `Prontinho. Cadastrei o financiamento "${intent.description}" em ${intent.installments}x.`;
     case 'criar_lembrete':
       return `Pronto. Já deixei programado${intent.dueDate ? ` para ${intent.dueDate}` : ''}${intent.time ? ` às ${intent.time}` : ''}.`;
     case 'criar_agenda':

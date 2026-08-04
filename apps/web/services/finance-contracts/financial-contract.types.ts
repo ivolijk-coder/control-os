@@ -76,6 +76,8 @@ export type CreateFinancialContractInput = {
   interestRate?: number;
   source?: FinancialContractSource;
   documentId?: string;
+  /** Chave já derivada pelo servidor. Obrigatória para NOVA; nunca cruza o DTO público. */
+  idempotencyKey?: string;
 };
 
 export type PayFinancialInstallmentInput = {
