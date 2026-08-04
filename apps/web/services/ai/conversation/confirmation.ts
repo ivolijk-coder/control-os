@@ -19,7 +19,10 @@ import type { NovaIntent } from '@/services/nova';
  * confirmação já pronto em `ConversationService`.
  */
 export function isSensitiveIntent(intent: NovaIntent): boolean {
-  return intent.kind === 'excluir_agenda' || intent.kind === 'pagar_conta_fixa';
+  return intent.kind === 'excluir_agenda'
+    || intent.kind === 'pagar_conta_fixa'
+    || intent.kind === 'criar_emprestimo'
+    || intent.kind === 'criar_financiamento';
 }
 
 /** "sim", "s", "confirma", "pode", "ok", "beleza", "isso" — variações comuns de confirmação em pt-BR. */
@@ -37,6 +40,10 @@ export function buildConfirmationPreview(intent: NovaIntent): string {
       return `Vou registrar uma receita de R$ ${intent.amount.toFixed(2)} (${intent.description}). Confirma?`;
     case 'registrar_divida':
       return `Vou registrar uma dívida de R$ ${intent.totalAmount.toFixed(2)} em ${intent.installments}x (${intent.description}). Confirma?`;
+    case 'criar_emprestimo':
+      return `Vou cadastrar o empréstimo "${intent.description}", no valor de R$ ${intent.totalAmount.toFixed(2)}, em ${intent.installments}x, com vencimento no dia ${intent.dueDay}. Confirma?`;
+    case 'criar_financiamento':
+      return `Vou cadastrar o financiamento "${intent.description}", no valor de R$ ${intent.totalAmount.toFixed(2)}, em ${intent.installments}x, com vencimento no dia ${intent.dueDay}. Confirma?`;
     case 'excluir_agenda':
       return `Vou excluir o compromisso "${intent.title}" da agenda. Confirma?`;
     case 'pagar_conta_fixa':
@@ -66,6 +73,10 @@ function describeIntentForBatch(intent: NovaIntent): string {
       return `transferir R$ ${intent.amount.toFixed(2)} para ${intent.toAccountName}`;
     case 'parcelar_despesa':
       return `parcelar "${intent.description}" em ${intent.installments}x`;
+    case 'criar_emprestimo':
+      return `cadastrar o empréstimo "${intent.description}" em ${intent.installments}x`;
+    case 'criar_financiamento':
+      return `cadastrar o financiamento "${intent.description}" em ${intent.installments}x`;
     case 'criar_lembrete':
       return `criar o lembrete "${intent.title}"`;
     case 'criar_agenda':

@@ -119,9 +119,11 @@ export class FinancialContractsApiClient {
   }
 
   async createContract(input: CreateFinancialContractInput, signal?: AbortSignal): Promise<FinancialContractDto> {
+    const operationId = globalThis.crypto?.randomUUID?.()
+      ?? `manual-contract-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const payload = await this.request<{ contract: FinancialContractDto }>('/api/finance/contracts', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationId },
       body: JSON.stringify(input),
       signal,
     });

@@ -556,11 +556,17 @@ model FinancialContract {
   /// para não acoplar o domínio financeiro ao de documentos.
   documentId String? @map("document_id") @db.Uuid
 
+  /// Identidade persistente da operação de criação. É derivada no servidor
+  /// a partir do canal/operationId autenticado; nunca vem do modelo de IA.
+  idempotencyKey         String? @map("idempotency_key") @db.VarChar(120)
+  idempotencyFingerprint String? @map("idempotency_fingerprint") @db.VarChar(128)
+
   installments FinancialInstallment[]
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  @@unique([userId, idempotencyKey])
   @@index([userId, status])
   @@index([documentId])
   @@map("financial_contracts")

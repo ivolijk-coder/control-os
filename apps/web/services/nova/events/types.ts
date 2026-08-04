@@ -33,6 +33,7 @@ export type NovaEventType =
   | 'GoalCreated'
   | 'ProjectCreated'
   | 'DebtCreated'
+  | 'FinancialContractCreated'
   | 'HabitCreated'
   | 'TripCreated'
   | 'DocumentCreated'
@@ -79,6 +80,9 @@ export function eventTypeForIntentKind(kind: NovaIntentKind): NovaEventType | un
       return 'ProjectCreated';
     case 'registrar_divida':
       return 'DebtCreated';
+    case 'criar_emprestimo':
+    case 'criar_financiamento':
+      return 'FinancialContractCreated';
     case 'criar_habito':
       return 'HabitCreated';
     case 'criar_viagem':
@@ -92,6 +96,10 @@ export function eventTypeForIntentKind(kind: NovaIntentKind): NovaEventType | un
     case 'consultar_dividas':
     case 'consultar_dia':
     case 'excluir_agenda':
+    case 'transferir_conta':
+    case 'parcelar_despesa':
+    case 'pagar_conta_fixa':
+    case 'consultar_contas_vencendo':
     case 'desconhecido':
       return undefined;
   }

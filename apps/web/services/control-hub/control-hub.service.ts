@@ -95,7 +95,9 @@ export class ControlHubService implements ControlHub {
     // Module Services (`services/modules/*`), nunca o Decision Engine nem
     // o Nova Gateway diretamente.
     const actionStartedAt = Date.now();
-    const actionResults = decision.actions.length > 0 ? await this.actionEngine.execute(decision.actions, actorUserId) : [];
+    const actionResults = decision.actions.length > 0
+      ? await this.actionEngine.execute(decision.actions, actorUserId, { operationId: normalized.id, channel: normalized.channel })
+      : [];
     const actionMs = Date.now() - actionStartedAt;
 
     // Sem resposta explícita do Decision Engine (`kind: 'execute_actions'`

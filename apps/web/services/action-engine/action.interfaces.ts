@@ -1,4 +1,4 @@
-import type { ActionKind } from '@/services/control-hub';
+import type { ActionExecutionMetadata, ActionKind } from '@/services/control-hub';
 import type { ActionResult } from '@/services/action-result.types';
 import type { Capability } from '@/services/capability.types';
 
@@ -25,5 +25,5 @@ import type { Capability } from '@/services/capability.types';
 export interface ActionHandler {
   readonly kind: ActionKind;
   readonly capability: Capability;
-  execute(payload: Record<string, unknown>): Promise<ActionResult>;
+  execute(payload: Record<string, unknown>, metadata?: ActionExecutionMetadata): Promise<ActionResult>;
 }

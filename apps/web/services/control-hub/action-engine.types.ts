@@ -43,11 +43,14 @@ export type ActionKind =
   | 'income.delete'
   | 'transfer.create'
   | 'installment.create'
+  | 'loan.create'
+  | 'financing.create'
   | 'recurring.create'
   | 'account.create'
   | 'category.create'
   | 'fixed-occurrence.pay'
   | 'fixed-occurrence.list_due'
+  | 'financial_status.get'
   | 'task.create'
   | 'note.create'
   | 'habit.update'
@@ -75,6 +78,12 @@ export interface ActionRequest {
   payload: Record<string, unknown>;
   /** Confiança do Decision Engine nesta proposta específica (0–1). Opcional — `MockDecisionEngine` preenche; um Decision Engine futuro pode usar para decidir se executa direto ou pede confirmação. */
   confidence?: number;
+}
+
+/** Metadados confiáveis do canal, separados do payload escolhido pelo modelo. */
+export interface ActionExecutionMetadata {
+  operationId: string;
+  channel: 'app' | 'web' | 'whatsapp' | 'api' | 'document';
 }
 
 /**

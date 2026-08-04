@@ -2,6 +2,8 @@ export {
   FinancialContractError,
   buildFinancialContractSummary,
   createFinancialContract,
+  deriveFinancialContractIdempotencyKey,
+  financialContractFingerprint,
   getFinancialContract,
   getFinancialDashboard,
   listFinancialContracts,
@@ -9,6 +11,7 @@ export {
   settleFinancialContract,
   undoFinancialInstallmentPayment,
 } from './financial-contract.service';
+export type { FinancialContractOperationIdentity } from './financial-contract.service';
 export { buildFinancialOverdueReminder, buildFinancialWeeklyReminder } from './financial-reminder.service';
 export type {
   CreateFinancialContractInput,

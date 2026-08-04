@@ -1,6 +1,5 @@
 import {
   buildDailyCheckIn,
-  buildDebtsSummary,
   buildPlan,
   buildReply,
   eventTypeForIntentKind,
@@ -19,6 +18,7 @@ import type { Action } from '../actions';
 import { ActionExecutor } from './ActionExecutor';
 import { buildBatchConfirmationPreview, buildConfirmationPreview, CANCEL_PATTERN, CONFIRM_PATTERN, isSensitiveIntent } from './confirmation';
 import { IntentResolver } from './IntentResolver';
+import { financialIntentGuard } from './FinancialIntentGuard';
 
 const intentResolver = new IntentResolver();
 const actionExecutor = new ActionExecutor();
@@ -220,6 +220,12 @@ export class ConversationService {
       }
     }
 
+    const guardedFinancialStatus = await financialIntentGuard.handle(text);
+    if (guardedFinancialStatus) {
+      await memoryService.remember({ scope: 'short_term', namespace: persona }, text);
+      return guardedFinancialStatus;
+    }
+
     if (AI_PROVIDER === 'openai') {
       return this.processTurnWithReasoning(text, ctx, sessionId, persona);
     }
@@ -364,7 +370,7 @@ export class ConversationService {
 
     if (intent.kind === 'consultar_dividas') {
       await memoryService.remember({ scope: 'short_term', namespace: persona }, text);
-      return { status: 'concluido', reply: buildDebtsSummary(ctx.debts), checklist: [], results: [] };
+      return financialIntentGuard.getStatus();
     }
 
     if (intent.kind === 'consultar_dia') {

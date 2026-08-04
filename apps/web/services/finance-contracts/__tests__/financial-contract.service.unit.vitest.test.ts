@@ -40,6 +40,8 @@ type ContractRow = {
   status: string;
   source: string;
   documentId: string | null;
+  idempotencyKey: string | null;
+  idempotencyFingerprint: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -76,6 +78,8 @@ type CreateContractData = {
   status: string;
   source: string;
   documentId?: string;
+  idempotencyKey?: string;
+  idempotencyFingerprint?: string;
   installments?: { create: Array<{ number: number; amount: number; dueDate: Date }> };
 };
 
@@ -105,6 +109,8 @@ const tx = {
         status: data.status,
         source: data.source,
         documentId: data.documentId ?? null,
+        idempotencyKey: data.idempotencyKey ?? null,
+        idempotencyFingerprint: data.idempotencyFingerprint ?? null,
         createdAt: now,
         updatedAt: now,
       };
@@ -150,8 +156,10 @@ const tx = {
         return row;
       }
     ),
-    findFirst: vi.fn(async ({ where, include }: { where: { id: string; userId: string }; include?: { installments?: unknown } }) => {
-      const row = contracts.get(where.id);
+    findFirst: vi.fn(async ({ where, include }: { where: { id?: string; userId: string; idempotencyKey?: string }; include?: { installments?: unknown } }) => {
+      const row = where.id
+        ? contracts.get(where.id)
+        : [...contracts.values()].find((item) => item.userId === where.userId && item.idempotencyKey === where.idempotencyKey);
       if (!row || row.userId !== where.userId) return null;
       if (include?.installments) {
         const rowInstallments = [...installments.values()].filter((item) => item.contractId === where.id).sort((a, b) => a.number - b.number);
@@ -209,6 +217,7 @@ const tx = {
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    financialContract: tx.financialContract,
     financialInstallment: { findMany: dashboardFindMany },
   },
 }));
@@ -303,6 +312,38 @@ describe('createFinancialContract', () => {
   it('rejeita dia de vencimento fora de 1-31', async () => {
     const { createFinancialContract, FinancialContractError } = await import('../financial-contract.service');
     await expect(createFinancialContract({ userId: 'user-a', name: 'X', type: 'LOAN', totalAmount: 100, totalInstallments: 2, dueDay: 32 })).rejects.toBeInstanceOf(FinancialContractError);
+  });
+
+  it('replay idempotente retorna o mesmo contrato sem duplicar parcelas ou auditoria', async () => {
+    const { createFinancialContract } = await import('../financial-contract.service');
+    const input = { userId: 'user-a', name: 'Nubank', type: 'LOAN' as const, totalAmount: 9000, totalInstallments: 30, dueDay: 10, source: 'NOVA' as const, idempotencyKey: 'contract:v1:key-a' };
+    const first = await createFinancialContract(input);
+    const replay = await createFinancialContract(input);
+    expect(replay.id).toBe(first.id);
+    expect(contracts.size).toBe(1);
+    expect(installments.size).toBe(30);
+    expect(auditCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('mesma chave com dados diferentes retorna 409', async () => {
+    const { createFinancialContract } = await import('../financial-contract.service');
+    const base = { userId: 'user-a', name: 'Nubank', type: 'LOAN' as const, totalAmount: 9000, totalInstallments: 30, dueDay: 10, source: 'NOVA' as const, idempotencyKey: 'contract:v1:key-b' };
+    await createFinancialContract(base);
+    await expect(createFinancialContract({ ...base, totalAmount: 10000 })).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('usuários diferentes podem usar a mesma chave', async () => {
+    const { createFinancialContract } = await import('../financial-contract.service');
+    const base = { name: 'Nubank', type: 'LOAN' as const, totalAmount: 9000, totalInstallments: 30, dueDay: 10, source: 'NOVA' as const, idempotencyKey: 'contract:v1:shared' };
+    const first = await createFinancialContract({ ...base, userId: 'user-a' });
+    const second = await createFinancialContract({ ...base, userId: 'user-b' });
+    expect(second.id).not.toBe(first.id);
+    expect(contracts.size).toBe(2);
+  });
+
+  it('NOVA não cria contrato sem chave idempotente', async () => {
+    const { createFinancialContract } = await import('../financial-contract.service');
+    await expect(createFinancialContract({ userId: 'user-a', name: 'Nubank', type: 'LOAN', totalAmount: 9000, totalInstallments: 30, dueDay: 10, source: 'NOVA' })).rejects.toMatchObject({ status: 422 });
   });
 });
 

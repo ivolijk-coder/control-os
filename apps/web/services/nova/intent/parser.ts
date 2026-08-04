@@ -8,7 +8,7 @@ import type { NovaIntent } from '../interfaces';
  * isso acontecer.
  */
 
-const AMOUNT_PATTERN = /(\d{1,3}(?:\.\d{3})*(?:,\d{2})?|\d+(?:\.\d{1,2})?)/;
+const AMOUNT_PATTERN = /(\d{1,3}(?:\.\d{3})+(?:,\d{2})?|\d+[,.]\d{1,2}|\d+)/;
 const TIME_PATTERN = /(\d{1,2})[h:](\d{2})?/;
 
 // "passei" adicionado na Fase 7 — "Passei R$ 80 no posto." é um dos
@@ -27,6 +27,8 @@ const TRANSFER_TARGET_PATTERN = /\bpara\s+(?:o|a|os|as)?\s*([a-zà-ÿA-ZÀ-Ÿ0-9
 // Fase 7. Formas de comando/infinitivo ("parcela", "parcelar") — deliberadamente
 // distinto de DEBT_PATTERN ("parcelei", passado), sem colisão de regex.
 const INSTALLMENT_COMMAND_PATTERN = /\b(parcela|parcelar|quero parcelar)\b/;
+const LOAN_PATTERN = /\b(empr[ée]stimo|peguei\s+(?:um\s+)?empr[ée]stimo)\b/i;
+const FINANCING_PATTERN = /\b(financiamento|financiei)\b/i;
 const REMINDER_PATTERN = /\b(lembrar de|lembra de|n[ãa]o esquecer de)\b/;
 const AGENDA_PATTERN = /\b(reuni[ãa]o|compromisso|agendar|consulta|dentista|m[ée]dico)\b/;
 const GOAL_PATTERN = /\b(quero faturar|minha meta [ée]|meu objetivo [ée]|quero alcan[çc]ar|quero economizar|quero emagrecer|quero perder)\b/;
@@ -36,7 +38,11 @@ const CONSULT_DEBT_PATTERN = /\b(quanto (eu )?devo|minhas d[íi]vidas|como est[�
 // `\bdevo\b\s*(r\$|\d)` fica fora do grupo com `\b` final — depois de "r$"
 // (símbolo, não letra) o `\b` de fechamento nunca bateria.
 const DEBT_PATTERN = /\b(tenho uma d[íi]vida|financiei|parcelei)\b|\bdevo\b\s*(r\$|\d)/;
-const INSTALLMENTS_PATTERN = /(\d{1,2})\s*(?:x\b|vezes)/i;
+const INSTALLMENTS_PATTERN = /(\d{1,2})\s*(?:x(?=\b|\d)|vezes)/i;
+const INSTALLMENT_VALUE_PATTERN = /\d{1,2}\s*x\s*(\d+(?:[.,]\d{1,2})?)/i;
+const CONTRACT_TOTAL_PATTERN = /(?:valor(?:\s+total)?|total|de)\s+(?:r\$\s*)?(\d+(?:[.,]\d{1,2})?)\s*(mil)?/i;
+const DUE_DAY_PATTERN = /(?:vence(?:ndo)?|vencimento)\s+(?:no\s+)?dia\s+(\d{1,2})|\bdia\s+(\d{1,2})\b/i;
+const INSTITUTION_PATTERN = /\b(nubank|ita[úu]|bradesco|santander|caixa|banco do brasil|inter|c6|sicredi|sicoob)\b/i;
 const DAY_PLAN_PATTERN =
   /\b(o que (eu )?preciso fazer hoje|organize meu dia|como est[áa] meu dia|plano do dia|meu dia hoje)\b/;
 const FIXED_ACCOUNT_PAYMENT_PATTERN = /^paguei\s+(?:a|o)?\s*([a-zà-ÿ][a-zà-ÿ0-9\s-]*)[.!?]*$/i;
@@ -89,6 +95,33 @@ function parseInstallments(text: string): number {
   const rawValue = match?.[1];
   const parsed = rawValue ? Number(rawValue) : NaN;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function parseContractTotal(text: string): number | null {
+  const match = CONTRACT_TOTAL_PATTERN.exec(text);
+  const value = match?.[1];
+  if (!value) return null;
+  const parsed = Number(value.replace(',', '.'));
+  if (!Number.isFinite(parsed)) return null;
+  return match[2] ? parsed * 1000 : parsed;
+}
+
+function parseInstallmentValue(text: string): number | undefined {
+  const value = INSTALLMENT_VALUE_PATTERN.exec(text)?.[1];
+  if (!value) return undefined;
+  const parsed = Number(value.replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseDueDay(text: string): number | undefined {
+  const match = DUE_DAY_PATTERN.exec(text);
+  const parsed = Number(match?.[1] ?? match?.[2]);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 31 ? parsed : undefined;
+}
+
+function parseInstitution(text: string): string | undefined {
+  const value = INSTITUTION_PATTERN.exec(text)?.[1];
+  return value ? describeEntry(value) : undefined;
 }
 
 /** Usa o texto original como título/descrição — capitaliza e remove pontuação final. */
@@ -152,6 +185,29 @@ export function parseIntent(text: string): NovaIntent {
     const toAccountName = extractTransferTarget(raw);
     if (amount !== null && toAccountName) {
       return { kind: 'transferir_conta', raw, amount, toAccountName };
+    }
+  }
+
+  const contractKind = LOAN_PATTERN.test(lower)
+    ? 'criar_emprestimo'
+    : FINANCING_PATTERN.test(lower)
+      ? 'criar_financiamento'
+      : undefined;
+  if (contractKind) {
+    const totalAmount = parseContractTotal(raw);
+    const installments = parseInstallments(raw);
+    const dueDay = parseDueDay(raw);
+    if (totalAmount !== null && installments > 0 && dueDay !== undefined) {
+      return {
+        kind: contractKind,
+        raw,
+        institution: parseInstitution(raw),
+        totalAmount,
+        installments,
+        installmentAmount: parseInstallmentValue(raw),
+        dueDay,
+        description: describeEntry(raw),
+      };
     }
   }
 

@@ -33,11 +33,14 @@ const FINANCE_ACTION_KINDS: readonly ActionKind[] = [
   'income.delete',
   'transfer.create',
   'installment.create',
+  'loan.create',
+  'financing.create',
   'recurring.create',
   'account.create',
   'category.create',
   'fixed-occurrence.pay',
   'fixed-occurrence.list_due',
+  'financial_status.get',
 ];
 
 function isFinanceActionKind(value: unknown): value is ActionKind {
@@ -46,6 +49,14 @@ function isFinanceActionKind(value: unknown): value is ActionKind {
 
 function isPayload(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function text(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function isContractCreation(kind: ActionKind): boolean {
+  return kind === 'loan.create' || kind === 'financing.create';
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -76,10 +87,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: false, message: '"payload" precisa ser um objeto.' }, { status: 400 });
   }
 
+  const operationId = text('operationId' in rawBody ? rawBody.operationId : undefined);
+  if (isContractCreation(kind) && !operationId) {
+    return NextResponse.json({ success: false, message: 'A identidade segura da operação é obrigatória.' }, { status: 400 });
+  }
+
   try {
-    const source = 'origin' in rawBody && rawBody.origin === 'nova' ? 'nova' : 'manual';
-    const [result] = await actionRegistry.execute([{ kind, payload: { ...payload, source } }], userId);
-    return NextResponse.json(result ?? { success: false, message: 'Nenhum resultado devolvido pelo Action Engine.' });
+    const safePayload: Record<string, unknown> = { ...payload, source: 'nova' };
+    if (isContractCreation(kind)) {
+      delete safePayload.userId;
+      delete safePayload.type;
+      delete safePayload.idempotencyKey;
+      delete safePayload.idempotencyFingerprint;
+      delete safePayload.documentId;
+    }
+    const [result] = await actionRegistry.execute(
+      [{ kind, payload: safePayload }],
+      userId,
+      operationId ? { operationId, channel: 'web' } : undefined,
+    );
+    const response = result ?? { success: false, message: 'Nenhum resultado devolvido pelo Action Engine.', status: 500 };
+    return NextResponse.json(response, { status: response.success ? 200 : response.status ?? 400 });
   } catch (error) {
     console.error('Falha ao executar ação financeira autenticada:', error);
     return NextResponse.json({ success: false, message: 'Não foi possível concluir a ação financeira agora.' }, { status: 500 });

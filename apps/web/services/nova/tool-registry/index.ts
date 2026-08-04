@@ -60,6 +60,16 @@ export const TOOL_REGISTRY: readonly NovaToolDescriptor[] = [
     description: 'Cria uma dívida (com parcelas) e atualiza o Histórico.',
   },
   {
+    kind: 'criar_emprestimo',
+    label: 'Cadastrar empréstimo',
+    description: 'Prepara um empréstimo para confirmação e criação segura no núcleo de contratos.',
+  },
+  {
+    kind: 'criar_financiamento',
+    label: 'Cadastrar financiamento',
+    description: 'Prepara um financiamento para confirmação e criação segura no núcleo de contratos.',
+  },
+  {
     kind: 'consultar_dividas',
     label: 'Consultar dívidas',
     description: 'Responde com um resumo das dívidas em aberto — não cria nem altera dados.',

@@ -96,6 +96,40 @@ export const INTENT_TOOL_SCHEMAS: ToolSchema[] = [
     },
   },
   {
+    name: 'criar_emprestimo',
+    description:
+      'Preparar o cadastro de um empréstimo. Não usar para compra parcelada. Só chamar quando valor total, parcelas, descrição e dia de vencimento forem conhecidos; pergunte apenas os campos ausentes.',
+    parameters: {
+      type: 'object',
+      properties: {
+        institution: { type: 'string', description: 'Instituição credora, se informada.' },
+        totalAmount: { type: 'number', description: 'Valor total do empréstimo, em reais.' },
+        installments: { type: 'number', description: 'Quantidade de parcelas.' },
+        installmentAmount: { type: 'number', description: 'Valor da parcela, se informado.' },
+        dueDay: { type: 'number', description: 'Dia mensal de vencimento, de 1 a 31.' },
+        description: { type: 'string', description: 'Finalidade ou descrição curta do empréstimo.' },
+      },
+      required: ['totalAmount', 'installments', 'dueDay', 'description'],
+    },
+  },
+  {
+    name: 'criar_financiamento',
+    description:
+      'Preparar o cadastro de um financiamento. Não usar para compra parcelada comum. Só chamar quando valor total, parcelas, descrição e dia de vencimento forem conhecidos; pergunte apenas os campos ausentes.',
+    parameters: {
+      type: 'object',
+      properties: {
+        institution: { type: 'string', description: 'Instituição financiadora, se informada.' },
+        totalAmount: { type: 'number', description: 'Valor total financiado, em reais.' },
+        installments: { type: 'number', description: 'Quantidade de parcelas.' },
+        installmentAmount: { type: 'number', description: 'Valor da parcela, se informado.' },
+        dueDay: { type: 'number', description: 'Dia mensal de vencimento, de 1 a 31.' },
+        description: { type: 'string', description: 'Bem ou finalidade do financiamento.' },
+      },
+      required: ['totalAmount', 'installments', 'dueDay', 'description'],
+    },
+  },
+  {
     name: 'criar_lembrete',
     description: 'Criar um lembrete simples para o usuário.',
     parameters: {

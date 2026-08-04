@@ -1,4 +1,4 @@
-import type { ActionEngine, ActionKind, ActionRequest } from '@/services/control-hub';
+import type { ActionEngine, ActionExecutionMetadata, ActionKind, ActionRequest } from '@/services/control-hub';
 import type { ActionResult } from '@/services/action-result.types';
 import type { ActionHandler } from './action.interfaces';
 import { CreateEventAction } from './actions/calendar/create-event.action';
@@ -12,11 +12,13 @@ import { UpdateIncomeAction } from './actions/finance/update-income.action';
 import { DeleteIncomeAction } from './actions/finance/delete-income.action';
 import { CreateTransferAction } from './actions/finance/create-transfer.action';
 import { CreateInstallmentAction } from './actions/finance/create-installment.action';
+import { CreateFinancingAction, CreateLoanAction } from './actions/finance/create-financial-contract.action';
 import { CreateRecurringAction } from './actions/finance/create-recurring.action';
 import { CreateAccountAction } from './actions/finance/create-account.action';
 import { CreateCategoryAction } from './actions/finance/create-category.action';
 import { PayFixedAccountOccurrenceAction } from './actions/finance/pay-fixed-account-occurrence.action';
 import { ListFixedAccountOccurrencesAction } from './actions/finance/list-fixed-account-occurrences.action';
+import { FinancialStatusAction } from './actions/finance/get-financial-status.action';
 import { CreateTaskAction } from './actions/tasks/create-task.action';
 import { CreateNoteAction } from './actions/notes/create-note.action';
 import { UpdateHabitAction } from './actions/habits/update-habit.action';
@@ -52,11 +54,14 @@ export const DEFAULT_ACTION_HANDLERS: ActionHandler[] = [
   new DeleteIncomeAction(),
   new CreateTransferAction(),
   new CreateInstallmentAction(),
+  new CreateLoanAction(),
+  new CreateFinancingAction(),
   new CreateRecurringAction(),
   new CreateAccountAction(),
   new CreateCategoryAction(),
   new PayFixedAccountOccurrenceAction(),
   new ListFixedAccountOccurrencesAction(),
+  new FinancialStatusAction(),
   new CreateTaskAction(),
   new CreateNoteAction(),
   new UpdateHabitAction(),
@@ -85,12 +90,12 @@ export class ActionRegistry implements ActionEngine {
     this.handlers = new Map(handlers.map((handler) => [handler.kind, handler]));
   }
 
-  async execute(actions: ActionRequest[], actorUserId?: string): Promise<ActionResult[]> {
-    const execute = () => Promise.all(actions.map((request) => this.executeOne(request)));
+  async execute(actions: ActionRequest[], actorUserId?: string, metadata?: ActionExecutionMetadata): Promise<ActionResult[]> {
+    const execute = () => Promise.all(actions.map((request) => this.executeOne(request, metadata)));
     return actorUserId ? runAsFinanceUser(actorUserId, execute) : execute();
   }
 
-  private async executeOne(request: ActionRequest): Promise<ActionResult> {
+  private async executeOne(request: ActionRequest, metadata?: ActionExecutionMetadata): Promise<ActionResult> {
     const handler = this.handlers.get(request.kind);
     if (!handler) {
       // Nunca alcançado com o `MockDecisionEngine` desta fase (só produz
@@ -99,7 +104,7 @@ export class ActionRegistry implements ActionEngine {
       // executor ainda implementado.
       return { success: false, message: `Nenhum executor registrado para a ação "${request.kind}".` };
     }
-    return handler.execute(request.payload);
+    return handler.execute(request.payload, metadata);
   }
 }
 

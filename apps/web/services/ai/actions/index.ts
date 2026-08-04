@@ -7,6 +7,8 @@ export { CreateTransferAction } from './create-transfer-action';
 export type { CreateTransferInput } from './create-transfer-action';
 export { CreateInstallmentAction } from './create-installment-action';
 export type { CreateInstallmentInput } from './create-installment-action';
+export { CreateFinancingAction, CreateLoanAction } from './create-financial-contract-action';
+export type { CreateFinancialContractActionInput } from './create-financial-contract-action';
 export { CreateReminderAction, CreateGoalAction } from './create-reminder-goal-action';
 export type { CreateReminderInput, CreateGoalInput } from './create-reminder-goal-action';
 export { CreateAppointmentAction } from './create-appointment-action';
