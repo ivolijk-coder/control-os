@@ -1,9 +1,6 @@
 import type { ActionEngine, ActionExecutionMetadata, ActionKind, ActionRequest } from '@/services/control-hub';
 import type { ActionResult } from '@/services/action-result.types';
 import type { ActionHandler } from './action.interfaces';
-import { CreateEventAction } from './actions/calendar/create-event.action';
-import { UpdateEventAction } from './actions/calendar/update-event.action';
-import { DeleteEventAction } from './actions/calendar/delete-event.action';
 import { CreateExpenseAction } from './actions/finance/create-expense.action';
 import { UpdateExpenseAction } from './actions/finance/update-expense.action';
 import { DeleteExpenseAction } from './actions/finance/delete-expense.action';
@@ -19,10 +16,6 @@ import { CreateCategoryAction } from './actions/finance/create-category.action';
 import { PayFixedAccountOccurrenceAction } from './actions/finance/pay-fixed-account-occurrence.action';
 import { ListFixedAccountOccurrencesAction } from './actions/finance/list-fixed-account-occurrences.action';
 import { FinancialStatusAction } from './actions/finance/get-financial-status.action';
-import { CreateTaskAction } from './actions/tasks/create-task.action';
-import { CreateNoteAction } from './actions/notes/create-note.action';
-import { UpdateHabitAction } from './actions/habits/update-habit.action';
-import { UpdateGoalAction } from './actions/goals/update-goal.action';
 import { StoreDocumentAction } from './actions/documents/store-document.action';
 import { runAsFinanceUser } from '@/services/modules/finance/finance-user-context';
 
@@ -43,9 +36,6 @@ import { runAsFinanceUser } from '@/services/modules/finance/finance-user-contex
  * Action" — não confundir com nenhum outro "default" do módulo.
  */
 export const DEFAULT_ACTION_HANDLERS: ActionHandler[] = [
-  new CreateEventAction(),
-  new UpdateEventAction(),
-  new DeleteEventAction(),
   new CreateExpenseAction(),
   new UpdateExpenseAction(),
   new DeleteExpenseAction(),
@@ -62,10 +52,6 @@ export const DEFAULT_ACTION_HANDLERS: ActionHandler[] = [
   new PayFixedAccountOccurrenceAction(),
   new ListFixedAccountOccurrencesAction(),
   new FinancialStatusAction(),
-  new CreateTaskAction(),
-  new CreateNoteAction(),
-  new UpdateHabitAction(),
-  new UpdateGoalAction(),
   new StoreDocumentAction(),
 ];
 

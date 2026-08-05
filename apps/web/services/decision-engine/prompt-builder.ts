@@ -83,14 +83,12 @@ function buildCapabilitiesSection(capabilities: Capability[]): string {
 /** Só campos já expostos por `UserContext` (Fase 2) — nenhum campo novo inventado aqui. Contagens, não os registros inteiros: manter o prompt compacto ("nunca enviar contexto desnecessário", mesmo princípio já aplicado em `buildModelContextSummary`, `services/ai/context`). */
 function buildContextSection(context: UserContext): string {
   const lines = [
-    `Nome do usuário: ${context.profile.name}`,
-    `Compromissos na agenda: ${context.agenda.length}`,
-    `Lançamentos financeiros registrados: ${context.finance.length}`,
-    `Metas/objetivos ativos: ${context.goals.length}`,
-    `Hábitos acompanhados: ${context.habits.length}`,
-    `Bens patrimoniais registrados: ${context.assets.length}`,
-    `Notas salvas: ${context.notes.length}`,
-    `Documentos guardados: ${context.documents.length}`,
+    `Data de referência: ${context.runtime.referenceDate}`,
+    `Nome do usuário: ${context.profile?.name ?? 'indisponível'}`,
+    `Documentos guardados: ${context.documents?.total ?? 'indisponível'}`,
+    `Pendências operacionais: ${context.operationalTasks ? context.operationalTasks.pending + context.operationalTasks.waitingUser : 'indisponível'}`,
+    `Cobertura: ${context.coverage.map((entry) => `${entry.domain}=${entry.status}`).join(', ')}`,
+    'Dados financeiros mutáveis devem ser consultados pela capability financial_status.get; este resumo não substitui essa consulta.',
   ];
   return `Contexto do usuário:\n${lines.join('\n')}`;
 }

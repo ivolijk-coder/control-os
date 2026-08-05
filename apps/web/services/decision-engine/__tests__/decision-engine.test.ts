@@ -64,14 +64,10 @@ function buildMessage(content: string): HubMessage {
 function buildEmptyContext(): UserContext {
   return {
     profile: { id: 'usr_test', name: 'Usuário de Teste' },
-    agenda: [],
-    finance: [],
-    goals: [],
-    habits: [],
-    assets: [],
-    notes: [],
-    documents: [],
-    recentConversations: [],
+    documents: { total: 0, pendingAnalysis: 0, failedAnalysis: 0 },
+    operationalTasks: { pending: 0, waitingUser: 0 },
+    runtime: { referenceDate: '2026-08-05', generatedAt: '2026-08-05T12:00:00.000Z', timezone: 'America/Sao_Paulo' },
+    coverage: [],
   };
 }
 

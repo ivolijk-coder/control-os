@@ -95,6 +95,16 @@ export async function listDocuments(userId: string, input: { q?: string; cursor?
   return { documents, nextCursor };
 }
 
+/** Agregado mínimo para contexto da NOVA; não expõe títulos, nomes ou conteúdo. */
+export async function getDocumentContextSummary(userId: string) {
+  const [total, pendingAnalysis, failedAnalysis] = await Promise.all([
+    prisma.storedDocument.count({ where: { userId, archivedAt: null } }),
+    prisma.storedDocument.count({ where: { userId, archivedAt: null, analysisStatus: { in: ['QUEUED', 'PROCESSING'] } } }),
+    prisma.storedDocument.count({ where: { userId, archivedAt: null, analysisStatus: { in: ['FAILED', 'NEEDS_REVIEW'] } } }),
+  ]);
+  return { total, pendingAnalysis, failedAnalysis };
+}
+
 export async function openDocument(userId: string, id: string) {
   const document = await prisma.storedDocument.findFirst({ where: { id, userId, archivedAt: null } });
   if (!document) return undefined;

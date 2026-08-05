@@ -1,5 +1,4 @@
 import type { NovaIntent, NovaPersona } from '@/services/nova';
-import { buildModelContextSummary } from '../context/buildModelContext';
 import { AIProviderError } from '../errors';
 import type { AIProvider, ProposedToolCall, ReasoningProvider, ReasoningTurn, ToolExecutionOutput } from '../interfaces';
 import type {
@@ -37,28 +36,28 @@ const MAX_SUGGESTIONS = 5;
  */
 export class OpenAIProvider implements AIProvider, ReasoningProvider {
   async chat(messages: ChatMessage[], context: AIConversationContext): Promise<string> {
+    void context;
     const response = await this.callRoute({
       mode: 'chat',
       messages,
-      contextSummary: await buildModelContextSummary(context),
     });
     return response.content;
   }
 
   async generateResponse(prompt: string, context: AIConversationContext): Promise<string> {
+    void context;
     const response = await this.callRoute({
       mode: 'generate',
       prompt,
-      contextSummary: await buildModelContextSummary(context),
     });
     return response.content;
   }
 
   async classifyIntent(text: string, context: AIConversationContext): Promise<NovaIntent> {
+    void context;
     const response = await this.callRoute({
       mode: 'classify',
       prompt: text,
-      contextSummary: await buildModelContextSummary(context),
     });
     const [firstCall] = response.toolCalls;
     if (!firstCall) {
@@ -78,9 +77,9 @@ export class OpenAIProvider implements AIProvider, ReasoningProvider {
   }
 
   async generateSuggestions(context: AIConversationContext): Promise<string[]> {
+    void context;
     const response = await this.callRoute({
       mode: 'suggest',
-      contextSummary: await buildModelContextSummary(context),
     });
     return response.content
       .split('\n')
@@ -97,10 +96,10 @@ export class OpenAIProvider implements AIProvider, ReasoningProvider {
    * decide se executa na hora ou pausa pra confirmação (ações sensíveis).
    */
   async converse(text: string, context: AIConversationContext, persona: NovaPersona): Promise<ReasoningTurn> {
+    void context;
     const response = await this.callRoute({
       mode: 'reason',
       prompt: text,
-      contextSummary: await buildModelContextSummary(context),
       persona,
     });
     return toReasoningTurn(response, text);
@@ -119,11 +118,11 @@ export class OpenAIProvider implements AIProvider, ReasoningProvider {
     context: AIConversationContext,
     persona: NovaPersona
   ): Promise<ReasoningTurn> {
+    void context;
     const response = await this.callRoute({
       mode: 'reason',
       previousResponseId: continuationToken,
       toolOutputs: outputs.map((output) => ({ callId: output.callId, output: output.output })),
-      contextSummary: await buildModelContextSummary(context),
       persona,
     });
     // Sem `text` de usuário nesta chamada — só usado se a OpenAI, contra o

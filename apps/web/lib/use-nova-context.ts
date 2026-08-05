@@ -1,10 +1,6 @@
 import * as React from 'react';
 import type { NovaContext } from '@/services/nova';
 import { useDataStore } from '@/lib/data-store';
-import { MOCK_USER } from '@/lib/mock-data';
-
-// Primeiro nome do usuário — mesmo cálculo usado em `HomeHero`/`NovaWorkspace`.
-const NOVA_USER_FIRST_NAME = MOCK_USER.name.split(' ')[0] ?? MOCK_USER.name;
 
 // Sem seletor de Space na conversa ainda — toda ação criada pela Nova cai
 // num Space padrão (ver mesma constante em `nova-workspace.tsx`).
@@ -41,18 +37,6 @@ export function useNovaContext(): NovaContext {
   const addAsset = useDataStore((state) => state.addAsset);
   const addTrip = useDataStore((state) => state.addTrip);
   const addNote = useDataStore((state) => state.addNote);
-  const debts = useDataStore((state) => state.debts);
-  const missions = useDataStore((state) => state.missions);
-  const agendaEvents = useDataStore((state) => state.agendaEvents);
-  const financeEntries = useDataStore((state) => state.financeEntries);
-  const habits = useDataStore((state) => state.habits);
-  const trips = useDataStore((state) => state.trips);
-  const documents = useDataStore((state) => state.documents);
-  const assets = useDataStore((state) => state.assets);
-  const notes = useDataStore((state) => state.notes);
-  // Etapa 13 (NOVA Proativa) — ver comentário de `timeline` em `NovaContext`.
-  const timeline = useDataStore((state) => state.timeline);
-
   return React.useMemo(
     () => ({
       actions: {
@@ -70,17 +54,20 @@ export function useNovaContext(): NovaContext {
         addNote,
       },
       defaultSpaceId: DEFAULT_SPACE_ID,
-      debts,
-      missions,
-      agendaEvents,
-      financeEntries,
-      habits,
-      trips,
-      documents,
-      assets,
-      notes,
-      timeline,
-      userName: NOVA_USER_FIRST_NAME,
+      // Compatibilidade temporária com o executor legado. Fatos locais não
+      // atravessam mais a fronteira da NOVA; fontes sem backend ficam vazias
+      // e são declaradas como NOT_IMPLEMENTED pelo ContextProvider real.
+      debts: [],
+      missions: [],
+      agendaEvents: [],
+      financeEntries: [],
+      habits: [],
+      trips: [],
+      documents: [],
+      assets: [],
+      notes: [],
+      timeline: [],
+      userName: 'Usuário',
     }),
     [
       addMission,
@@ -95,16 +82,6 @@ export function useNovaContext(): NovaContext {
       addAsset,
       addTrip,
       addNote,
-      debts,
-      missions,
-      agendaEvents,
-      financeEntries,
-      habits,
-      trips,
-      documents,
-      assets,
-      notes,
-      timeline,
     ]
   );
 }

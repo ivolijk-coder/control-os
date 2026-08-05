@@ -1,5 +1,4 @@
 import {
-  buildDailyCheckIn,
   buildPlan,
   buildReply,
   eventTypeForIntentKind,
@@ -80,6 +79,20 @@ const FALLBACK_REPLY =
 
 const NO_PENDING_ACTION_REPLY = 'Não havia nenhuma ação pendente de confirmação.';
 const CANCELLED_REPLY = 'Ok, não fiz nada.';
+const OVERVIEW_UNAVAILABLE_REPLY = 'Não consegui consultar suas fontes reais agora. Não vou usar dados locais como substituição.';
+
+async function fetchDailyOverviewReply(): Promise<string> {
+  try {
+    const response = await fetch('/api/nova/overview', { method: 'GET' });
+    const body: unknown = await response.json();
+    if (!response.ok || typeof body !== 'object' || body === null || !('reply' in body) || typeof body.reply !== 'string') {
+      return OVERVIEW_UNAVAILABLE_REPLY;
+    }
+    return body.reply;
+  } catch {
+    return OVERVIEW_UNAVAILABLE_REPLY;
+  }
+}
 
 /**
  * Recorta de `NovaContext` só o que o `AIProvider` pode ler — nunca
@@ -375,7 +388,7 @@ export class ConversationService {
 
     if (intent.kind === 'consultar_dia') {
       await memoryService.remember({ scope: 'short_term', namespace: persona }, text);
-      const reply = buildDailyCheckIn(ctx.missions, ctx.agendaEvents, ctx.financeEntries, ctx.habits, ctx.userName);
+      const reply = await fetchDailyOverviewReply();
       return { status: 'concluido', reply, checklist: [], results: [] };
     }
 
