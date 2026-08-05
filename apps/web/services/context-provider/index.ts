@@ -1,45 +1,24 @@
-/**
- * Ponto único de importação do Context Provider (CONTROL HUB — Fase 2).
- * `services/control-hub` (Context Manager) e qualquer implementação futura
- * de `NovaGateway` importam só daqui — nunca de `context-provider.service.ts`
- * ou `mock-context-providers.ts` diretamente. Mesma convenção de
- * `services/control-hub/index.ts`, `services/nova/index.ts` e
- * `services/ai/index.ts`.
- */
 export { ContextProviderService, contextProvider } from './context-provider.service';
-export {
-  agendaContextProvider,
-  assetsContextProvider,
-  conversationsContextProvider,
-  documentsContextProvider,
-  financeContextProvider,
-  goalsContextProvider,
-  habitsContextProvider,
-  notesContextProvider,
-  userProfileProvider,
-} from './mock-context-providers';
+export { documentsContextProvider, operationalTasksContextProvider, userProfileProvider } from './real-context-providers';
 export type {
-  AgendaContextProvider,
-  AssetsContextProvider,
-  ConversationsContextProvider,
   ContextProvider,
+  ContextProviderDependencies,
   DocumentsContextProvider,
-  FinanceContextProvider,
-  GoalsContextProvider,
-  HabitsContextProvider,
-  ModuleContextProvider,
-  NotesContextProvider,
+  OperationalTasksContextProvider,
   UserProfileProvider,
 } from './context-provider.interfaces';
+export {
+  CONTEXT_COVERAGE_STATUSES,
+  USER_CONTEXT_DOMAINS,
+  buildUserContextCoverage,
+} from './user-context.types';
 export type {
-  AgendaContext,
-  AssetsContext,
-  ConversationContext,
+  ContextCoverageDTO,
+  ContextCoverageStatus,
   DocumentsContext,
-  FinanceContext,
-  GoalsContext,
-  HabitsContext,
-  NotesContext,
+  OperationalTasksContext,
+  RuntimeContext,
   UserContext,
+  UserContextDomain,
   UserProfile,
 } from './user-context.types';

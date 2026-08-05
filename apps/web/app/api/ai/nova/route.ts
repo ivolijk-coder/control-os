@@ -12,6 +12,8 @@ import type {
   NovaAIToolOutput,
 } from '@/services/ai/types';
 import type { NovaPersona } from '@/services/nova';
+import { currentSessionUserId } from '@/services/auth/session';
+import { dailyOverviewService } from '@/services/daily-overview';
 
 /**
  * Route Handler server-only (CONTROL OS — Etapa 4: Preparação profissional
@@ -300,6 +302,9 @@ function errorResponse(code: AIProviderErrorCode, message: string, status: numbe
 export async function POST(request: NextRequest): Promise<NextResponse<NovaAIResponseBody>> {
   const startedAt = Date.now();
 
+  const userId = currentSessionUserId();
+  if (!userId) return errorResponse('unavailable', 'Faça login para conversar com a NOVA.', 401);
+
   let rawBody: unknown;
   try {
     rawBody = await request.json();
@@ -323,7 +328,16 @@ export async function POST(request: NextRequest): Promise<NextResponse<NovaAIRes
   }
 
   const model = process.env.OPENAI_MODEL ?? 'gpt-5.5';
-  const instructions = buildInstructions(body.contextSummary, body.persona);
+  let serverContextSummary: string;
+  try {
+    serverContextSummary = await dailyOverviewService.buildPromptContext(userId);
+  } catch {
+    serverContextSummary = 'Contexto factual indisponível. Não invente fatos sobre o usuário.';
+  }
+  // `body.contextSummary` é deliberadamente ignorado: o navegador não é
+  // uma fonte autorizada de fatos, mesmo quando o campo foi enviado por uma
+  // versão antiga do cliente.
+  const instructions = buildInstructions(serverContextSummary, body.persona);
   const input = buildResponsesInput(body);
   // CONTROL OS — papéis definitivos das duas inteligências: a NOVA executa,
   // a LEGENDARY desenvolve — ela NUNCA executa ações operacionais (ver
