@@ -633,6 +633,7 @@ model AppUser {
   documents               StoredDocument[]
   documentImportProposals DocumentImportProposal[]
   conversationTasks       ConversationTask[]
+  novaConversations       NovaConversation[]
 
   @@map("app_users")
 }
@@ -757,23 +758,23 @@ model DocumentImportProposal {
 /// Fila persistente e idempotente. Um worker futuro pode consumi-la sem mudar
 /// o contrato HTTP; enquanto isso um executor interno a processa sob demanda.
 model DocumentAnalysisJob {
-  id               String                    @id @default(uuid()) @db.Uuid
-  documentId       String                    @map("document_id") @db.Uuid
-  document         StoredDocument            @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  analysisVersion  Int                       @map("analysis_version")
-  status           DocumentAnalysisJobStatus @default(QUEUED)
+  id               String                        @id @default(uuid()) @db.Uuid
+  documentId       String                        @map("document_id") @db.Uuid
+  document         StoredDocument                @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  analysisVersion  Int                           @map("analysis_version")
+  status           DocumentAnalysisJobStatus     @default(QUEUED)
   /// Fase F — ver doc do enum `DocumentAnalysisProgressStage`. Escrito só
   /// pelo worker (`processNextDocumentAnalysisJob`), nunca pelo cliente;
   /// resetado para `READING_DOCUMENT` a cada nova tentativa/reenfileiramento.
   progressStage    DocumentAnalysisProgressStage @default(READING_DOCUMENT) @map("progress_stage")
-  attempts         Int                       @default(0)
-  runAfter         DateTime                  @default(now()) @map("run_after") @db.Timestamptz(3)
-  lockedAt         DateTime?                 @map("locked_at") @db.Timestamptz(3)
-  lockedBy         String?                   @map("locked_by")
-  lastErrorCode    String?                   @map("last_error_code")
-  lastErrorMessage String?                   @map("last_error_message")
-  createdAt        DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  attempts         Int                           @default(0)
+  runAfter         DateTime                      @default(now()) @map("run_after") @db.Timestamptz(3)
+  lockedAt         DateTime?                     @map("locked_at") @db.Timestamptz(3)
+  lockedBy         String?                       @map("locked_by")
+  lastErrorCode    String?                       @map("last_error_code")
+  lastErrorMessage String?                       @map("last_error_message")
+  createdAt        DateTime                      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([documentId, analysisVersion])
   @@index([status, runAfter])
@@ -825,6 +826,29 @@ enum ConversationTaskPriority {
   URGENT
 }
 
+enum NovaConversationChannel {
+  WEB
+  APP
+  WHATSAPP
+  API
+}
+
+enum NovaConversationPersona {
+  NOVA
+  LEGENDARY
+}
+
+enum NovaConversationStatus {
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+
+enum NovaMessageRole {
+  USER
+  ASSISTANT
+}
+
 /// `type` e `sourceType` são `String`, não enum do Postgres: crescem sem
 /// migration a cada produtor novo (validados por union type + switch
 /// exaustivo em TypeScript, ver `services/conversation-tasks`). `status` e
@@ -861,4 +885,56 @@ model ConversationTask {
   @@index([userId, status])
   @@index([sourceType, sourceId])
   @@map("conversation_tasks")
+}
+
+/// Thread persistente da NOVA. `activeKey` e criada exclusivamente no
+/// servidor e, por ser unica enquanto nao-nula, impede duas conversas ativas
+/// para a mesma combinacao usuario/canal/persona. Ao fechar ou arquivar, a
+/// chave e liberada sem impedir a preservacao do historico.
+model NovaConversation {
+  id            String                  @id @default(uuid()) @db.Uuid
+  userId        String                  @map("user_id") @db.Uuid
+  user          AppUser                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel       NovaConversationChannel
+  persona       NovaConversationPersona
+  status        NovaConversationStatus  @default(ACTIVE)
+  activeKey     String?                 @unique @map("active_key")
+  startedAt     DateTime                @default(now()) @map("started_at") @db.Timestamptz(3)
+  lastMessageAt DateTime                @default(now()) @map("last_message_at") @db.Timestamptz(3)
+  closedAt      DateTime?               @map("closed_at") @db.Timestamptz(3)
+  deletedAt     DateTime?               @map("deleted_at") @db.Timestamptz(3)
+  createdAt     DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+  messages      NovaMessage[]
+
+  @@unique([id, userId])
+  @@index([userId, status, lastMessageAt])
+  @@index([userId, channel, persona, lastMessageAt])
+  @@map("nova_conversations")
+}
+
+/// Mensagem persistente, sempre vinculada ao mesmo `userId` da conversa por
+/// uma FK composta. `sequence` e global e monotona, fornecendo ordem estavel
+/// mesmo quando timestamps coincidem. O mesmo correlationId pode ter uma
+/// mensagem USER e uma ASSISTANT, mas nunca repetir o mesmo papel.
+model NovaMessage {
+  id                 String           @id @default(uuid()) @db.Uuid
+  conversationId     String           @map("conversation_id") @db.Uuid
+  userId             String           @map("user_id") @db.Uuid
+  conversation       NovaConversation @relation(fields: [conversationId, userId], references: [id, userId], onDelete: Cascade)
+  role               NovaMessageRole
+  content            String
+  intent             String?
+  provider           String?
+  providerResponseId String?          @map("provider_response_id")
+  correlationId      String           @map("correlation_id")
+  sequence           BigInt           @default(autoincrement())
+  redacted           Boolean          @default(false)
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([conversationId, correlationId, role])
+  @@index([conversationId, sequence])
+  @@index([userId, createdAt])
+  @@index([providerResponseId])
+  @@map("nova_messages")
 }
