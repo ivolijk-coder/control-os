@@ -42,6 +42,9 @@ describe('FinancialIntentGuard', () => {
     'Como está minha situação financeira?',
     'Tenho parcela vencida?',
     'O que vence essa semana?',
+    'Tenho empréstimos em atraso?',
+    'Existe financiamento vencido?',
+    'Quais parcelas estão vencidas?',
   ];
 
   it.each(criticalQuestions)('classifica %s e consulta financial_status.get exatamente uma vez', async (question) => {
@@ -105,6 +108,72 @@ describe('FinancialIntentGuard', () => {
     const result = await new FinancialIntentGuard(async () => success(status)).handle('Estou devendo?');
     expect(result?.reply).toContain('Empréstimos: 2 — R$ 3.400,00');
     expect(result?.reply).toContain('Total em atraso: R$ 3.400,00');
+  });
+
+  it('detalha empréstimos quando a pergunta restringe a categoria', async () => {
+    const status: FinancialStatusDTO = {
+      ...emptyStatus,
+      totalOverdue: 3600,
+      overdueCount: 1,
+      categories: [{
+        type: 'LOAN',
+        count: 1,
+        total: 3600,
+        items: [{
+          id: 'loan-1',
+          source: 'FINANCIAL_CONTRACTS',
+          sourceType: 'LOAN',
+          title: 'Empréstimo Nubank',
+          amount: 3600,
+          dueDate: '2026-07-01T00:00:00.000Z',
+          status: 'OVERDUE',
+          daysOverdue: 32,
+        }],
+      }],
+    };
+
+    const result = await new FinancialIntentGuard(async () => success(status))
+      .handle('Tenho empréstimos em atraso?', 'session-a');
+
+    expect(result?.reply).toContain('Empréstimo Nubank');
+    expect(result?.reply).toContain('R$ 3.600,00');
+    expect(result?.reply).toContain('32 dias em atraso');
+  });
+
+  it('mantém contexto financeiro para o follow-up Qual? e atualiza a consulta', async () => {
+    const status: FinancialStatusDTO = {
+      ...emptyStatus,
+      totalOverdue: 3600,
+      overdueCount: 1,
+      categories: [{
+        type: 'LOAN',
+        count: 1,
+        total: 3600,
+        items: [{ id: 'loan-1', source: 'FINANCIAL_CONTRACTS', sourceType: 'LOAN', title: 'Empréstimo Nubank', amount: 3600, dueDate: '2026-07-01T00:00:00.000Z', status: 'OVERDUE', daysOverdue: 32 }],
+      }],
+    };
+    const execute = vi.fn(async () => success(status));
+    const guard = new FinancialIntentGuard(execute);
+
+    await guard.handle('Tenho empréstimos em atraso?', 'session-a');
+    const followUp = await guard.handle('Qual?', 'session-a');
+
+    expect(followUp?.reply).toContain('Empréstimo Nubank');
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('não usa o contexto financeiro de outra sessão', async () => {
+    const execute = vi.fn(async () => success(emptyStatus));
+    const guard = new FinancialIntentGuard(execute);
+
+    await guard.handle('Estou devendo?', 'session-a');
+    await expect(guard.handle('Qual?', 'session-b')).resolves.toBeUndefined();
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
+  it('informa fontes ainda não implementadas', async () => {
+    const result = await new FinancialIntentGuard(async () => success(emptyStatus)).handle('Quanto devo?');
+    expect(result?.reply).toContain('Ainda não consultei: cartões.');
   });
 
   it('resume contas fixas e múltiplas categorias sem dupla fonte local', async () => {

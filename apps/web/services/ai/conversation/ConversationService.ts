@@ -220,7 +220,7 @@ export class ConversationService {
       }
     }
 
-    const guardedFinancialStatus = await financialIntentGuard.handle(text);
+    const guardedFinancialStatus = await financialIntentGuard.handle(text, sessionId);
     if (guardedFinancialStatus) {
       await memoryService.remember({ scope: 'short_term', namespace: persona }, text);
       return guardedFinancialStatus;
@@ -370,7 +370,7 @@ export class ConversationService {
 
     if (intent.kind === 'consultar_dividas') {
       await memoryService.remember({ scope: 'short_term', namespace: persona }, text);
-      return financialIntentGuard.getStatus();
+      return financialIntentGuard.getStatus(sessionId);
     }
 
     if (intent.kind === 'consultar_dia') {

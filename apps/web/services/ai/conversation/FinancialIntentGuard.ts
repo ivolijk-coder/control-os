@@ -12,6 +12,14 @@ export type FinancialIntentFamily = 'FINANCIAL_STATUS';
 
 type FinancialStatusExecutor = () => Promise<ActionResult>;
 
+interface FinancialConversationContext {
+  focusCategory: FinancialStatusCategoryDTO['type'] | undefined;
+  status: FinancialStatusDTO;
+  updatedAt: number;
+}
+
+const FINANCIAL_CONTEXT_TTL_MS = 10 * 60 * 1000;
+
 const FINANCIAL_STATUS_PATTERNS = [
   /\btenho\s+conta\s+atrasada\b/,
   /\btenho\s+algo\s+atrasado\b/,
@@ -24,6 +32,14 @@ const FINANCIAL_STATUS_PATTERNS = [
   /\bcomo\s+esta\s+minha\s+situacao\s+financeira\b/,
   /\btenho\s+parcela\s+vencida\b/,
   /\bo\s+que\s+vence\s+(?:esta|essa|nessa)\s+semana\b/,
+  /\b(?:emprestimo|emprestimos|financiamento|financiamentos|parcela|parcelas|divida|dividas|conta|contas)\b.*\b(?:atrasado|atrasada|atrasados|atrasadas|vencido|vencida|vencidos|vencidas|em atraso)\b/,
+  /\b(?:atrasado|atrasada|atrasados|atrasadas|vencido|vencida|vencidos|vencidas|em atraso)\b.*\b(?:emprestimo|emprestimos|financiamento|financiamentos|parcela|parcelas|divida|dividas|conta|contas)\b/,
+];
+
+const FINANCIAL_FOLLOW_UP_PATTERNS = [
+  /^(?:qual|quais|quanto|quantos|quando)(?:\s+.*)?$/,
+  /^(?:mostre|mostrar|liste|listar|detalhe|detalhes)(?:\s+.*)?$/,
+  /^(?:e|sobre)\s+(?:o|os|a|as)?\s*(?:emprestimo|emprestimos|financiamento|financiamentos|parcela|parcelas|divida|dividas|conta|contas)(?:\s+.*)?$/,
 ];
 
 const CATEGORY_LABELS: Record<FinancialStatusCategoryDTO['type'], string> = {
@@ -33,6 +49,14 @@ const CATEGORY_LABELS: Record<FinancialStatusCategoryDTO['type'], string> = {
   CARD_INSTALLMENT: 'Parcelas de cartão',
   SUPPLIER: 'Fornecedores',
   CARD_STATEMENT: 'Faturas de cartão',
+};
+
+const SOURCE_LABELS: Record<FinancialDataCoverageDTO['source'], string> = {
+  TRANSACTIONS: 'transações',
+  ACCOUNTS: 'contas',
+  FIXED_ACCOUNTS: 'contas fixas',
+  FINANCIAL_CONTRACTS: 'empréstimos e financiamentos',
+  CARDS: 'cartões',
 };
 
 function normalizeMessage(text: string): string {
@@ -94,11 +118,59 @@ function formatCurrency(value: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 }
 
-export function buildFinancialStatusReply(status: FinancialStatusDTO): string {
-  const unavailable = status.dataCoverage.some((coverage) => coverage.status === 'UNAVAILABLE');
-  const coverageNote = unavailable
-    ? '\n\nParte dos dados financeiros está temporariamente indisponível; não vou completar essa visão com suposições.'
-    : '';
+function resolveFocusCategory(normalized: string): FinancialStatusCategoryDTO['type'] | undefined {
+  if (/\bemprestimo(?:s)?\b/.test(normalized)) return 'LOAN';
+  if (/\bfinanciamento(?:s)?\b/.test(normalized)) return 'FINANCING';
+  if (/\b(?:conta fixa|contas fixas)\b/.test(normalized)) return 'FIXED_ACCOUNT';
+  if (/\b(?:cartao|cartoes|fatura|faturas)\b/.test(normalized)) return 'CARD_STATEMENT';
+  return undefined;
+}
+
+function buildCoverageNote(status: FinancialStatusDTO): string {
+  const available = status.dataCoverage
+    .filter((coverage) => coverage.status === 'AVAILABLE')
+    .map((coverage) => SOURCE_LABELS[coverage.source]);
+  const notImplemented = status.dataCoverage
+    .filter((coverage) => coverage.status === 'NOT_IMPLEMENTED')
+    .map((coverage) => SOURCE_LABELS[coverage.source]);
+  const unavailable = status.dataCoverage
+    .filter((coverage) => coverage.status === 'UNAVAILABLE')
+    .map((coverage) => SOURCE_LABELS[coverage.source]);
+
+  const lines: string[] = [];
+  if (available.length > 0) lines.push(`Consultei: ${available.join(', ')}.`);
+  if (notImplemented.length > 0) lines.push(`Ainda não consultei: ${notImplemented.join(', ')}.`);
+  if (unavailable.length > 0) {
+    lines.push(`Temporariamente indisponível: ${unavailable.join(', ')}. Não completei essa visão com suposições.`);
+  }
+  return lines.length > 0 ? `\n\n${lines.join('\n')}` : '';
+}
+
+function buildCommitmentLines(items: FinancialCommitmentDTO[]): string {
+  return items
+    .map((item) => {
+      const overdue = item.daysOverdue === undefined ? '' : ` — ${item.daysOverdue} dia${item.daysOverdue === 1 ? '' : 's'} em atraso`;
+      return `- ${item.title}: ${formatCurrency(item.amount)} — venceu em ${new Date(item.dueDate).toLocaleDateString('pt-BR')}${overdue}`;
+    })
+    .join('\n');
+}
+
+export function buildFinancialStatusReply(
+  status: FinancialStatusDTO,
+  focusCategory?: FinancialStatusCategoryDTO['type']
+): string {
+  const coverageNote = buildCoverageNote(status);
+  const focused = focusCategory
+    ? status.categories.find((category) => category.type === focusCategory)
+    : undefined;
+
+  if (focusCategory) {
+    if (!focused || focused.count === 0) {
+      return `Não encontrei ${CATEGORY_LABELS[focusCategory].toLocaleLowerCase('pt-BR')} em atraso.${coverageNote}`;
+    }
+    const items = buildCommitmentLines(focused.items);
+    return `Encontrei ${focused.count} em ${CATEGORY_LABELS[focusCategory].toLocaleLowerCase('pt-BR')}, totalizando ${formatCurrency(focused.total)}:${items ? `\n${items}` : ''}${coverageNote}`;
+  }
 
   if (status.overdueCount === 0) {
     if (status.upcomingCommitments.length === 0) {
@@ -123,6 +195,8 @@ export function buildFinancialStatusReply(status: FinancialStatusDTO): string {
  * financeiro sempre consultam a capability autenticada antes da resposta.
  */
 export class FinancialIntentGuard {
+  private readonly contextBySession = new Map<string, FinancialConversationContext>();
+
   constructor(
     private readonly executeStatus: FinancialStatusExecutor = () =>
       postFinanceAction('financial_status.get', {})
@@ -135,14 +209,23 @@ export class FinancialIntentGuard {
       : undefined;
   }
 
-  async handle(text: string): Promise<NovaTurnResult | undefined> {
-    if (this.classify(text) !== 'FINANCIAL_STATUS') return undefined;
+  async handle(text: string, sessionId: string = 'default'): Promise<NovaTurnResult | undefined> {
+    const normalized = normalizeMessage(text);
+    const family = this.classify(text);
+    const previous = this.getFreshContext(sessionId);
+    const isFollowUp = previous !== undefined
+      && FINANCIAL_FOLLOW_UP_PATTERNS.some((pattern) => pattern.test(normalized));
 
-    return this.getStatus();
+    if (family !== 'FINANCIAL_STATUS' && !isFollowUp) return undefined;
+
+    return this.getStatus(sessionId, resolveFocusCategory(normalized) ?? previous?.focusCategory);
   }
 
   /** Executa a consulta obrigatória quando outro resolver já classificou a família financeira. */
-  async getStatus(): Promise<NovaTurnResult> {
+  async getStatus(
+    sessionId: string = 'default',
+    focusCategory?: FinancialStatusCategoryDTO['type']
+  ): Promise<NovaTurnResult> {
     const result = await this.executeStatus();
     if (!result.success || !isFinancialStatusDTO(result.data)) {
       return {
@@ -155,12 +238,26 @@ export class FinancialIntentGuard {
       };
     }
 
+    this.contextBySession.set(sessionId, {
+      focusCategory,
+      status: result.data,
+      updatedAt: Date.now(),
+    });
+
     return {
       status: 'concluido',
-      reply: buildFinancialStatusReply(result.data),
+      reply: buildFinancialStatusReply(result.data, focusCategory),
       checklist: [],
       results: [],
     };
+  }
+
+  private getFreshContext(sessionId: string): FinancialConversationContext | undefined {
+    const context = this.contextBySession.get(sessionId);
+    if (!context) return undefined;
+    if (Date.now() - context.updatedAt <= FINANCIAL_CONTEXT_TTL_MS) return context;
+    this.contextBySession.delete(sessionId);
+    return undefined;
   }
 }
 
