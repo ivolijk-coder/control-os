@@ -3,7 +3,7 @@ import 'server-only';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import type { AppendMessageInput, ConversationScope, NovaConversationRepository } from './nova-conversation.interfaces';
-import type { MessagePage, NovaConversation, NovaMessage } from './nova-conversation.types';
+import type { ConversationPage, MessagePage, NovaConversation, NovaMessage } from './nova-conversation.types';
 
 type ConversationRow = Awaited<ReturnType<typeof prisma.novaConversation.findFirst>>;
 type MessageRow = Awaited<ReturnType<typeof prisma.novaMessage.findFirst>>;
@@ -86,6 +86,50 @@ export class PrismaNovaConversationRepository implements NovaConversationReposit
     });
   }
 
+  async closeConversation(input: Parameters<NovaConversationRepository['closeConversation']>[0]): Promise<NovaConversation | null> {
+    return prisma.$transaction(async (tx) => {
+      const current = await tx.novaConversation.findFirst({
+        where: {
+          id: input.conversationId,
+          userId: input.userId,
+          channel: input.channel,
+          status: { in: ['ACTIVE', 'CLOSED'] },
+          deletedAt: null,
+        },
+      });
+      if (!current) return null;
+      if (current.status === 'CLOSED') return toConversation(current);
+
+      const closed = await tx.novaConversation.updateMany({
+        where: {
+          id: input.conversationId,
+          userId: input.userId,
+          channel: input.channel,
+          status: 'ACTIVE',
+          deletedAt: null,
+        },
+        data: { status: 'CLOSED', activeKey: null, closedAt: input.closedAt },
+      });
+      if (closed.count === 1) {
+        const updated = await tx.novaConversation.findFirst({
+          where: { id: input.conversationId, userId: input.userId, channel: input.channel, deletedAt: null },
+        });
+        return updated ? toConversation(updated) : null;
+      }
+
+      const concurrent = await tx.novaConversation.findFirst({
+        where: {
+          id: input.conversationId,
+          userId: input.userId,
+          channel: input.channel,
+          status: 'CLOSED',
+          deletedAt: null,
+        },
+      });
+      return concurrent ? toConversation(concurrent) : null;
+    });
+  }
+
   async markDeleted(input: { userId: string; conversationId: string; deletedAt: Date }): Promise<boolean> {
     const result = await prisma.novaConversation.updateMany({
       where: { id: input.conversationId, userId: input.userId, deletedAt: null },
@@ -94,13 +138,31 @@ export class PrismaNovaConversationRepository implements NovaConversationReposit
     return result.count === 1;
   }
 
-  async listConversations(input: { userId: string; limit: number }): Promise<NovaConversation[]> {
+  async listConversations(input: Parameters<NovaConversationRepository['listConversations']>[0]): Promise<ConversationPage> {
     const rows = await prisma.novaConversation.findMany({
-      where: { userId: input.userId, deletedAt: null },
+      where: {
+        userId: input.userId,
+        channel: input.channel,
+        persona: input.persona,
+        deletedAt: null,
+        ...(input.cursor ? {
+          OR: [
+            { lastMessageAt: { lt: input.cursor.lastMessageAt } },
+            { lastMessageAt: input.cursor.lastMessageAt, id: { lt: input.cursor.id } },
+          ],
+        } : {}),
+      },
       orderBy: [{ lastMessageAt: 'desc' }, { id: 'desc' }],
-      take: input.limit,
+      take: input.limit + 1,
     });
-    return rows.map(toConversation);
+    const hasMore = rows.length > input.limit;
+    const page = rows.slice(0, input.limit).map(toConversation);
+    const last = page.at(-1);
+    return {
+      items: page,
+      hasMore,
+      nextCursor: hasMore && last ? { lastMessageAt: last.lastMessageAt, id: last.id } : null,
+    };
   }
 
   async appendMessageAtomically(input: AppendMessageInput): Promise<{ message: NovaMessage; replayed: boolean }> {
@@ -156,12 +218,12 @@ export class PrismaNovaConversationRepository implements NovaConversationReposit
     }
   }
 
-  async listMessages(input: { userId: string; conversationId: string; limit: number; beforeSequence?: string }): Promise<MessagePage> {
+  async listMessages(input: Parameters<NovaConversationRepository['listMessages']>[0]): Promise<MessagePage | null> {
     const conversation = await prisma.novaConversation.findFirst({
-      where: { id: input.conversationId, userId: input.userId, deletedAt: null },
+      where: { id: input.conversationId, userId: input.userId, channel: input.channel, deletedAt: null },
       select: { id: true },
     });
-    if (!conversation) return { messages: [], nextCursor: null };
+    if (!conversation) return null;
 
     const rows = await prisma.novaMessage.findMany({
       where: {
@@ -175,6 +237,10 @@ export class PrismaNovaConversationRepository implements NovaConversationReposit
     const hasMore = rows.length > input.limit;
     const page = rows.slice(0, input.limit).reverse().map(toMessage);
     const firstMessage = page.at(0);
-    return { messages: page, nextCursor: hasMore && firstMessage ? firstMessage.sequence : null };
+    return {
+      messages: page,
+      hasMore,
+      nextCursor: hasMore && firstMessage ? firstMessage.sequence : null,
+    };
   }
 }

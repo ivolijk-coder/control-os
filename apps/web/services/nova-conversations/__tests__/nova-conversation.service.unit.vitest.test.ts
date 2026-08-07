@@ -4,7 +4,7 @@ vi.mock('server-only', () => ({}));
 
 import { NovaConversationServiceImpl } from '../nova-conversation.service';
 import type { AppendMessageInput, ConversationScope, NovaConversationRepository } from '../nova-conversation.interfaces';
-import type { MessagePage, NovaConversation, NovaMessage } from '../nova-conversation.types';
+import type { ConversationPage, MessagePage, NovaConversation, NovaMessage } from '../nova-conversation.types';
 import { REDACTED_CONTENT, sanitizeConversationContent } from '../conversation-content-sanitizer';
 
 class InMemoryConversationRepository implements NovaConversationRepository {
@@ -47,6 +47,19 @@ class InMemoryConversationRepository implements NovaConversationRepository {
     return item;
   }
 
+  async closeConversation(input: Parameters<NovaConversationRepository['closeConversation']>[0]): Promise<NovaConversation | null> {
+    const item = this.conversations.find((candidate) => candidate.id === input.conversationId
+      && candidate.userId === input.userId && candidate.channel === input.channel
+      && candidate.deletedAt === null && (candidate.status === 'ACTIVE' || candidate.status === 'CLOSED'));
+    if (!item) return null;
+    if (item.status === 'ACTIVE') {
+      item.status = 'CLOSED';
+      item.closedAt = input.closedAt;
+      item.updatedAt = input.closedAt;
+    }
+    return item;
+  }
+
   async markDeleted(input: { userId: string; conversationId: string; deletedAt: Date }): Promise<boolean> {
     const item = this.conversations.find((candidate) => candidate.id === input.conversationId && candidate.userId === input.userId && candidate.deletedAt === null);
     if (!item) return false;
@@ -55,8 +68,21 @@ class InMemoryConversationRepository implements NovaConversationRepository {
     return true;
   }
 
-  async listConversations(input: { userId: string; limit: number }): Promise<NovaConversation[]> {
-    return this.conversations.filter((item) => item.userId === input.userId && item.deletedAt === null).slice(0, input.limit);
+  async listConversations(input: Parameters<NovaConversationRepository['listConversations']>[0]): Promise<ConversationPage> {
+    const sorted = this.conversations
+      .filter((item) => item.userId === input.userId && item.channel === input.channel
+        && item.persona === input.persona && item.deletedAt === null
+        && (!input.cursor || item.lastMessageAt < input.cursor.lastMessageAt
+          || (item.lastMessageAt.getTime() === input.cursor.lastMessageAt.getTime() && item.id < input.cursor.id)))
+      .sort((a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime() || b.id.localeCompare(a.id));
+    const hasMore = sorted.length > input.limit;
+    const items = sorted.slice(0, input.limit);
+    const last = items.at(-1);
+    return {
+      items,
+      hasMore,
+      nextCursor: hasMore && last ? { id: last.id, lastMessageAt: last.lastMessageAt } : null,
+    };
   }
 
   async appendMessageAtomically(input: AppendMessageInput): Promise<{ message: NovaMessage; replayed: boolean }> {
@@ -91,13 +117,15 @@ class InMemoryConversationRepository implements NovaConversationRepository {
     return { message, replayed: false };
   }
 
-  async listMessages(input: { userId: string; conversationId: string; limit: number; beforeSequence?: string }): Promise<MessagePage> {
-    const conversation = this.conversations.find((item) => item.id === input.conversationId && item.userId === input.userId && item.deletedAt === null);
-    if (!conversation) return { messages: [], nextCursor: null };
+  async listMessages(input: Parameters<NovaConversationRepository['listMessages']>[0]): Promise<MessagePage | null> {
+    const conversation = this.conversations.find((item) => item.id === input.conversationId && item.userId === input.userId
+      && item.channel === input.channel && item.deletedAt === null);
+    if (!conversation) return null;
     const filtered = this.messages.filter((item) => item.userId === input.userId && item.conversationId === input.conversationId
       && (!input.beforeSequence || BigInt(item.sequence) < BigInt(input.beforeSequence)));
     const page = filtered.slice(-input.limit);
-    return { messages: page, nextCursor: filtered.length > page.length ? page[0]?.sequence ?? null : null };
+    const hasMore = filtered.length > page.length;
+    return { messages: page, hasMore, nextCursor: hasMore ? page[0]?.sequence ?? null : null };
   }
 }
 
@@ -115,7 +143,7 @@ describe('NovaConversationService — fundacao persistente', () => {
     await expect(service.appendMessage({ userId: 'user-b', conversationId: conversation.id, role: 'USER', content: 'ola', correlationId: 'turn-1' }))
       .rejects.toThrow('NOVA_CONVERSATION_NOT_FOUND');
     await service.appendMessage({ userId: 'user-a', conversationId: conversation.id, role: 'USER', content: 'ola', correlationId: 'turn-1' });
-    await expect(service.listMessages({ userId: 'user-b', conversationId: conversation.id })).resolves.toEqual({ messages: [], nextCursor: null });
+    await expect(service.listMessages({ userId: 'user-b', conversationId: conversation.id, channel: 'WEB' })).resolves.toBeNull();
   });
 
   it('duas criacoes concorrentes devolvem uma unica conversa ativa', async () => {
@@ -129,8 +157,9 @@ describe('NovaConversationService — fundacao persistente', () => {
     const conversation = await service.getOrCreateActive({ userId: 'user-a', channel: 'WEB', persona: 'NOVA' });
     await service.appendMessage({ userId: 'user-a', conversationId: conversation.id, role: 'USER', content: 'primeira', correlationId: 'turn-1' });
     await service.appendMessage({ userId: 'user-a', conversationId: conversation.id, role: 'ASSISTANT', content: 'segunda', correlationId: 'turn-1' });
-    const page = await service.listMessages({ userId: 'user-a', conversationId: conversation.id });
-    expect(page.messages.map((item) => [item.sequence, item.content])).toEqual([['1', 'primeira'], ['2', 'segunda']]);
+    const page = await service.listMessages({ userId: 'user-a', conversationId: conversation.id, channel: 'WEB' });
+    expect(page).not.toBeNull();
+    expect(page?.messages.map((item) => [item.sequence, item.content])).toEqual([['1', 'primeira'], ['2', 'segunda']]);
   });
 
   it('trata replay por correlationId e role sem duplicar', async () => {
@@ -149,6 +178,60 @@ describe('NovaConversationService — fundacao persistente', () => {
     const legendaryWeb = await service.getOrCreateActive({ userId: 'user-a', channel: 'WEB', persona: 'LEGENDARY' });
     const novaWhatsapp = await service.getOrCreateActive({ userId: 'user-a', channel: 'WHATSAPP', persona: 'NOVA' });
     expect(new Set([novaWeb.id, legendaryWeb.id, novaWhatsapp.id]).size).toBe(3);
+  });
+
+  it('fecha somente o ID solicitado, aceita replay e cria uma nova ACTIVE depois', async () => {
+    const nova = await service.getOrCreateActive({ userId: 'user-a', channel: 'WEB', persona: 'NOVA' });
+    const legendary = await service.getOrCreateActive({ userId: 'user-a', channel: 'WEB', persona: 'LEGENDARY' });
+    const closed = await service.closeConversation({ userId: 'user-a', conversationId: nova.id, channel: 'WEB' });
+    const replay = await service.closeConversation({ userId: 'user-a', conversationId: nova.id, channel: 'WEB' });
+    expect(closed?.status).toBe('CLOSED');
+    expect(replay?.id).toBe(nova.id);
+    expect(legendary.status).toBe('ACTIVE');
+    const next = await service.getOrCreateActive({ userId: 'user-a', channel: 'WEB', persona: 'NOVA' });
+    expect(next.id).not.toBe(nova.id);
+    expect(next.status).toBe('ACTIVE');
+  });
+
+  it('não fecha conversa estrangeira nem conversa de outro canal', async () => {
+    const conversation = await service.getOrCreateActive({ userId: 'user-a', channel: 'WEB', persona: 'NOVA' });
+    await expect(service.closeConversation({ userId: 'user-b', conversationId: conversation.id, channel: 'WEB' })).resolves.toBeNull();
+    await expect(service.closeConversation({ userId: 'user-a', conversationId: conversation.id, channel: 'WHATSAPP' })).resolves.toBeNull();
+    expect(conversation.status).toBe('ACTIVE');
+  });
+
+  it('pagina conversas por lastMessageAt e ID sem repetir datas iguais', async () => {
+    const sharedDate = new Date('2026-08-07T12:00:00.000Z');
+    repository.conversations.push(
+      { ...conversationShape('conversation-c', 'user-a', 'NOVA'), lastMessageAt: sharedDate },
+      { ...conversationShape('conversation-b', 'user-a', 'NOVA'), lastMessageAt: sharedDate },
+      { ...conversationShape('conversation-a', 'user-a', 'NOVA'), lastMessageAt: sharedDate },
+      { ...conversationShape('conversation-other', 'user-b', 'NOVA'), lastMessageAt: sharedDate },
+    );
+    const first = await service.listConversations({ userId: 'user-a', channel: 'WEB', persona: 'NOVA', limit: 2 });
+    const second = await service.listConversations({
+      userId: 'user-a', channel: 'WEB', persona: 'NOVA', limit: 2, cursor: first.nextCursor ?? undefined,
+    });
+    expect(first.items.map((item) => item.id)).toEqual(['conversation-c', 'conversation-b']);
+    expect(first.hasMore).toBe(true);
+    expect(second.items.map((item) => item.id)).toEqual(['conversation-a']);
+    expect(second.hasMore).toBe(false);
+  });
+
+  it('pagina mensagens antigas mantendo cada página em ordem cronológica', async () => {
+    const conversation = await service.getOrCreateActive({ userId: 'user-a', channel: 'WEB', persona: 'NOVA' });
+    for (let index = 1; index <= 5; index += 1) {
+      await service.appendMessage({
+        userId: 'user-a', conversationId: conversation.id, role: 'USER', content: `mensagem-${index}`, correlationId: `turn-${index}`,
+      });
+    }
+    const newest = await service.listMessages({ userId: 'user-a', conversationId: conversation.id, channel: 'WEB', limit: 2 });
+    const older = await service.listMessages({
+      userId: 'user-a', conversationId: conversation.id, channel: 'WEB', limit: 2, cursor: newest?.nextCursor ?? undefined,
+    });
+    expect(newest?.messages.map((item) => item.content)).toEqual(['mensagem-4', 'mensagem-5']);
+    expect(newest?.hasMore).toBe(true);
+    expect(older?.messages.map((item) => item.content)).toEqual(['mensagem-2', 'mensagem-3']);
   });
 
   it('redige deterministicamente credenciais e marca a mensagem', async () => {
@@ -192,8 +275,18 @@ describe('NovaConversationService — fundacao persistente', () => {
     const conversation = await service.getOrCreateActive({ userId: 'user-a', channel: 'WEB', persona: 'NOVA' });
     await service.appendMessage({ userId: 'user-a', conversationId: conversation.id, role: 'USER', content: 'antes', correlationId: 'turn-before-delete' });
     await expect(service.deleteConversation({ userId: 'user-a', conversationId: conversation.id })).resolves.toBe(true);
-    await expect(service.listMessages({ userId: 'user-a', conversationId: conversation.id })).resolves.toEqual({ messages: [], nextCursor: null });
+    await expect(service.listConversations({ userId: 'user-a', channel: 'WEB', persona: 'NOVA' }))
+      .resolves.toMatchObject({ items: [] });
+    await expect(service.listMessages({ userId: 'user-a', conversationId: conversation.id, channel: 'WEB' })).resolves.toBeNull();
     await expect(service.appendMessage({ userId: 'user-a', conversationId: conversation.id, role: 'USER', content: 'depois', correlationId: 'turn-after-delete' }))
       .rejects.toThrow('NOVA_CONVERSATION_NOT_FOUND');
   });
 });
+
+function conversationShape(id: string, userId: string, persona: NovaConversation['persona']): NovaConversation {
+  const now = new Date('2026-08-07T10:00:00.000Z');
+  return {
+    id, userId, channel: 'WEB', persona, status: 'CLOSED', startedAt: now, lastMessageAt: now,
+    closedAt: now, deletedAt: null, createdAt: now, updatedAt: now,
+  };
+}

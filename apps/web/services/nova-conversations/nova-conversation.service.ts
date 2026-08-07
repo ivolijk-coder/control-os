@@ -4,9 +4,9 @@ import { createHash } from 'node:crypto';
 import { sanitizeConversationContent } from './conversation-content-sanitizer';
 import type { AppendMessageInput, ConversationScope, NovaConversationRepository, NovaConversationService } from './nova-conversation.interfaces';
 import { PrismaNovaConversationRepository } from './prisma-nova-conversation.repository';
-import type { MessagePage, NovaConversation, NovaMessage } from './nova-conversation.types';
+import type { ConversationPage, MessagePage, NovaConversation, NovaMessage } from './nova-conversation.types';
 
-const DEFAULT_PAGE_LIMIT = 50;
+const DEFAULT_PAGE_LIMIT = 30;
 const MAX_PAGE_LIMIT = 100;
 
 function requireValue(value: string, field: string): string {
@@ -46,6 +46,15 @@ export class NovaConversationServiceImpl implements NovaConversationService {
     return this.repository.closeActive(scope, new Date());
   }
 
+  closeConversation(input: Parameters<NovaConversationService['closeConversation']>[0]): Promise<NovaConversation | null> {
+    return this.repository.closeConversation({
+      userId: requireValue(input.userId, 'userId'),
+      conversationId: requireValue(input.conversationId, 'conversationId'),
+      channel: input.channel,
+      closedAt: new Date(),
+    });
+  }
+
   deleteConversation(input: { userId: string; conversationId: string }): Promise<boolean> {
     return this.repository.markDeleted({
       userId: requireValue(input.userId, 'userId'),
@@ -54,8 +63,14 @@ export class NovaConversationServiceImpl implements NovaConversationService {
     });
   }
 
-  listConversations(input: { userId: string; limit?: number }): Promise<NovaConversation[]> {
-    return this.repository.listConversations({ userId: requireValue(input.userId, 'userId'), limit: pageLimit(input.limit) });
+  listConversations(input: Parameters<NovaConversationService['listConversations']>[0]): Promise<ConversationPage> {
+    return this.repository.listConversations({
+      userId: requireValue(input.userId, 'userId'),
+      channel: input.channel,
+      persona: input.persona,
+      limit: pageLimit(input.limit),
+      cursor: input.cursor,
+    });
   }
 
   appendMessage(input: Omit<AppendMessageInput, 'redacted'>): Promise<{ message: NovaMessage; replayed: boolean }> {
@@ -70,10 +85,11 @@ export class NovaConversationServiceImpl implements NovaConversationService {
     });
   }
 
-  listMessages(input: { userId: string; conversationId: string; limit?: number; cursor?: string }): Promise<MessagePage> {
+  listMessages(input: Parameters<NovaConversationService['listMessages']>[0]): Promise<MessagePage | null> {
     return this.repository.listMessages({
       userId: requireValue(input.userId, 'userId'),
       conversationId: requireValue(input.conversationId, 'conversationId'),
+      channel: input.channel,
       limit: pageLimit(input.limit),
       beforeSequence: cursor(input.cursor),
     });
