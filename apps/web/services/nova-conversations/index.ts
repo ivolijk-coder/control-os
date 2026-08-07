@@ -7,6 +7,8 @@ export type {
   NovaConversationService,
 } from './nova-conversation.interfaces';
 export type {
+  ConversationCursor,
+  ConversationPage,
   MessagePage,
   NovaConversation,
   NovaConversationChannel,

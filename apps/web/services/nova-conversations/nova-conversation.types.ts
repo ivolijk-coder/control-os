@@ -32,9 +32,21 @@ export type NovaMessage = {
   createdAt: Date;
 };
 
+export type ConversationCursor = {
+  lastMessageAt: Date;
+  id: string;
+};
+
+export type ConversationPage = {
+  items: NovaConversation[];
+  nextCursor: ConversationCursor | null;
+  hasMore: boolean;
+};
+
 export type MessagePage = {
   messages: NovaMessage[];
   nextCursor: string | null;
+  hasMore: boolean;
 };
 
 export type SanitizedConversationContent = {
