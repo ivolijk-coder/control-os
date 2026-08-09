@@ -28,6 +28,7 @@ export interface NovaConversationProps {
    */
   onTaskAction?: (taskId: string, action: ConversationMessageAction) => void;
   onDismissTask?: (taskId: string) => void;
+  onRetrySync?: (clientTurnId: string) => void;
   /**
    * Identidade ATIVA agora (CONTROL OS — Etapa 16E) — colore o avatar de
    * toda mensagem da NOVA e do indicador "Pensando/Executando". Como a
@@ -59,6 +60,7 @@ export function NovaConversation({
   onCancelPending,
   onTaskAction,
   onDismissTask,
+  onRetrySync,
   persona = 'nova',
 }: NovaConversationProps) {
   if (messages.length === 0 && !isThinking) return null;
@@ -77,6 +79,7 @@ export function NovaConversation({
             onTaskAction={onTaskAction}
             onDismissTask={onDismissTask}
             persona={persona}
+            onRetrySync={onRetrySync}
           />
         ))}
         {isThinking && <NovaThinking key="thinking" status={thinkingStatus} persona={persona} />}

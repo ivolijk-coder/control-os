@@ -41,13 +41,16 @@ export function NovaFloatingPanel() {
   // (`variant="inline"`), então a assinatura do balde de mensagens da
   // persona efetiva roda aqui.
   const messages = useAppStore((s) => s.novaMessagesByPersona[effectivePersona]);
+  const lastMessageMutation = useAppStore((s) => s.novaConversationByPersona[effectivePersona].lastMessageMutation);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
     if (!open) return;
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-  }, [open, messages]);
+    if (lastMessageMutation !== 'prepend') {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    }
+  }, [open, messages, lastMessageMutation]);
 
   return (
     <FloatingPanel

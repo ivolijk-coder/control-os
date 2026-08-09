@@ -57,6 +57,10 @@ export interface ConversationMessage {
    * em `taskActions`; um segundo "Depois" ali seria redundante.
    */
   hideDismiss?: boolean;
+  /** Projeção visual do vínculo desta bolha com o histórico canônico. */
+  persistence?: 'persisted' | 'optimistic' | 'unsynced' | 'transient';
+  /** Identifica o par otimista USER + ASSISTANT durante persistência/retry. */
+  clientTurnId?: string;
 }
 
 export interface NovaMessageBubbleProps {
@@ -88,6 +92,7 @@ export interface NovaMessageBubbleProps {
    * prop.
    */
   persona?: NovaPersona;
+  onRetrySync?: (clientTurnId: string) => void;
 }
 
 /**
@@ -99,7 +104,7 @@ export interface NovaMessageBubbleProps {
  * Quando `status === 'error'`, reaproveita o padrão visual de `FormError`
  * (borda/fundo vermelhos + microinteração de shake).
  */
-export function NovaMessageBubble({ message, onConfirm, onCancel, onTaskAction, onDismissTask, persona = 'nova' }: NovaMessageBubbleProps) {
+export function NovaMessageBubble({ message, onConfirm, onCancel, onTaskAction, onDismissTask, persona = 'nova', onRetrySync }: NovaMessageBubbleProps) {
   const isUser = message.role === 'user';
   const isError = message.status === 'error';
   const isPendingConfirmation = message.status === 'pending_confirmation';
@@ -141,6 +146,14 @@ export function NovaMessageBubble({ message, onConfirm, onCancel, onTaskAction, 
         )}
       >
         <p className="whitespace-pre-line">{message.content}</p>
+        {message.persistence === 'unsynced' && message.role === 'nova' && message.clientTurnId && (
+          <div className="mt-3 border-t border-white/[0.08] pt-2">
+            <p className="mb-2 text-xs text-text-tertiary">Este turno ainda não foi salvo no histórico.</p>
+            <Button size="sm" variant="ghost" onClick={() => onRetrySync?.(message.clientTurnId as string)}>
+              Tentar salvar novamente
+            </Button>
+          </div>
+        )}
         {message.attachment && (
           <a
             href={message.attachment.href}
