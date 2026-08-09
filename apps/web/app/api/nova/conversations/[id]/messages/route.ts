@@ -7,10 +7,12 @@ import {
   isConversationId,
   NovaConversationRequestError,
   parseMessageCursor,
+  parseProcessMessageBody,
   parsePageLimit,
   toPublicMessage,
 } from '@/services/nova-conversations/nova-conversation-api';
 import { novaConversationService } from '@/services/nova-conversations';
+import { novaReadOnlyOrchestratorService } from '@/services/nova-orchestrator';
 
 function failure(message: string, status: number): NextResponse {
   return NextResponse.json({ success: false, message }, { status });
@@ -45,5 +47,25 @@ export async function GET(request: NextRequest, context: { params: { id: string 
     if (cause instanceof NovaConversationRequestError) return failure(cause.message, 400);
     console.error('Falha ao listar mensagens da NOVA:', cause instanceof Error ? cause.name : 'UnknownError');
     return failure('Não foi possível acessar as mensagens agora.', 500);
+  }
+}
+
+export async function POST(request: NextRequest, context: { params: { id: string } }): Promise<NextResponse> {
+  const userId = currentSessionUserId();
+  if (!userId) return failure('Faça login para conversar com a NOVA.', 401);
+  const conversationId = context.params.id;
+  if (!isConversationId(conversationId)) return failure('Conversa não encontrada.', 404);
+
+  try {
+    const input = await parseProcessMessageBody(request);
+    const outcome = await novaReadOnlyOrchestratorService.process({ userId, conversationId, ...input });
+    if (outcome.kind === 'NOT_FOUND') return failure('Conversa não encontrada.', 404);
+    if (outcome.kind === 'DISABLED') return failure('O processamento server-side da NOVA ainda não está disponível.', 503);
+    const status = outcome.result.status === 'PROCESSING' ? 202 : outcome.result.status === 'FAILED' ? 409 : 200;
+    return NextResponse.json({ success: outcome.result.status !== 'FAILED', result: outcome.result }, { status });
+  } catch (cause) {
+    if (cause instanceof NovaConversationRequestError) return failure(cause.message, 400);
+    console.error('Falha no orchestrator read-only da NOVA:', cause instanceof Error ? cause.name : 'UnknownError');
+    return failure('Não foi possível processar esta mensagem agora.', 500);
   }
 }
