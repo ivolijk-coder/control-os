@@ -849,6 +849,25 @@ enum NovaMessageRole {
   ASSISTANT
 }
 
+enum NovaTurnStatus {
+  RECEIVED
+  PROCESSING
+  AWAITING_CONFIRMATION
+  EXECUTING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum NovaPendingConfirmationStatus {
+  PENDING
+  CLAIMED
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+  FAILED
+}
+
 /// `type` e `sourceType` são `String`, não enum do Postgres: crescem sem
 /// migration a cada produtor novo (validados por union type + switch
 /// exaustivo em TypeScript, ver `services/conversation-tasks`). `status` e
@@ -906,6 +925,8 @@ model NovaConversation {
   createdAt     DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
   messages      NovaMessage[]
+  turns         NovaTurn[]
+  semanticState NovaConversationState?
 
   @@unique([id, userId])
   @@index([userId, status, lastMessageAt])
@@ -937,4 +958,96 @@ model NovaMessage {
   @@index([userId, createdAt])
   @@index([providerResponseId])
   @@map("nova_messages")
+}
+
+/// Unidade operacional idempotente do ConversationOrchestrator. O cliente
+/// fornece apenas clientTurnId; ownership, leases e operationIds são sempre
+/// produzidos e validados no servidor.
+model NovaTurn {
+  id                   String                    @id @default(uuid()) @db.Uuid
+  conversationId       String                    @map("conversation_id") @db.Uuid
+  userId               String                    @map("user_id") @db.Uuid
+  conversation         NovaConversation          @relation(fields: [conversationId, userId], references: [id, userId], onDelete: Cascade)
+  clientTurnId         String                    @map("client_turn_id") @db.VarChar(160)
+  status               NovaTurnStatus            @default(RECEIVED)
+  intentFamily         String?                   @map("intent_family") @db.VarChar(120)
+  focusCategory        String?                   @map("focus_category") @db.VarChar(120)
+  provider             String?                   @db.VarChar(80)
+  providerResponseId   String?                   @map("provider_response_id") @db.VarChar(255)
+  attemptCount         Int                       @default(0) @map("attempt_count")
+  version              Int                       @default(1)
+  processingOwner      String?                   @map("processing_owner") @db.VarChar(160)
+  processingLeaseToken String?                   @map("processing_lease_token") @db.VarChar(160)
+  processingLeaseUntil DateTime?                 @map("processing_lease_until") @db.Timestamptz(3)
+  lastErrorCode        String?                   @map("last_error_code") @db.VarChar(120)
+  startedAt            DateTime?                 @map("started_at") @db.Timestamptz(3)
+  completedAt          DateTime?                 @map("completed_at") @db.Timestamptz(3)
+  failedAt             DateTime?                 @map("failed_at") @db.Timestamptz(3)
+  cancelledAt          DateTime?                 @map("cancelled_at") @db.Timestamptz(3)
+  createdAt            DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  confirmations        NovaPendingConfirmation[]
+  semanticStateSources NovaConversationState[]   @relation("NovaConversationStateSource")
+
+  @@unique([conversationId, clientTurnId])
+  @@unique([id, conversationId, userId])
+  @@index([conversationId, createdAt])
+  @@index([userId, createdAt])
+  @@index([status, processingLeaseUntil])
+  @@index([userId, status, updatedAt])
+  @@map("nova_turns")
+}
+
+/// Plano confirmado pelo usuário, mas ainda não executado neste estágio.
+/// validatedPayload é mínimo e passa por schema fechado na escrita e leitura.
+model NovaPendingConfirmation {
+  id               String                        @id @default(uuid()) @db.Uuid
+  turnId           String                        @unique @map("turn_id") @db.Uuid
+  conversationId   String                        @map("conversation_id") @db.Uuid
+  userId           String                        @map("user_id") @db.Uuid
+  turn             NovaTurn                      @relation(fields: [turnId, conversationId, userId], references: [id, conversationId, userId], onDelete: Cascade)
+  actionKind       String                        @map("action_kind") @db.VarChar(120)
+  schemaVersion    Int                           @default(1) @map("schema_version")
+  validatedPayload Json                          @map("validated_payload")
+  status           NovaPendingConfirmationStatus @default(PENDING)
+  version          Int                           @default(1)
+  claimOwner       String?                       @map("claim_owner") @db.VarChar(160)
+  claimLeaseToken  String?                       @map("claim_lease_token") @db.VarChar(160)
+  claimLeaseUntil  DateTime?                     @map("claim_lease_until") @db.Timestamptz(3)
+  attemptCount     Int                           @default(0) @map("attempt_count")
+  expiresAt        DateTime                      @map("expires_at") @db.Timestamptz(3)
+  confirmedAt      DateTime?                     @map("confirmed_at") @db.Timestamptz(3)
+  cancelledAt      DateTime?                     @map("cancelled_at") @db.Timestamptz(3)
+  expiredAt        DateTime?                     @map("expired_at") @db.Timestamptz(3)
+  failedAt         DateTime?                     @map("failed_at") @db.Timestamptz(3)
+  lastErrorCode    String?                       @map("last_error_code") @db.VarChar(120)
+  createdAt        DateTime                      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([id, turnId, conversationId, userId])
+  @@index([userId, status, expiresAt])
+  @@index([status, claimLeaseUntil])
+  @@index([conversationId, createdAt])
+  @@map("nova_pending_confirmations")
+}
+
+/// Referência semântica durável. Nunca contém saldos ou valores financeiros
+/// mutáveis; esses dados continuam sendo consultados na fonte canônica.
+model NovaConversationState {
+  conversationId String           @id @map("conversation_id") @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  conversation   NovaConversation @relation(fields: [conversationId, userId], references: [id, userId], onDelete: Cascade)
+  intentFamily   String           @map("intent_family") @db.VarChar(120)
+  focusCategory  String?          @map("focus_category") @db.VarChar(120)
+  focusType      String?          @map("focus_type") @db.VarChar(120)
+  focusReference Json?            @map("focus_reference")
+  sourceTurnId   String           @map("source_turn_id") @db.Uuid
+  sourceTurn     NovaTurn         @relation("NovaConversationStateSource", fields: [sourceTurnId, conversationId, userId], references: [id, conversationId, userId], onDelete: Cascade)
+  version        Int              @default(1)
+  expiresAt      DateTime         @map("expires_at") @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([conversationId, userId])
+  @@index([expiresAt])
+  @@map("nova_conversation_states")
 }
