@@ -21,6 +21,22 @@ export type NovaReadOnlyOrchestratorOutcome =
   | { kind: 'NOT_FOUND' }
   | { kind: 'DISABLED' };
 
+/**
+ * Payload de entrada de `process()` — espelha exatamente o que a rota
+ * HTTP (`POST /api/nova/conversations/:id/messages`) monta: `userId`/
+ * `conversationId` do servidor + `clientTurnId`/`content` do corpo da
+ * requisição (`parseProcessMessageBody`). `content` é legítimo aqui — só
+ * não pode atravessar para `CreateOrReplayTurnInput` (ver
+ * `nova-orchestrator-persistence.repository.ts`), que é a fronteira
+ * persistível de `NovaTurn`.
+ */
+export interface ProcessMessageInput {
+  userId: string;
+  conversationId: string;
+  clientTurnId: string;
+  content: string;
+}
+
 interface ReadOnlyDependencies {
   persistence: PrismaNovaOrchestratorPersistence;
   finances: Pick<FinancialIntelligenceService, 'getStatus'>;
@@ -53,13 +69,19 @@ export class NovaReadOnlyOrchestratorService {
     ownerId: () => `web:${randomUUID()}`,
   }) {}
 
-  async process(input: { userId: string; conversationId: string; clientTurnId: string; content: string }): Promise<NovaReadOnlyOrchestratorOutcome> {
+  async process(input: ProcessMessageInput): Promise<NovaReadOnlyOrchestratorOutcome> {
     if (!this.dependencies.enabled({ userId: input.userId, channel: 'WEB' })) return { kind: 'DISABLED' };
     const conversation = await this.dependencies.persistence.findAccessibleActiveWebConversation(input);
     if (!conversation) return { kind: 'NOT_FOUND' };
 
     const now = this.dependencies.now();
-    const created = await this.dependencies.persistence.createOrReplayTurn(input);
+    // Fronteira explícita: só os 3 campos persistíveis de NovaTurn atravessam
+    // para o repository — nunca o `input` inteiro (que carrega `content`).
+    const created = await this.dependencies.persistence.createOrReplayTurn({
+      conversationId: input.conversationId,
+      userId: input.userId,
+      clientTurnId: input.clientTurnId,
+    });
     if (!created) return { kind: 'NOT_FOUND' };
     if (created.replayed) {
       const replay = await this.dependencies.persistence.replayTurn({ ...input, turnId: created.turn.id, now });

@@ -78,4 +78,116 @@ describe.runIf(enabled)('PR10.3 read-only orchestrator — PostgreSQL real', () 
     ]);
     expect((await repository.getSemanticState({ conversationId: isolatedConversationId, userId, now: new Date('2026-08-09T12:00:02Z') }))?.focusCategory).toBe('FINANCING');
   });
+
+  // Regressão do bug real do piloto PR10.3 (HTTP 500 / nova_turns = 0):
+  // `NovaReadOnlyOrchestratorService.process()` recebia `content`, repassava
+  // o `input` inteiro para `createOrReplayTurn`, e o repository fazia
+  // `prisma.novaTurn.create({ data: input })` — `content` não existe em
+  // `NovaTurn`, então o Prisma falhava antes do INSERT
+  // (`PrismaClientValidationError: Unknown argument content`).
+  //
+  // Os testes acima só chamam `repository.createOrReplayTurn` diretamente,
+  // SEM `content` — por isso nunca capturaram o bug. Os testes abaixo
+  // passam pelo `NovaReadOnlyOrchestratorService` completo (mesmo caminho
+  // da rota HTTP real), com Prisma de verdade.
+  describe('process() completo através do NovaReadOnlyOrchestratorService (PostgreSQL real)', () => {
+    const statusFixture = {
+      referenceDate: '2026-08-09', totalOverdue: 3600, overdueCount: 1,
+      categories: [{ type: 'LOAN' as const, count: 1, total: 3600, items: [{ id: 'loan-1', source: 'FINANCIAL_CONTRACTS' as const, sourceType: 'LOAN' as const, title: 'Nubank', amount: 3600, dueDate: '2026-08-01', status: 'OVERDUE' as const, daysOverdue: 8 }] }],
+      upcomingCommitments: [], availableBalance: 1000, projectedBalance: null,
+      projectionHorizonDays: 30,
+      dataCoverage: [
+        { source: 'TRANSACTIONS' as const, status: 'AVAILABLE' as const },
+        { source: 'ACCOUNTS' as const, status: 'AVAILABLE' as const },
+        { source: 'FIXED_ACCOUNTS' as const, status: 'AVAILABLE' as const },
+        { source: 'FINANCIAL_CONTRACTS' as const, status: 'AVAILABLE' as const },
+        { source: 'CARDS' as const, status: 'NOT_IMPLEMENTED' as const },
+      ], generatedAt: new Date('2026-08-09T18:00:00.000Z').toISOString(),
+    };
+
+    async function buildService(overrides: { finances?: unknown; overview?: unknown } = {}) {
+      const { NovaReadOnlyOrchestratorService } = await import('../nova-read-only-orchestrator.service');
+      const { novaOrchestratorPersistence } = await import('../nova-orchestrator-persistence.repository');
+      const finances = (overrides.finances as { getStatus: ReturnType<typeof vi.fn> }) ?? { getStatus: vi.fn().mockResolvedValue(statusFixture) };
+      const overview = (overrides.overview as { getOverview: ReturnType<typeof vi.fn> }) ?? { getOverview: vi.fn() };
+      const service = new NovaReadOnlyOrchestratorService({
+        persistence: novaOrchestratorPersistence,
+        finances: finances as never,
+        overview: overview as never,
+        enabled: () => true,
+        now: () => new Date('2026-08-09T18:00:00.000Z'),
+        ownerId: () => `pilot-regression:${Math.random()}`,
+      });
+      return { service, finances, overview };
+    }
+
+    it('process() com content cria exatamente um NovaTurn de verdade (bug original: PrismaClientValidationError antes do INSERT)', async () => {
+      const { prisma } = await import('@/lib/prisma');
+      const { service, finances } = await buildService();
+      const before = await prisma.novaTurn.count({ where: { conversationId, clientTurnId: 'pr10.3-hotfix-happy-path' } });
+      expect(before).toBe(0);
+
+      const outcome = await service.process({
+        userId, conversationId, clientTurnId: 'pr10.3-hotfix-happy-path',
+        content: 'Tenho empréstimos em atraso?',
+      });
+
+      expect(outcome.kind).toBe('RESULT');
+      expect(outcome.kind === 'RESULT' && outcome.result.status).toBe('COMPLETED');
+      expect(finances.getStatus).toHaveBeenCalledWith(userId);
+      const turns = await prisma.novaTurn.findMany({ where: { conversationId, clientTurnId: 'pr10.3-hotfix-happy-path' } });
+      expect(turns).toHaveLength(1);
+      expect(turns[0]?.status).toBe('COMPLETED');
+    });
+
+    it('5 retries concorrentes com o mesmo clientTurnId, através do serviço completo, convergem para um único NovaTurn', async () => {
+      const { prisma } = await import('@/lib/prisma');
+      const attempts = await Promise.all(
+        Array.from({ length: 5 }, async () => {
+          const { service } = await buildService();
+          return service.process({ userId, conversationId, clientTurnId: 'pr10.3-hotfix-five-retries', content: 'Tenho empréstimos em atraso?' });
+        })
+      );
+      for (const outcome of attempts) expect(outcome.kind).toBe('RESULT');
+      const turnIds = new Set(
+        attempts.map((outcome) => (outcome.kind === 'RESULT' && 'turnId' in outcome.result ? outcome.result.turnId : null))
+      );
+      expect(turnIds.size).toBe(1);
+      expect(await prisma.novaTurn.count({ where: { conversationId, clientTurnId: 'pr10.3-hotfix-five-retries' } })).toBe(1);
+    });
+
+    it('ownership inválido continua protegido através do serviço completo (NOT_FOUND, nenhum turno criado, nenhuma fonte financeira consultada)', async () => {
+      const { prisma } = await import('@/lib/prisma');
+      const { service, finances } = await buildService();
+      const outcome = await service.process({
+        userId: otherUserId, conversationId, clientTurnId: 'pr10.3-hotfix-foreign-owner',
+        content: 'Tenho empréstimos em atraso?',
+      });
+      expect(outcome).toEqual({ kind: 'NOT_FOUND' });
+      expect(finances.getStatus).not.toHaveBeenCalled();
+      expect(await prisma.novaTurn.count({ where: { conversationId, clientTurnId: 'pr10.3-hotfix-foreign-owner' } })).toBe(0);
+    });
+
+    it('mesmo com bypass de tipo (objeto largo simulando um chamador futuro descuidado), content nunca alcança o Prisma novaTurn.create', async () => {
+      const { prisma } = await import('@/lib/prisma');
+      const { novaOrchestratorPersistence: repository } = await import('../nova-orchestrator-persistence.repository');
+      const widened = {
+        conversationId, userId, clientTurnId: 'pr10.3-hotfix-leak-guard',
+        content: 'isto NUNCA pode chegar ao prisma.novaTurn.create',
+      } as unknown as Parameters<typeof repository.createOrReplayTurn>[0];
+
+      const created = await repository.createOrReplayTurn(widened);
+
+      expect(created).not.toBeNull();
+      const row = await prisma.novaTurn.findUniqueOrThrow({ where: { id: created!.turn.id } });
+      expect(row.conversationId).toBe(conversationId);
+      expect(row.userId).toBe(userId);
+      expect(row.clientTurnId).toBe('pr10.3-hotfix-leak-guard');
+      // `NovaTurn` não tem coluna `content` — se o Prisma tivesse recebido
+      // esse campo (bug original), `create` teria lançado
+      // `PrismaClientValidationError` antes do INSERT. Chegar até aqui já
+      // prova, contra o banco real, que a fronteira segura funciona mesmo
+      // quando o TypeScript é contornado.
+    });
+  });
 });

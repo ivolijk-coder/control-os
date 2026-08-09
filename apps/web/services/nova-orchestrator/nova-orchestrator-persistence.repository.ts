@@ -47,6 +47,25 @@ export type NovaTurnReplay =
   | { kind: 'RECOVERABLE'; turn: NovaTurnRecord }
   | { kind: 'TERMINAL'; turn: NovaTurnRecord };
 
+/**
+ * Fronteira tipada da criação/replay de `NovaTurn` — deliberadamente
+ * disjunta de `ProcessMessageInput` (`nova-read-only-orchestrator.service`).
+ * Contém SOMENTE os campos realmente persistíveis na criação de um
+ * `NovaTurn` (ver `schema.prisma`: `NovaTurn` não tem `content` — a
+ * mensagem em si só existe em `NovaMessage`, escrita por
+ * `completeReadOnlyTurn`/`completeTurnWithMessages`). Qualquer campo novo
+ * do request HTTP (ex.: `content`, futuros metadados de canal/persona)
+ * não pertence aqui — bug original (PR10.3 pilot): `process()` passava o
+ * `ProcessMessageInput` inteiro para este método, e o repository fazia
+ * `prisma.novaTurn.create({ data: input })`, deixando `content` vazar até
+ * o Prisma (`PrismaClientValidationError: Unknown argument content`).
+ */
+export interface CreateOrReplayTurnInput {
+  conversationId: string;
+  userId: string;
+  clientTurnId: string;
+}
+
 export interface NovaPersistedPublicMessage {
   id: string;
   role: 'USER' | 'ASSISTANT';
@@ -102,13 +121,20 @@ export class PrismaNovaOrchestratorPersistence {
     return messages.reverse();
   }
 
-  async createOrReplayTurn(input: { conversationId: string; userId: string; clientTurnId: string }): Promise<{ turn: NovaTurnRecord; replayed: boolean } | null> {
+  async createOrReplayTurn(input: CreateOrReplayTurnInput): Promise<{ turn: NovaTurnRecord; replayed: boolean } | null> {
     const conversation = await prisma.novaConversation.findFirst({ where: accessibleConversation(input.conversationId, input.userId), select: { id: true } });
     if (!conversation) return null;
     const existing = await prisma.novaTurn.findUnique({ where: { conversationId_clientTurnId: { conversationId: input.conversationId, clientTurnId: input.clientTurnId } } });
     if (existing) return existing.userId === input.userId ? { turn: turnRecord(existing), replayed: true } : null;
     try {
-      const created = await prisma.novaTurn.create({ data: input });
+      // Nunca `data: input` / `data: { ...input }` — o `data` do Prisma é
+      // sempre montado campo a campo a partir de `CreateOrReplayTurnInput`,
+      // para que `content` (ou qualquer campo futuro de `ProcessMessageInput`)
+      // nunca possa vazar para `novaTurn.create`, mesmo que um chamador
+      // futuro passe um objeto mais largo (subtipagem estrutural do
+      // TypeScript permitiria isso silenciosamente se confiássemos em spread).
+      const data: CreateOrReplayTurnInput = { conversationId: input.conversationId, userId: input.userId, clientTurnId: input.clientTurnId };
+      const created = await prisma.novaTurn.create({ data });
       return { turn: turnRecord(created), replayed: false };
     } catch (error) {
       if (!isUniqueConflict(error)) throw error;
