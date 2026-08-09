@@ -43,9 +43,13 @@ import {
 } from '@/lib/nova-conversations/nova-conversation-api-client';
 import {
   buildPersistTurnRequest,
+  buildProcessMessageRequest,
   isOperationCurrent,
+  orchestratorMessagesToTurn,
   type PendingConversationTurn,
+  type PendingOrchestratorTurn,
 } from '@/lib/nova-conversations/nova-conversation-workspace-model';
+import { routeControlledOrchestratorTurn } from '@/lib/nova-conversations/nova-controlled-orchestrator-rollout';
 
 // CONTROL OS — HERO SCENE REBOOT: qual tecnologia renderiza o Hero Object
 // agora depende da persona — decisão isolada em `NovaHeroStage`. NOVA usa
@@ -771,10 +775,116 @@ export function NovaWorkspace({
     }
   }, [clearAllNovaConversationCaches, markNovaConversationTurnUnsynced, reconcileNovaConversationTurn, setNovaConversationCache]);
 
+  const processControlledTurn = React.useCallback(async (
+    pending: PendingOrchestratorTurn
+  ): Promise<'HANDLED' | 'LEGACY'> => {
+    const current = useAppStore.getState().novaConversationByPersona[pending.persona];
+    if (!isOperationCurrent(current, pending)) return 'HANDLED';
+    setNovaConversationCache(pending.persona, {
+      isThinking: true,
+      pendingOrchestratorTurns: {
+        ...current.pendingOrchestratorTurns,
+        [pending.clientTurnId]: pending,
+      },
+      error: null,
+    });
+
+    const removePending = () => {
+      const latest = useAppStore.getState().novaConversationByPersona[pending.persona];
+      const remaining = { ...latest.pendingOrchestratorTurns };
+      delete remaining[pending.clientTurnId];
+      setNovaConversationCache(pending.persona, { pendingOrchestratorTurns: remaining });
+    };
+
+    const showRetryableFailure = (content: string) => {
+      const messages = useAppStore.getState().novaMessagesByPersona[pending.persona];
+      const assistant = messages.find((message) => message.clientTurnId === pending.clientTurnId && message.role === 'nova');
+      if (assistant) {
+        updateNovaMessage(pending.persona, assistant.id, { content, status: 'error', persistence: 'unsynced' });
+      } else {
+        addNovaMessage(pending.persona, {
+          id: nextMessageId('nova'),
+          role: 'nova',
+          content,
+          status: 'error',
+          persistence: 'unsynced',
+          clientTurnId: pending.clientTurnId,
+        });
+      }
+      markNovaConversationTurnUnsynced(pending.persona, pending.clientTurnId);
+      setNovaConversationCache(pending.persona, { isThinking: false, lastMessageMutation: 'append' });
+    };
+
+    try {
+      const route = await routeControlledOrchestratorTurn(
+        (payload) => novaConversationApiClient.processMessage(pending.conversationId, payload),
+        pending.payload
+      );
+      if (route.kind === 'LEGACY') {
+        removePending();
+        return 'LEGACY';
+      }
+
+      if (route.result.status === 'COMPLETED') {
+        reconcileNovaConversationTurn(
+          pending.persona,
+          pending.clientTurnId,
+          orchestratorMessagesToTurn(route.result.messages)
+        );
+        removePending();
+        setNovaConversationCache(pending.persona, { isThinking: false, error: null, lastMessageMutation: 'reconcile' });
+        return 'HANDLED';
+      }
+
+      if (route.result.status === 'PROCESSING') {
+        showRetryableFailure('Este turno ainda está sendo processado. Tente sincronizar novamente em instantes.');
+        return 'HANDLED';
+      }
+
+      const messages = useAppStore.getState().novaMessagesByPersona[pending.persona];
+      for (const message of messages.filter((item) => item.clientTurnId === pending.clientTurnId)) {
+        updateNovaMessage(pending.persona, message.id, { persistence: 'transient', clientTurnId: undefined });
+      }
+      addNovaMessage(pending.persona, {
+        id: nextMessageId('nova'),
+        role: 'nova',
+        content: route.result.error.message,
+        status: 'error',
+        persistence: 'transient',
+      });
+      removePending();
+      setNovaConversationCache(pending.persona, { isThinking: false, lastMessageMutation: 'append' });
+      return 'HANDLED';
+    } catch (cause) {
+      if (cause instanceof NovaConversationApiError && cause.status === 401) {
+        clearAllNovaConversationCaches();
+        return 'HANDLED';
+      }
+      showRetryableFailure('Não foi possível confirmar o processamento server-side. Tente sincronizar novamente.');
+      setNovaConversationCache(pending.persona, {
+        error: cause instanceof NovaConversationApiError ? cause.message : 'Não foi possível conectar ao Orchestrator.',
+      });
+      return 'HANDLED';
+    }
+  }, [
+    addNovaMessage,
+    clearAllNovaConversationCaches,
+    markNovaConversationTurnUnsynced,
+    reconcileNovaConversationTurn,
+    setNovaConversationCache,
+    updateNovaMessage,
+  ]);
+
   const handleRetrySync = React.useCallback((clientTurnId: string) => {
-    const pending = useAppStore.getState().novaConversationByPersona[effectivePersona].pendingTurns[clientTurnId];
+    const cache = useAppStore.getState().novaConversationByPersona[effectivePersona];
+    const orchestratorPending = cache.pendingOrchestratorTurns[clientTurnId];
+    if (orchestratorPending) {
+      void processControlledTurn(orchestratorPending);
+      return;
+    }
+    const pending = cache.pendingTurns[clientTurnId];
     if (pending) void persistCompletedTurn(pending);
-  }, [effectivePersona, persistCompletedTurn]);
+  }, [effectivePersona, persistCompletedTurn, processControlledTurn]);
 
   const handleLoadPrevious = React.useCallback(() => {
     const persona = effectivePersona;
@@ -862,6 +972,18 @@ export function NovaWorkspace({
             setNovaConversationCache(capturedPersona, { thinkingStatus: 'executando' });
           }
         }, EXECUTING_SWITCH_MS);
+
+        const controlledRoute = await processControlledTurn({
+          clientTurnId,
+          conversationId: capturedConversationId,
+          persona: capturedPersona,
+          requestGeneration: capturedGeneration,
+          payload: buildProcessMessageRequest(clientTurnId, text),
+        });
+        if (controlledRoute === 'HANDLED') {
+          window.clearTimeout(executingTimer);
+          return;
+        }
 
         // Pedido explícito de arquivo: a NOVA não inventa um link nem expõe
         // arquivos de outra pessoa. Procura somente na biblioteca privada da
@@ -958,7 +1080,7 @@ export function NovaWorkspace({
         }
       })();
     },
-    [novaContext, addNovaMessage, effectivePersona, persistCompletedTurn, setNovaConversationCache, updateNovaMessage]
+    [novaContext, addNovaMessage, effectivePersona, persistCompletedTurn, processControlledTurn, setNovaConversationCache, updateNovaMessage]
   );
 
   /** Guarda o arquivo na área privada. Um contrato gera somente uma prévia:

@@ -3,11 +3,13 @@ import { NovaConversationApiClient, NovaConversationApiError, type NovaMessageDt
 import {
   EMPTY_NOVA_CONVERSATION_CACHE,
   buildPersistTurnRequest,
+  buildProcessMessageRequest,
   isOperationCurrent,
   markTurnUnsynced,
   mergeHydratedMessages,
   prependPersistedMessages,
   reconcilePersistedTurn,
+  orchestratorMessagesToTurn,
 } from '@/lib/nova-conversations/nova-conversation-workspace-model';
 
 const persisted = (id: string, role: 'USER' | 'ASSISTANT', content = id): NovaMessageDto => ({
@@ -89,6 +91,14 @@ describe('workspace persistente da NOVA', () => {
       assistant: { content: 'resposta' },
     });
   });
+
+  it('reutiliza clientTurnId no retry do Orchestrator e converte somente o par persistido', () => {
+    expect(buildProcessMessageRequest('stable-turn', 'pergunta')).toEqual({
+      clientTurnId: 'stable-turn', content: 'pergunta',
+    });
+    expect(orchestratorMessagesToTurn([persisted('u', 'USER'), persisted('a', 'ASSISTANT')]))
+      .toEqual({ user: persisted('u', 'USER'), assistant: persisted('a', 'ASSISTANT') });
+  });
 });
 
 describe('cliente autenticado de conversas', () => {
@@ -130,5 +140,21 @@ describe('cliente autenticado de conversas', () => {
       status: 401,
       message: 'Sessão expirada.',
     }));
+  });
+
+  it('preserva o código server-side que autoriza exclusivamente o fallback legado', async () => {
+    const client = new NovaConversationApiClient(vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      message: 'Indisponível.', code: 'ORCHESTRATOR_DISABLED',
+    }), { status: 503 })));
+    await expect(client.processMessage('c1', { clientTurnId: 'turn', content: 'pergunta' }))
+      .rejects.toMatchObject({ status: 503, code: 'ORCHESTRATOR_DISABLED' });
+  });
+
+  it('trata FAILED do Orchestrator como resultado conhecido, nunca como transporte/fallback', async () => {
+    const result = { status: 'FAILED' as const, turnId: 'turn', error: { code: 'SOURCE_UNAVAILABLE', message: 'Falhou.' } };
+    const client = new NovaConversationApiClient(vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: false, result,
+    }), { status: 409 })));
+    await expect(client.processMessage('c1', { clientTurnId: 'turn', content: 'pergunta' })).resolves.toEqual(result);
   });
 });

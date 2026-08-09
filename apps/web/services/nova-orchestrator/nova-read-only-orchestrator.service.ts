@@ -6,7 +6,7 @@ import { dailyOverviewService, formatDailyOverviewReply, type DailyOverviewServi
 import type { FinancialIntelligenceService } from '@/services/financial-intelligence';
 import { financialIntelligenceService } from '@/services/financial-intelligence/financial-intelligence.sources';
 import { completedResult, failedResult, processingResult } from './nova-orchestrator.contracts';
-import { isNovaServerOrchestratorEnabled } from './nova-orchestrator-persistence.config';
+import { isNovaServerOrchestratorEnabledFor } from './nova-orchestrator-persistence.config';
 import {
   novaOrchestratorPersistence,
   type NovaPersistedPublicMessage,
@@ -25,7 +25,7 @@ interface ReadOnlyDependencies {
   persistence: PrismaNovaOrchestratorPersistence;
   finances: Pick<FinancialIntelligenceService, 'getStatus'>;
   overview: Pick<DailyOverviewService, 'getOverview'>;
-  enabled: () => boolean;
+  enabled: (input: { userId: string; channel: 'WEB' }) => boolean;
   now: () => Date;
   ownerId: () => string;
 }
@@ -48,13 +48,13 @@ export class NovaReadOnlyOrchestratorService {
     persistence: novaOrchestratorPersistence,
     finances: financialIntelligenceService,
     overview: dailyOverviewService,
-    enabled: isNovaServerOrchestratorEnabled,
+    enabled: isNovaServerOrchestratorEnabledFor,
     now: () => new Date(),
     ownerId: () => `web:${randomUUID()}`,
   }) {}
 
   async process(input: { userId: string; conversationId: string; clientTurnId: string; content: string }): Promise<NovaReadOnlyOrchestratorOutcome> {
-    if (!this.dependencies.enabled()) return { kind: 'DISABLED' };
+    if (!this.dependencies.enabled({ userId: input.userId, channel: 'WEB' })) return { kind: 'DISABLED' };
     const conversation = await this.dependencies.persistence.findAccessibleActiveWebConversation(input);
     if (!conversation) return { kind: 'NOT_FOUND' };
 

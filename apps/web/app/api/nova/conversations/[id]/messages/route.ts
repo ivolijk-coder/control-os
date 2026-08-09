@@ -14,8 +14,8 @@ import {
 import { novaConversationService } from '@/services/nova-conversations';
 import { novaReadOnlyOrchestratorService } from '@/services/nova-orchestrator';
 
-function failure(message: string, status: number): NextResponse {
-  return NextResponse.json({ success: false, message }, { status });
+function failure(message: string, status: number, code?: string): NextResponse {
+  return NextResponse.json({ success: false, message, ...(code ? { code } : {}) }, { status });
 }
 
 export async function GET(request: NextRequest, context: { params: { id: string } }): Promise<NextResponse> {
@@ -60,7 +60,9 @@ export async function POST(request: NextRequest, context: { params: { id: string
     const input = await parseProcessMessageBody(request);
     const outcome = await novaReadOnlyOrchestratorService.process({ userId, conversationId, ...input });
     if (outcome.kind === 'NOT_FOUND') return failure('Conversa não encontrada.', 404);
-    if (outcome.kind === 'DISABLED') return failure('O processamento server-side da NOVA ainda não está disponível.', 503);
+    if (outcome.kind === 'DISABLED') {
+      return failure('O processamento server-side da NOVA ainda não está disponível.', 503, 'ORCHESTRATOR_DISABLED');
+    }
     const status = outcome.result.status === 'PROCESSING' ? 202 : outcome.result.status === 'FAILED' ? 409 : 200;
     return NextResponse.json({ success: outcome.result.status !== 'FAILED', result: outcome.result }, { status });
   } catch (cause) {

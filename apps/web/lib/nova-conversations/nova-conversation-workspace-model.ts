@@ -4,6 +4,7 @@ import type {
   NovaConversationTurnDto,
   NovaMessageDto,
   PersistTurnRequest,
+  ProcessNovaMessageRequest,
 } from './nova-conversation-api-client';
 
 export type NovaHydrationStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -17,6 +18,14 @@ export type PendingConversationTurn = {
   payload: PersistTurnRequest;
 };
 
+export type PendingOrchestratorTurn = {
+  clientTurnId: string;
+  conversationId: string;
+  persona: NovaPersona;
+  requestGeneration: number;
+  payload: ProcessNovaMessageRequest;
+};
+
 export type NovaConversationCache = {
   conversationId: string | null;
   hydrationStatus: NovaHydrationStatus;
@@ -24,6 +33,7 @@ export type NovaConversationCache = {
   hasMore: boolean;
   requestGeneration: number;
   pendingTurns: Record<string, PendingConversationTurn>;
+  pendingOrchestratorTurns: Record<string, PendingOrchestratorTurn>;
   error: string | null;
   isThinking: boolean;
   thinkingStatus: 'pensando' | 'executando';
@@ -39,6 +49,7 @@ export const EMPTY_NOVA_CONVERSATION_CACHE: NovaConversationCache = {
   hasMore: false,
   requestGeneration: 0,
   pendingTurns: {},
+  pendingOrchestratorTurns: {},
   error: null,
   isThinking: false,
   thinkingStatus: 'pensando',
@@ -111,6 +122,17 @@ export function buildPersistTurnRequest(clientTurnId: string, userContent: strin
     user: { content: userContent },
     assistant: { content: assistantContent },
   };
+}
+
+export function buildProcessMessageRequest(clientTurnId: string, content: string): ProcessNovaMessageRequest {
+  return { clientTurnId, content };
+}
+
+export function orchestratorMessagesToTurn(messages: readonly NovaMessageDto[]): NovaConversationTurnDto {
+  const user = messages.find((message) => message.role === 'USER');
+  const assistant = messages.find((message) => message.role === 'ASSISTANT');
+  if (!user || !assistant) throw new Error('Resposta persistida do Orchestrator incompleta.');
+  return { user, assistant };
 }
 
 function dedupeMessages(messages: ConversationMessage[]): ConversationMessage[] {
