@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
-import { isNovaServerOrchestratorEnabled } from '../nova-orchestrator-persistence.config';
+import {
+  isNovaServerOrchestratorEnabled,
+  isNovaServerOrchestratorEnabledFor,
+  parseNovaServerOrchestratorWebUserAllowlist,
+} from '../nova-orchestrator-persistence.config';
 import { resolveReadOnlyFinancialReference } from '../nova-reference-resolver';
 import { routeNovaReadOnlyMessage } from '../nova-read-only-routing';
 
@@ -11,6 +15,30 @@ describe('PR10.3 — roteamento e referências read-only', () => {
     expect(isNovaServerOrchestratorEnabled({})).toBe(false);
     expect(isNovaServerOrchestratorEnabled({ NOVA_SERVER_ORCHESTRATOR_ENABLED: 'TRUE' })).toBe(false);
     expect(isNovaServerOrchestratorEnabled({ NOVA_SERVER_ORCHESTRATOR_ENABLED: 'true' })).toBe(true);
+  });
+
+  it('habilita somente userId persistido autorizado no canal WEB', () => {
+    const allowed = '11111111-1111-4111-8111-111111111111';
+    const environment = {
+      NOVA_SERVER_ORCHESTRATOR_ENABLED: 'true',
+      NOVA_SERVER_ORCHESTRATOR_WEB_USER_ALLOWLIST: allowed,
+    };
+    expect(isNovaServerOrchestratorEnabledFor({ userId: allowed, channel: 'WEB' }, environment)).toBe(true);
+    expect(isNovaServerOrchestratorEnabledFor({ userId: '22222222-2222-4222-8222-222222222222', channel: 'WEB' }, environment)).toBe(false);
+    expect(isNovaServerOrchestratorEnabledFor({ userId: allowed, channel: 'WHATSAPP' }, environment)).toBe(false);
+  });
+
+  it('falha fechado com flag falsa, allowlist vazia ou qualquer item malformado', () => {
+    const allowed = '11111111-1111-4111-8111-111111111111';
+    expect(isNovaServerOrchestratorEnabledFor({ userId: allowed, channel: 'WEB' }, {
+      NOVA_SERVER_ORCHESTRATOR_ENABLED: 'false',
+      NOVA_SERVER_ORCHESTRATOR_WEB_USER_ALLOWLIST: allowed,
+    })).toBe(false);
+    expect(isNovaServerOrchestratorEnabledFor({ userId: allowed, channel: 'WEB' }, {
+      NOVA_SERVER_ORCHESTRATOR_ENABLED: 'true',
+      NOVA_SERVER_ORCHESTRATOR_WEB_USER_ALLOWLIST: '',
+    })).toBe(false);
+    expect(parseNovaServerOrchestratorWebUserAllowlist(`${allowed},not-a-user-id`).size).toBe(0);
   });
 
   it('roteia fontes reais e bloqueia mutações sem executar action', () => {

@@ -344,6 +344,11 @@ services:
       AI_DEBUG_LOGS: ${AI_DEBUG_LOGS:-0}
       NEXT_PUBLIC_AI_DEBUG_LOGS: ${AI_DEBUG_LOGS:-0}
       NEXT_PUBLIC_AI_FALLBACK_TO_MOCK: ${AI_FALLBACK_TO_MOCK:-0}
+      # Piloto read-only do Orchestrator. Ambas são somente server-side;
+      # sem kill switch estritamente "true" E userId na allowlist, o web
+      # devolve ORCHESTRATOR_DISABLED e mantém o fluxo legado.
+      NOVA_SERVER_ORCHESTRATOR_ENABLED: ${NOVA_SERVER_ORCHESTRATOR_ENABLED:-false}
+      NOVA_SERVER_ORCHESTRATOR_WEB_USER_ALLOWLIST: ${NOVA_SERVER_ORCHESTRATOR_WEB_USER_ALLOWLIST:-}
       DECISION_PROVIDER: ${DECISION_PROVIDER:-mock}
       DECISION_ENGINE_DEBUG_LOGS: ${DECISION_ENGINE_DEBUG_LOGS:-0}
       WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:-}

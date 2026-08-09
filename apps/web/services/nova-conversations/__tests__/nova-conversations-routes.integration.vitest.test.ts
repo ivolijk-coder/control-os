@@ -141,6 +141,7 @@ describe('APIs autenticadas de conversas da NOVA', () => {
       clientTurnId: 'client-disabled', content: 'Resumo de hoje',
     }), { params: { id: conversationId } });
     expect(response.status).toBe(503);
+    expect((response as unknown as { body: unknown }).body).toMatchObject({ code: 'ORCHESTRATOR_DISABLED' });
     expect(mocks.persistTurn).not.toHaveBeenCalled();
   });
 
