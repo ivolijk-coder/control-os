@@ -85,4 +85,59 @@ describe.runIf(enabled)('NovaConversation — PostgreSQL real', () => {
     });
     await expect(service.listMessages({ userId: otherUserId, conversationId: novaActive.id, channel: 'WEB' })).resolves.toBeNull();
   });
+
+  it('persiste o par atomicamente, protege replay concorrente, ownership e rollback real', async () => {
+    const { PrismaNovaConversationRepository } = await import('../prisma-nova-conversation.repository');
+    const { NovaConversationServiceImpl } = await import('../nova-conversation.service');
+    const { prisma } = await import('@/lib/prisma');
+    const service = new NovaConversationServiceImpl(new PrismaNovaConversationRepository());
+    const conversation = await service.getOrCreateActive({ userId, channel: 'API', persona: 'NOVA' });
+    const input = {
+      userId, conversationId: conversation.id, channel: 'API' as const, correlationId: 'postgres-atomic-turn-1',
+      user: { content: 'Pergunta concorrente' }, assistant: { content: 'Resposta concorrente' },
+    };
+
+    const results = await Promise.all(Array.from({ length: 8 }, () => service.persistTurn(input)));
+    const pairs = results.map((result) => `${result?.turn.user.id}:${result?.turn.assistant.id}`);
+    expect(new Set(pairs).size).toBe(1);
+    expect(await prisma.novaMessage.count({ where: { conversationId: conversation.id, correlationId: input.correlationId } })).toBe(2);
+    const ordered = await prisma.novaMessage.findMany({
+      where: { conversationId: conversation.id, correlationId: input.correlationId }, orderBy: { sequence: 'asc' },
+    });
+    expect(ordered.map((message) => message.role)).toEqual(['USER', 'ASSISTANT']);
+    const persistedConversation = await prisma.novaConversation.findUniqueOrThrow({ where: { id: conversation.id } });
+    expect(persistedConversation.lastMessageAt).toEqual(ordered[1]?.createdAt);
+
+    await expect(service.persistTurn({ ...input, userId: otherUserId, correlationId: 'postgres-foreign-turn' })).resolves.toBeNull();
+
+    await prisma.$executeRawUnsafe(`
+      CREATE OR REPLACE FUNCTION reject_pr93a_assistant() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.role = 'ASSISTANT' AND NEW.correlation_id = 'postgres-rollback-turn' THEN
+          RAISE EXCEPTION 'synthetic assistant failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER reject_pr93a_assistant_trigger
+      BEFORE INSERT ON nova_messages
+      FOR EACH ROW EXECUTE FUNCTION reject_pr93a_assistant()
+    `);
+    try {
+      await expect(service.persistTurn({
+        ...input,
+        correlationId: 'postgres-rollback-turn',
+        user: { content: 'USER deve sofrer rollback' },
+        assistant: { content: 'ASSISTANT falha' },
+      })).rejects.toThrow();
+      expect(await prisma.novaMessage.count({
+        where: { conversationId: conversation.id, correlationId: 'postgres-rollback-turn' },
+      })).toBe(0);
+    } finally {
+      await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS reject_pr93a_assistant_trigger ON nova_messages');
+      await prisma.$executeRawUnsafe('DROP FUNCTION IF EXISTS reject_pr93a_assistant()');
+    }
+  });
 });

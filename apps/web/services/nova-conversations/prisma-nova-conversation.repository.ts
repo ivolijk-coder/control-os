@@ -2,8 +2,8 @@ import 'server-only';
 
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import type { AppendMessageInput, ConversationScope, NovaConversationRepository } from './nova-conversation.interfaces';
-import type { ConversationPage, MessagePage, NovaConversation, NovaMessage } from './nova-conversation.types';
+import type { AppendMessageInput, ConversationScope, NovaConversationRepository, PersistConversationTurnInput } from './nova-conversation.interfaces';
+import type { ConversationPage, MessagePage, NovaConversation, NovaConversationTurn, NovaMessage } from './nova-conversation.types';
 
 type ConversationRow = Awaited<ReturnType<typeof prisma.novaConversation.findFirst>>;
 type MessageRow = Awaited<ReturnType<typeof prisma.novaMessage.findFirst>>;
@@ -43,6 +43,22 @@ function toMessage(row: NonNullable<MessageRow>): NovaMessage {
 
 function isUniqueConflict(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
+async function findPersistedTurn(input: Pick<PersistConversationTurnInput, 'conversationId' | 'userId' | 'channel' | 'correlationId'>): Promise<NovaConversationTurn | null> {
+  const rows = await prisma.novaMessage.findMany({
+    where: {
+      conversationId: input.conversationId,
+      userId: input.userId,
+      correlationId: input.correlationId,
+      role: { in: ['USER', 'ASSISTANT'] },
+      conversation: { channel: input.channel, deletedAt: null },
+    },
+    orderBy: { sequence: 'asc' },
+  });
+  const user = rows.find((row) => row.role === 'USER');
+  const assistant = rows.find((row) => row.role === 'ASSISTANT');
+  return user && assistant ? { user: toMessage(user), assistant: toMessage(assistant) } : null;
 }
 
 export class PrismaNovaConversationRepository implements NovaConversationRepository {
@@ -215,6 +231,61 @@ export class PrismaNovaConversationRepository implements NovaConversationReposit
       });
       if (!winner) throw error;
       return { message: toMessage(winner), replayed: true };
+    }
+  }
+
+  async persistTurnAtomically(input: PersistConversationTurnInput): Promise<{ turn: NovaConversationTurn; replayed: boolean } | null> {
+    const replay = await findPersistedTurn(input);
+    if (replay) return { turn: replay, replayed: true };
+
+    try {
+      const turn = await prisma.$transaction(async (tx) => {
+        const conversation = await tx.novaConversation.findFirst({
+          where: {
+            id: input.conversationId,
+            userId: input.userId,
+            channel: input.channel,
+            status: 'ACTIVE',
+            deletedAt: null,
+          },
+          select: { id: true },
+        });
+        if (!conversation) return null;
+
+        const user = await tx.novaMessage.create({
+          data: {
+            conversationId: input.conversationId,
+            userId: input.userId,
+            role: 'USER',
+            content: input.user.content,
+            intent: input.user.intent,
+            correlationId: input.correlationId,
+            redacted: input.user.redacted,
+          },
+        });
+        const assistant = await tx.novaMessage.create({
+          data: {
+            conversationId: input.conversationId,
+            userId: input.userId,
+            role: 'ASSISTANT',
+            content: input.assistant.content,
+            intent: input.assistant.intent,
+            correlationId: input.correlationId,
+            redacted: input.assistant.redacted,
+          },
+        });
+        await tx.novaConversation.update({
+          where: { id: conversation.id },
+          data: { lastMessageAt: assistant.createdAt },
+        });
+        return { user: toMessage(user), assistant: toMessage(assistant) };
+      });
+      return turn ? { turn, replayed: false } : null;
+    } catch (error) {
+      if (!isUniqueConflict(error)) throw error;
+      const winner = await findPersistedTurn(input);
+      if (!winner) throw error;
+      return { turn: winner, replayed: true };
     }
   }
 

@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 
 import { NovaConversationServiceImpl } from '../nova-conversation.service';
-import type { AppendMessageInput, ConversationScope, NovaConversationRepository } from '../nova-conversation.interfaces';
-import type { ConversationPage, MessagePage, NovaConversation, NovaMessage } from '../nova-conversation.types';
+import type { AppendMessageInput, ConversationScope, NovaConversationRepository, PersistConversationTurnInput } from '../nova-conversation.interfaces';
+import type { ConversationPage, MessagePage, NovaConversation, NovaConversationTurn, NovaMessage } from '../nova-conversation.types';
 import { REDACTED_CONTENT, sanitizeConversationContent } from '../conversation-content-sanitizer';
 
 class InMemoryConversationRepository implements NovaConversationRepository {
@@ -12,6 +12,7 @@ class InMemoryConversationRepository implements NovaConversationRepository {
   messages: NovaMessage[] = [];
   sequence = 0;
   failNextAppend = false;
+  failNextTurn = false;
 
   async getOrCreateActive(input: ConversationScope & { activeKey: string }): Promise<NovaConversation> {
     const existing = this.conversations.find((item) =>
@@ -115,6 +116,52 @@ class InMemoryConversationRepository implements NovaConversationRepository {
     this.messages.push(message);
     conversation.lastMessageAt = createdAt;
     return { message, replayed: false };
+  }
+
+  async persistTurnAtomically(input: PersistConversationTurnInput): Promise<{ turn: NovaConversationTurn; replayed: boolean } | null> {
+    const existingUser = this.messages.find((item) => item.conversationId === input.conversationId
+      && item.userId === input.userId && item.correlationId === input.correlationId && item.role === 'USER');
+    const existingAssistant = this.messages.find((item) => item.conversationId === input.conversationId
+      && item.userId === input.userId && item.correlationId === input.correlationId && item.role === 'ASSISTANT');
+    if (existingUser && existingAssistant) return { turn: { user: existingUser, assistant: existingAssistant }, replayed: true };
+    const conversation = this.conversations.find((item) => item.id === input.conversationId && item.userId === input.userId
+      && item.channel === input.channel && item.status === 'ACTIVE' && item.deletedAt === null);
+    if (!conversation) return null;
+    if (this.failNextTurn) {
+      this.failNextTurn = false;
+      throw new Error('SYNTHETIC_TURN_TRANSACTION_FAILURE');
+    }
+
+    const originalSequence = this.sequence;
+    const originalLastMessageAt = conversation.lastMessageAt;
+    try {
+      const makeMessage = (role: NovaMessage['role'], value: PersistConversationTurnInput['user']): NovaMessage => {
+        this.sequence += 1;
+        return {
+          id: `message-${this.sequence}`,
+          conversationId: input.conversationId,
+          userId: input.userId,
+          role,
+          content: value.content,
+          intent: value.intent ?? null,
+          provider: null,
+          providerResponseId: null,
+          correlationId: input.correlationId,
+          sequence: String(this.sequence),
+          redacted: value.redacted,
+          createdAt: new Date(Date.now() + this.sequence),
+        };
+      };
+      const user = makeMessage('USER', input.user);
+      const assistant = makeMessage('ASSISTANT', input.assistant);
+      this.messages.push(user, assistant);
+      conversation.lastMessageAt = assistant.createdAt;
+      return { turn: { user, assistant }, replayed: false };
+    } catch (error) {
+      this.sequence = originalSequence;
+      conversation.lastMessageAt = originalLastMessageAt;
+      throw error;
+    }
   }
 
   async listMessages(input: Parameters<NovaConversationRepository['listMessages']>[0]): Promise<MessagePage | null> {
@@ -244,6 +291,67 @@ describe('NovaConversationService — fundacao persistente', () => {
     expect(result.message.content).not.toContain('caso123');
     expect(result.message.content).not.toContain('abcdefghijklmnop');
     expect(result.message.content).toContain(REDACTED_CONTENT);
+  });
+
+  it('persiste USER e ASSISTANT como um único turno ordenado e atualiza lastMessageAt', async () => {
+    const conversation = await service.getOrCreateActive({ userId: 'user-a', channel: 'WEB', persona: 'NOVA' });
+    const result = await service.persistTurn({
+      userId: 'user-a', conversationId: conversation.id, channel: 'WEB', correlationId: 'client-turn-001',
+      user: { content: 'Minha pergunta', intent: 'FINANCIAL_STATUS' },
+      assistant: { content: 'Minha resposta' },
+    });
+    expect(result?.replayed).toBe(false);
+    expect(result?.turn.user.role).toBe('USER');
+    expect(result?.turn.assistant.role).toBe('ASSISTANT');
+    expect(BigInt(result!.turn.user.sequence)).toBeLessThan(BigInt(result!.turn.assistant.sequence));
+    expect(conversation.lastMessageAt).toEqual(result?.turn.assistant.createdAt);
+    expect(repository.messages).toHaveLength(2);
+  });
+
+  it('replay sequencial devolve exatamente o mesmo par sem duplicar', async () => {
+    const conversation = await service.getOrCreateActive({ userId: 'user-a', channel: 'WEB', persona: 'NOVA' });
+    const input = {
+      userId: 'user-a', conversationId: conversation.id, channel: 'WEB' as const, correlationId: 'client-turn-replay',
+      user: { content: 'Pergunta original' }, assistant: { content: 'Resposta original' },
+    };
+    const first = await service.persistTurn(input);
+    const replay = await service.persistTurn({ ...input, user: { content: 'Texto alterado' }, assistant: { content: 'Outro texto' } });
+    expect(replay?.replayed).toBe(true);
+    expect(replay?.turn).toEqual(first?.turn);
+    expect(repository.messages).toHaveLength(2);
+  });
+
+  it('isola ownership, canal e soft delete na persistência do turno', async () => {
+    const conversation = await service.getOrCreateActive({ userId: 'user-a', channel: 'WEB', persona: 'NOVA' });
+    const base = { conversationId: conversation.id, correlationId: 'client-turn-isolation', user: { content: 'A' }, assistant: { content: 'B' } };
+    await expect(service.persistTurn({ ...base, userId: 'user-b', channel: 'WEB' })).resolves.toBeNull();
+    await expect(service.persistTurn({ ...base, userId: 'user-a', channel: 'WHATSAPP' })).resolves.toBeNull();
+    await service.deleteConversation({ userId: 'user-a', conversationId: conversation.id });
+    await expect(service.persistTurn({ ...base, userId: 'user-a', channel: 'WEB' })).resolves.toBeNull();
+    expect(repository.messages).toHaveLength(0);
+  });
+
+  it('redige conteúdo sensível nos dois lados do turno', async () => {
+    const conversation = await service.getOrCreateActive({ userId: 'user-a', channel: 'WEB', persona: 'NOVA' });
+    const result = await service.persistTurn({
+      userId: 'user-a', conversationId: conversation.id, channel: 'WEB', correlationId: 'client-turn-secret',
+      user: { content: 'senha: segredo123456' }, assistant: { content: 'Bearer abcdefghijklmnop' },
+    });
+    expect(result?.turn.user.redacted).toBe(true);
+    expect(result?.turn.assistant.redacted).toBe(true);
+    expect(JSON.stringify(result?.turn)).not.toMatch(/segredo123456|abcdefghijklmnop/u);
+  });
+
+  it('falha transacional do turno não deixa USER, ASSISTANT nem lastMessageAt parcial', async () => {
+    const conversation = await service.getOrCreateActive({ userId: 'user-a', channel: 'WEB', persona: 'NOVA' });
+    const previousLastMessageAt = conversation.lastMessageAt;
+    repository.failNextTurn = true;
+    await expect(service.persistTurn({
+      userId: 'user-a', conversationId: conversation.id, channel: 'WEB', correlationId: 'client-turn-fail',
+      user: { content: 'Pergunta' }, assistant: { content: 'Resposta' },
+    })).rejects.toThrow('SYNTHETIC_TURN_TRANSACTION_FAILURE');
+    expect(repository.messages).toHaveLength(0);
+    expect(conversation.lastMessageAt).toEqual(previousLastMessageAt);
   });
 
   it('remove chave privada completa e limita tamanho', () => {

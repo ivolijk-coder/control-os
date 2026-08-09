@@ -5,6 +5,7 @@ import type {
   NovaConversation,
   NovaConversationChannel,
   NovaConversationPersona,
+  NovaConversationTurn,
   NovaMessage,
   NovaMessageRole,
 } from './nova-conversation.types';
@@ -27,6 +28,23 @@ export type AppendMessageInput = {
   providerResponseId?: string;
 };
 
+export type PersistConversationTurnInput = {
+  userId: string;
+  conversationId: string;
+  channel: NovaConversationChannel;
+  correlationId: string;
+  user: {
+    content: string;
+    redacted: boolean;
+    intent?: string;
+  };
+  assistant: {
+    content: string;
+    redacted: boolean;
+    intent?: string;
+  };
+};
+
 export interface NovaConversationRepository {
   getOrCreateActive(scope: ConversationScope & { activeKey: string }): Promise<NovaConversation>;
   closeActive(scope: ConversationScope, closedAt: Date): Promise<NovaConversation | null>;
@@ -40,6 +58,7 @@ export interface NovaConversationRepository {
     cursor?: ConversationCursor;
   }): Promise<ConversationPage>;
   appendMessageAtomically(input: AppendMessageInput): Promise<{ message: NovaMessage; replayed: boolean }>;
+  persistTurnAtomically(input: PersistConversationTurnInput): Promise<{ turn: NovaConversationTurn; replayed: boolean } | null>;
   listMessages(input: {
     userId: string;
     conversationId: string;
@@ -61,6 +80,10 @@ export interface NovaConversationService {
     cursor?: ConversationCursor;
   }): Promise<ConversationPage>;
   appendMessage(input: Omit<AppendMessageInput, 'redacted'>): Promise<{ message: NovaMessage; replayed: boolean }>;
+  persistTurn(input: Omit<PersistConversationTurnInput, 'user' | 'assistant'> & {
+    user: Omit<PersistConversationTurnInput['user'], 'redacted'>;
+    assistant: Omit<PersistConversationTurnInput['assistant'], 'redacted'>;
+  }): Promise<{ turn: NovaConversationTurn; replayed: boolean } | null>;
   listMessages(input: {
     userId: string;
     conversationId: string;
