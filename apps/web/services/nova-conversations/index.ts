@@ -5,6 +5,7 @@ export type {
   ConversationScope,
   NovaConversationRepository,
   NovaConversationService,
+  PersistConversationTurnInput,
 } from './nova-conversation.interfaces';
 export type {
   ConversationCursor,
@@ -14,6 +15,7 @@ export type {
   NovaConversationChannel,
   NovaConversationPersona,
   NovaConversationStatus,
+  NovaConversationTurn,
   NovaMessage,
   NovaMessageRole,
   SanitizedConversationContent,

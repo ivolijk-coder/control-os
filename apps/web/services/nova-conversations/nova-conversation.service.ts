@@ -85,6 +85,19 @@ export class NovaConversationServiceImpl implements NovaConversationService {
     });
   }
 
+  persistTurn(input: Parameters<NovaConversationService['persistTurn']>[0]): ReturnType<NovaConversationService['persistTurn']> {
+    const user = sanitizeConversationContent(requireValue(input.user.content, 'user.content'));
+    const assistant = sanitizeConversationContent(requireValue(input.assistant.content, 'assistant.content'));
+    return this.repository.persistTurnAtomically({
+      userId: requireValue(input.userId, 'userId'),
+      conversationId: requireValue(input.conversationId, 'conversationId'),
+      channel: input.channel,
+      correlationId: requireValue(input.correlationId, 'correlationId'),
+      user: { ...input.user, content: user.content, redacted: user.redacted },
+      assistant: { ...input.assistant, content: assistant.content, redacted: assistant.redacted },
+    });
+  }
+
   listMessages(input: Parameters<NovaConversationService['listMessages']>[0]): Promise<MessagePage | null> {
     return this.repository.listMessages({
       userId: requireValue(input.userId, 'userId'),

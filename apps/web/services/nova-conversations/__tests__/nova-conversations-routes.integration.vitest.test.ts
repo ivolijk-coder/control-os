@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   getOrCreateActive: vi.fn(),
   listMessages: vi.fn(),
   closeConversation: vi.fn(),
+  persistTurn: vi.fn(),
 }));
 
 vi.mock('next/server', () => ({
@@ -24,6 +25,7 @@ vi.mock('@/services/nova-conversations', () => ({
     getOrCreateActive: mocks.getOrCreateActive,
     listMessages: mocks.listMessages,
     closeConversation: mocks.closeConversation,
+    persistTurn: mocks.persistTurn,
   },
 }));
 
@@ -42,6 +44,18 @@ const conversation = {
   deletedAt: null,
   createdAt: now,
   updatedAt: now,
+};
+const persistedTurn = {
+  user: {
+    id: '33333333-3333-4333-8333-333333333333', conversationId, userId: 'user-a', role: 'USER' as const,
+    content: 'Pergunta', intent: null, provider: null, providerResponseId: null, correlationId: 'client-turn-001',
+    sequence: '1', redacted: false, createdAt: now,
+  },
+  assistant: {
+    id: '44444444-4444-4444-8444-444444444444', conversationId, userId: 'user-a', role: 'ASSISTANT' as const,
+    content: 'Resposta', intent: null, provider: null, providerResponseId: null, correlationId: 'client-turn-001',
+    sequence: '2', redacted: false, createdAt: now,
+  },
 };
 
 function getRequest(path: string): NextRequest {
@@ -64,6 +78,7 @@ describe('APIs autenticadas de conversas da NOVA', () => {
     mocks.getOrCreateActive.mockResolvedValue(conversation);
     mocks.listMessages.mockResolvedValue({ messages: [], nextCursor: null, hasMore: false });
     mocks.closeConversation.mockResolvedValue({ ...conversation, status: 'CLOSED', closedAt: now });
+    mocks.persistTurn.mockResolvedValue({ turn: persistedTurn, replayed: false });
   });
 
   it('retorna 401 em todas as quatro operações sem consultar o serviço', async () => {
@@ -80,6 +95,71 @@ describe('APIs autenticadas de conversas da NOVA', () => {
     expect(mocks.getOrCreateActive).not.toHaveBeenCalled();
     expect(mocks.listMessages).not.toHaveBeenCalled();
     expect(mocks.closeConversation).not.toHaveBeenCalled();
+  });
+
+  it('retorna 401 ao persistir turno sem consultar o serviço', async () => {
+    mocks.userId = undefined;
+    const { POST } = await import('@/app/api/nova/conversations/[id]/turns/route');
+    const response = await POST(postRequest(`/api/nova/conversations/${conversationId}/turns`, {
+      clientTurnId: 'client-turn-001', user: { content: 'Pergunta' }, assistant: { content: 'Resposta' },
+    }), { params: { id: conversationId } });
+    expect(response.status).toBe(401);
+    expect(mocks.persistTurn).not.toHaveBeenCalled();
+  });
+
+  it('persiste turno com usuário da sessão e canal WEB fixado', async () => {
+    const { POST } = await import('@/app/api/nova/conversations/[id]/turns/route');
+    const response = await POST(postRequest(`/api/nova/conversations/${conversationId}/turns`, {
+      clientTurnId: 'client-turn-001',
+      user: { content: 'Pergunta', intent: 'FINANCIAL_STATUS' },
+      assistant: { content: 'Resposta' },
+    }), { params: { id: conversationId } });
+    expect(response.status).toBe(200);
+    expect(mocks.persistTurn).toHaveBeenCalledWith({
+      userId: 'user-a', conversationId, channel: 'WEB', correlationId: 'client-turn-001',
+      user: { content: 'Pergunta', intent: 'FINANCIAL_STATUS' }, assistant: { content: 'Resposta' },
+    });
+    const json = JSON.stringify(response.body);
+    for (const field of ['userId', 'conversationId', 'provider', 'providerResponseId', 'correlationId', 'sequence']) {
+      expect(json).not.toContain(field);
+    }
+  });
+
+  it('rejeita campos internos ou inesperados no payload do turno', async () => {
+    const { POST } = await import('@/app/api/nova/conversations/[id]/turns/route');
+    const invalidPayloads = [
+      { clientTurnId: 'client-turn-001', userId: 'user-b', user: { content: 'A' }, assistant: { content: 'B' } },
+      { clientTurnId: 'client-turn-001', channel: 'WHATSAPP', user: { content: 'A' }, assistant: { content: 'B' } },
+      { clientTurnId: 'client-turn-001', user: { content: 'A', role: 'USER' }, assistant: { content: 'B' } },
+      { clientTurnId: 'id com espaços', user: { content: 'A' }, assistant: { content: 'B' } },
+    ];
+    for (const payload of invalidPayloads) {
+      const response = await POST(postRequest(`/api/nova/conversations/${conversationId}/turns`, payload), { params: { id: conversationId } });
+      expect(response.status).toBe(400);
+    }
+    expect(mocks.persistTurn).not.toHaveBeenCalled();
+  });
+
+  it('usa o mesmo 404 para conversa estrangeira, inexistente ou apagada', async () => {
+    mocks.persistTurn.mockResolvedValue(null);
+    const { POST } = await import('@/app/api/nova/conversations/[id]/turns/route');
+    const body = { clientTurnId: 'client-turn-404', user: { content: 'A' }, assistant: { content: 'B' } };
+    const foreign = await POST(postRequest(`/api/nova/conversations/${conversationId}/turns`, body), { params: { id: conversationId } });
+    const missing = await POST(postRequest(`/api/nova/conversations/${otherConversationId}/turns`, body), { params: { id: otherConversationId } });
+    expect(foreign.status).toBe(404);
+    expect(missing.body).toEqual(foreign.body);
+  });
+
+  it('sanitiza erro interno da persistência do turno', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    mocks.persistTurn.mockRejectedValue(new Error('Prisma postgres://secret@internal/control'));
+    const { POST } = await import('@/app/api/nova/conversations/[id]/turns/route');
+    const response = await POST(postRequest(`/api/nova/conversations/${conversationId}/turns`, {
+      clientTurnId: 'client-turn-error', user: { content: 'A' }, assistant: { content: 'B' },
+    }), { params: { id: conversationId } });
+    expect(response.status).toBe(500);
+    expect(JSON.stringify(response.body)).not.toMatch(/Prisma|postgres|secret|internal/u);
+    consoleError.mockRestore();
   });
 
   it('fixa WEB no servidor, isola a persona e usa limite padrão 30', async () => {

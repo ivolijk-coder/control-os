@@ -49,6 +49,11 @@ export type MessagePage = {
   hasMore: boolean;
 };
 
+export type NovaConversationTurn = {
+  user: NovaMessage;
+  assistant: NovaMessage;
+};
+
 export type SanitizedConversationContent = {
   content: string;
   redacted: boolean;

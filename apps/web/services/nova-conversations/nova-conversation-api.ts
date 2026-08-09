@@ -13,6 +13,8 @@ export const MAX_CONVERSATION_PAGE_LIMIT = 100;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const SEQUENCE_PATTERN = /^[1-9][0-9]*$/u;
 const MAX_CURSOR_LENGTH = 512;
+const CLIENT_TURN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+const MAX_INTENT_LENGTH = 160;
 
 export class NovaConversationRequestError extends Error {
   constructor(message: string) {
@@ -39,6 +41,17 @@ export type PublicNovaMessageDTO = {
   intent: string | null;
   redacted: boolean;
   createdAt: string;
+};
+
+export type PersistNovaConversationTurnRequest = {
+  clientTurnId: string;
+  user: { content: string; intent?: string };
+  assistant: { content: string; intent?: string };
+};
+
+export type PublicNovaConversationTurnDTO = {
+  user: PublicNovaMessageDTO;
+  assistant: PublicNovaMessageDTO;
 };
 
 type ConversationCursorPayload = {
@@ -167,6 +180,41 @@ export async function assertEmptyRequestBody(request: Request): Promise<void> {
   }
 }
 
+function parseTurnMessage(value: unknown, label: string): { content: string; intent?: string } {
+  const message = record(value);
+  if (!message) throw new NovaConversationRequestError(`${label} inválido.`);
+  const keys = Object.keys(message);
+  if (keys.some((key) => key !== 'content' && key !== 'intent') || !Object.hasOwn(message, 'content')) {
+    throw new NovaConversationRequestError(`${label} aceita somente content e intent.`);
+  }
+  if (typeof message.content !== 'string' || !message.content.trim()) {
+    throw new NovaConversationRequestError(`${label}.content é obrigatório.`);
+  }
+  if (message.intent !== undefined && (typeof message.intent !== 'string' || !message.intent.trim() || message.intent.length > MAX_INTENT_LENGTH)) {
+    throw new NovaConversationRequestError(`${label}.intent inválido.`);
+  }
+  return {
+    content: message.content,
+    ...(typeof message.intent === 'string' ? { intent: message.intent.trim() } : {}),
+  };
+}
+
+export async function parsePersistTurnBody(request: Request): Promise<PersistNovaConversationTurnRequest> {
+  const body = record(await request.json().catch(() => undefined));
+  if (!body || Object.keys(body).length !== 3 || !Object.hasOwn(body, 'clientTurnId')
+    || !Object.hasOwn(body, 'user') || !Object.hasOwn(body, 'assistant')) {
+    throw new NovaConversationRequestError('Informe somente clientTurnId, user e assistant.');
+  }
+  if (typeof body.clientTurnId !== 'string' || !CLIENT_TURN_ID_PATTERN.test(body.clientTurnId)) {
+    throw new NovaConversationRequestError('clientTurnId inválido.');
+  }
+  return {
+    clientTurnId: body.clientTurnId,
+    user: parseTurnMessage(body.user, 'user'),
+    assistant: parseTurnMessage(body.assistant, 'assistant'),
+  };
+}
+
 export function toPublicConversation(conversation: NovaConversation): PublicNovaConversationDTO {
   return {
     id: conversation.id,
@@ -189,4 +237,8 @@ export function toPublicMessage(message: NovaMessage): PublicNovaMessageDTO {
     redacted: message.redacted,
     createdAt: message.createdAt.toISOString(),
   };
+}
+
+export function toPublicTurn(turn: { user: NovaMessage; assistant: NovaMessage }): PublicNovaConversationTurnDTO {
+  return { user: toPublicMessage(turn.user), assistant: toPublicMessage(turn.assistant) };
 }
