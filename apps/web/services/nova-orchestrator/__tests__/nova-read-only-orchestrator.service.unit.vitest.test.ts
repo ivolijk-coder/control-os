@@ -1,6 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
+// `nova-read-only-orchestrator.service.ts` importa `novaOrchestratorPersistence`
+// (o singleton real) só para o valor padrão do construtor — todo teste deste
+// arquivo injeta seu próprio `persistence` fake, então o singleton nunca é
+// usado de fato. Mas o import ainda é avaliado no carregamento do módulo, e
+// `nova-orchestrator-persistence.repository.ts` importa `Prisma` de
+// `@prisma/client` como valor (não só tipo). Neste ambiente de sandbox, o
+// binário nativo do Prisma Query Engine não pode ser gerado (download
+// bloqueado pela rede — mesma limitação pré-existente e não relacionada a
+// este hotfix), então esse import falha antes mesmo de qualquer teste
+// rodar. Mesmo padrão já usado em
+// `financial-contract.service.unit.vitest.test.ts` para o mesmo problema.
+vi.mock('@/lib/prisma', () => ({ prisma: {} }));
+vi.mock('@prisma/client', () => ({ Prisma: { JsonNull: null, sql: () => ({}) } }));
 
 import { NovaReadOnlyOrchestratorService } from '../nova-read-only-orchestrator.service';
 
@@ -89,5 +102,62 @@ describe('NovaReadOnlyOrchestratorService', () => {
     expect(persistence.failTurn).toHaveBeenCalledOnce();
     expect(outcome.kind === 'RESULT' && outcome.result).toEqual(expect.objectContaining({ status: 'FAILED', error: expect.objectContaining({ code: 'SOURCE_UNAVAILABLE' }) }));
     expect(JSON.stringify(outcome)).not.toContain('database secret');
+  });
+
+  // Regressão do bug real do piloto PR10.3: `process()` recebe `content`,
+  // mas `createOrReplayTurn` (fronteira `CreateOrReplayTurnInput`) só pode
+  // receber os 3 campos persistíveis de `NovaTurn` — nunca o `input` inteiro.
+  it('content nunca atravessa para createOrReplayTurn — fronteira CreateOrReplayTurnInput', async () => {
+    const { service, persistence } = harness();
+    await service.process({ userId: 'user', conversationId: 'conversation', clientTurnId: 'client', content: 'Tenho empréstimos em atraso?' });
+    expect(persistence.createOrReplayTurn).toHaveBeenCalledOnce();
+    const [calledWith] = persistence.createOrReplayTurn.mock.calls[0] as [Record<string, unknown>];
+    expect(calledWith).toEqual({ conversationId: 'conversation', userId: 'user', clientTurnId: 'client' });
+    expect(Object.keys(calledWith).sort()).toEqual(['clientTurnId', 'conversationId', 'userId']);
+    expect(calledWith).not.toHaveProperty('content');
+  });
+
+  it('quando createOrReplayTurn recebe input com content indevidamente anexado (bypass de tipo), o objeto repassado ao Prisma continua explícito no repository — este teste documenta que a defesa vive em nova-orchestrator-persistence.repository.ts, não apenas aqui', async () => {
+    // A defesa de runtime (construção explícita de `data` campo a campo) vive
+    // no repository, coberto pelo teste PostgreSQL "mesmo com bypass de tipo,
+    // content nunca alcança o Prisma". Este teste unitário garante apenas que
+    // a CAMADA DE CHAMADA (o service) já faz a sua parte: nunca repassa o
+    // `input` inteiro, só o objeto explícito de 3 campos.
+    const { service, persistence } = harness();
+    const input = { userId: 'user', conversationId: 'conversation', clientTurnId: 'client', content: 'x' };
+    await service.process(input);
+    const [calledWith] = persistence.createOrReplayTurn.mock.calls[0] as [Record<string, unknown>];
+    expect(calledWith).not.toBe(input); // objeto novo, não o `input` original repassado por referência
+  });
+
+  it('claim perdido (corrida) não consulta Financial Intelligence nem DailyOverview', async () => {
+    const { service, finances, overview, persistence } = harness({ claimTurn: vi.fn().mockResolvedValue(null) });
+    const outcome = await service.process({ userId: 'user', conversationId: 'conversation', clientTurnId: 'client', content: 'Tenho dívida?' });
+    expect(finances.getStatus).not.toHaveBeenCalled();
+    expect(overview.getOverview).not.toHaveBeenCalled();
+    expect(persistence.completeReadOnlyTurn).not.toHaveBeenCalled();
+    expect(outcome).toEqual({ kind: 'RESULT', result: { status: 'PROCESSING', turnId: 'turn' } });
+  });
+
+  it('erro inesperado em createOrReplayTurn propaga como exceção, sem tocar fontes financeiras nem confirmar/mutar nada', async () => {
+    const { service, persistence, finances, overview } = harness({ createOrReplayTurn: vi.fn().mockRejectedValue(new Error('db indisponível')) });
+    await expect(
+      service.process({ userId: 'user', conversationId: 'conversation', clientTurnId: 'client', content: 'Tenho dívida?' })
+    ).rejects.toThrow('db indisponível');
+    expect(finances.getStatus).not.toHaveBeenCalled();
+    expect(overview.getOverview).not.toHaveBeenCalled();
+    expect(persistence.completeReadOnlyTurn).not.toHaveBeenCalled();
+    expect(persistence.failTurn).not.toHaveBeenCalled();
+  });
+
+  it('nenhuma mutação, confirmação (Action Registry) ou dependência de OpenAI é acionada num fluxo somente leitura', async () => {
+    const createConfirmation = vi.fn();
+    const finalizeConfirmation = vi.fn();
+    const claimConfirmation = vi.fn();
+    const { service } = harness({ createConfirmation, finalizeConfirmation, claimConfirmation });
+    await service.process({ userId: 'user', conversationId: 'conversation', clientTurnId: 'client', content: 'Tenho empréstimos em atraso?' });
+    expect(createConfirmation).not.toHaveBeenCalled();
+    expect(finalizeConfirmation).not.toHaveBeenCalled();
+    expect(claimConfirmation).not.toHaveBeenCalled();
   });
 });
