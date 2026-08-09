@@ -3,10 +3,16 @@ import { persist } from 'zustand/middleware';
 import type { User } from '@control-os/types';
 import type { ConversationMessage } from '@/components/nova/nova-message-bubble';
 import type { NovaPersona } from '@/services/nova';
+import {
+  EMPTY_NOVA_CONVERSATION_CACHE,
+  markTurnUnsynced,
+  mergeHydratedMessages,
+  prependPersistedMessages,
+  reconcilePersistedTurn,
+  type NovaConversationCache,
+} from '@/lib/nova-conversations/nova-conversation-workspace-model';
+import type { NovaConversationTurnDto, NovaMessageDto } from '@/lib/nova-conversations/nova-conversation-api-client';
 import { MOCK_USER } from './mock-data';
-
-/** Limite de mensagens guardadas — evita crescimento sem fim numa sessão longa. */
-const MAX_NOVA_MESSAGES = 100;
 
 /**
  * Estado global de UI do CONTROL OS (Zustand).
@@ -71,13 +77,9 @@ interface AppState {
   novaMessagesByPersona: Record<NovaPersona, ConversationMessage[]>;
   addNovaMessage: (persona: NovaPersona, message: ConversationMessage) => void;
   /**
-   * Substitui o histórico inteiro de UMA persona (CONTROL OS — Etapa 4,
-   * agora persona-scoped) — usado só pelo resumo automático de conversa
-   * (`ConversationService.summarizeOlderTurns`, disparado por
-   * `NovaWorkspace` quando o histórico da persona ativa passa de
-   * `CONDENSE_THRESHOLD`): as mensagens antigas DAQUELA persona viram um
-   * único resumo, as recentes continuam intactas — nunca mexe no balde da
-   * outra persona. Diferente de `addNovaMessage` (só anexa).
+   * Substitui o cache visual inteiro de uma persona. O histórico canônico
+   * permanece no servidor; o workspace persistente não usa esta operação
+   * para condensar ou destruir mensagens carregadas.
    */
   replaceNovaMessages: (persona: NovaPersona, messages: ConversationMessage[]) => void;
   /**
@@ -95,6 +97,16 @@ interface AppState {
    * por um resumo de conversa nesse meio-tempo).
    */
   updateNovaMessage: (persona: NovaPersona, id: string, patch: Partial<ConversationMessage>) => void;
+
+  /** Metadados do cache visual; o histórico canônico permanece no servidor. */
+  novaConversationByPersona: Record<NovaPersona, NovaConversationCache>;
+  setNovaConversationCache: (persona: NovaPersona, patch: Partial<NovaConversationCache>) => void;
+  hydrateNovaConversationMessages: (persona: NovaPersona, messages: NovaMessageDto[]) => void;
+  prependNovaConversationMessages: (persona: NovaPersona, messages: NovaMessageDto[]) => void;
+  reconcileNovaConversationTurn: (persona: NovaPersona, clientTurnId: string, turn: NovaConversationTurnDto) => void;
+  markNovaConversationTurnUnsynced: (persona: NovaPersona, clientTurnId: string) => void;
+  resetNovaConversationCache: (persona: NovaPersona) => void;
+  clearAllNovaConversationCaches: () => void;
 
   /**
    * Persona ativa — qual identidade conduz o próximo turno / qual balde de
@@ -138,7 +150,7 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           novaMessagesByPersona: {
             ...state.novaMessagesByPersona,
-            [persona]: [...state.novaMessagesByPersona[persona], message].slice(-MAX_NOVA_MESSAGES),
+            [persona]: [...state.novaMessagesByPersona[persona], message],
           },
         })),
       replaceNovaMessages: (persona, messages) =>
@@ -150,6 +162,78 @@ export const useAppStore = create<AppState>()(
           novaMessagesByPersona: {
             ...state.novaMessagesByPersona,
             [persona]: state.novaMessagesByPersona[persona].map((message) => (message.id === id ? { ...message, ...patch } : message)),
+          },
+        })),
+
+      novaConversationByPersona: {
+        nova: { ...EMPTY_NOVA_CONVERSATION_CACHE },
+        legendary: { ...EMPTY_NOVA_CONVERSATION_CACHE },
+      },
+      setNovaConversationCache: (persona, patch) =>
+        set((state) => ({
+          novaConversationByPersona: {
+            ...state.novaConversationByPersona,
+            [persona]: { ...state.novaConversationByPersona[persona], ...patch },
+          },
+        })),
+      hydrateNovaConversationMessages: (persona, messages) =>
+        set((state) => ({
+          novaMessagesByPersona: {
+            ...state.novaMessagesByPersona,
+            [persona]: mergeHydratedMessages(state.novaMessagesByPersona[persona], messages),
+          },
+          novaConversationByPersona: {
+            ...state.novaConversationByPersona,
+            [persona]: { ...state.novaConversationByPersona[persona], lastMessageMutation: 'hydrate' },
+          },
+        })),
+      prependNovaConversationMessages: (persona, messages) =>
+        set((state) => ({
+          novaMessagesByPersona: {
+            ...state.novaMessagesByPersona,
+            [persona]: prependPersistedMessages(state.novaMessagesByPersona[persona], messages),
+          },
+          novaConversationByPersona: {
+            ...state.novaConversationByPersona,
+            [persona]: { ...state.novaConversationByPersona[persona], lastMessageMutation: 'prepend' },
+          },
+        })),
+      reconcileNovaConversationTurn: (persona, clientTurnId, turn) =>
+        set((state) => ({
+          novaMessagesByPersona: {
+            ...state.novaMessagesByPersona,
+            [persona]: reconcilePersistedTurn(state.novaMessagesByPersona[persona], clientTurnId, turn),
+          },
+          novaConversationByPersona: {
+            ...state.novaConversationByPersona,
+            [persona]: { ...state.novaConversationByPersona[persona], lastMessageMutation: 'reconcile' },
+          },
+        })),
+      markNovaConversationTurnUnsynced: (persona, clientTurnId) =>
+        set((state) => ({
+          novaMessagesByPersona: {
+            ...state.novaMessagesByPersona,
+            [persona]: markTurnUnsynced(state.novaMessagesByPersona[persona], clientTurnId),
+          },
+        })),
+      resetNovaConversationCache: (persona) =>
+        set((state) => ({
+          novaMessagesByPersona: { ...state.novaMessagesByPersona, [persona]: [] },
+          novaConversationByPersona: {
+            ...state.novaConversationByPersona,
+            [persona]: {
+              ...EMPTY_NOVA_CONVERSATION_CACHE,
+              requestGeneration: state.novaConversationByPersona[persona].requestGeneration + 1,
+              lastMessageMutation: 'reset',
+            },
+          },
+        })),
+      clearAllNovaConversationCaches: () =>
+        set((state) => ({
+          novaMessagesByPersona: { nova: [], legendary: [] },
+          novaConversationByPersona: {
+            nova: { ...EMPTY_NOVA_CONVERSATION_CACHE, requestGeneration: state.novaConversationByPersona.nova.requestGeneration + 1 },
+            legendary: { ...EMPTY_NOVA_CONVERSATION_CACHE, requestGeneration: state.novaConversationByPersona.legendary.requestGeneration + 1 },
           },
         })),
 

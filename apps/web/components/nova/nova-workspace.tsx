@@ -26,7 +26,7 @@ import { IntelligentPanel } from '@/components/home/intelligent-panel';
 import { NovaHeroStage } from '@/components/nova/nova-hero-stage';
 import { NovaCommandOverview } from '@/components/nova/nova-command-overview';
 import { LegendaryCommandOverview } from '@/components/nova/legendary-command-overview';
-import { conversationService, KEEP_RECENT_TURNS, shouldCondense } from '@/services/ai';
+import { conversationService } from '@/services/ai';
 import { buildProactiveOpening, generateRecommendations, toReadOnlyContext } from '@/services/nova';
 import type { NovaPersona, NovaRecommendationCategory, NovaStatus } from '@/services/nova';
 import { getVoiceProvider } from '@/services/voice';
@@ -36,6 +36,16 @@ import { transitionOut, transitionSpring } from '@/lib/motion';
 import { formatCurrency } from '@/lib/utils';
 import { pollDocumentAnalysisProgress } from '@/lib/use-document-analysis-progress';
 import { progressStageLabel } from '@/lib/document-analysis-progress';
+import {
+  NovaConversationApiError,
+  novaConversationApiClient,
+  type NovaConversationPersonaDto,
+} from '@/lib/nova-conversations/nova-conversation-api-client';
+import {
+  buildPersistTurnRequest,
+  isOperationCurrent,
+  type PendingConversationTurn,
+} from '@/lib/nova-conversations/nova-conversation-workspace-model';
 
 // CONTROL OS — HERO SCENE REBOOT: qual tecnologia renderiza o Hero Object
 // agora depende da persona — decisão isolada em `NovaHeroStage`. NOVA usa
@@ -131,6 +141,10 @@ let messageIdCounter = 0;
 function nextMessageId(prefix: string): string {
   messageIdCounter += 1;
   return `${prefix}_${messageIdCounter}`;
+}
+
+function nextClientTurnId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `web-turn-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 /**
@@ -232,8 +246,14 @@ export function NovaWorkspace({
   // Vive no `useAppStore` (não mais `useState` local) — sobrevive a
   // fechar/reabrir o painel flutuante. Ver comentário em `lib/store.ts`.
   const addNovaMessage = useAppStore((state) => state.addNovaMessage);
-  const replaceNovaMessages = useAppStore((state) => state.replaceNovaMessages);
   const updateNovaMessage = useAppStore((state) => state.updateNovaMessage);
+  const setNovaConversationCache = useAppStore((state) => state.setNovaConversationCache);
+  const hydrateNovaConversationMessages = useAppStore((state) => state.hydrateNovaConversationMessages);
+  const prependNovaConversationMessages = useAppStore((state) => state.prependNovaConversationMessages);
+  const reconcileNovaConversationTurn = useAppStore((state) => state.reconcileNovaConversationTurn);
+  const markNovaConversationTurnUnsynced = useAppStore((state) => state.markNovaConversationTurnUnsynced);
+  const resetNovaConversationCache = useAppStore((state) => state.resetNovaConversationCache);
+  const clearAllNovaConversationCaches = useAppStore((state) => state.clearAllNovaConversationCaches);
   // CONTROL OS — Etapa 15 (LEGENDARY): qual identidade conduz o PRÓXIMO
   // turno — vive no `useAppStore` (não `useState` local) pelo mesmo motivo
   // de `novaMessagesByPersona`: sobrevive a fechar/reabrir o painel
@@ -264,6 +284,7 @@ export function NovaWorkspace({
   // enviado à IA), nunca `activePersona` sozinha.
   const effectivePersona = lockedPersona ?? activePersona;
   const messages = useAppStore((state) => state.novaMessagesByPersona[effectivePersona]);
+  const conversationCache = useAppStore((state) => state.novaConversationByPersona[effectivePersona]);
   // Mesmo com um histórico salvo, cada entrada em /nova ou /legendary começa
   // pela visão própria do ambiente. O histórico continua disponível, sem ser
   // apagado, e a conversa volta ao primeiro envio ou pelo botão abaixo.
@@ -279,10 +300,9 @@ export function NovaWorkspace({
   // confirmação na NOVA ficava visível/confirmável até de dentro da
   // LEGENDARY (mesmo `pendingBySession`). Uma sessão por persona isola isso
   // também no nível de confirmação, não só de histórico visual.
-  const textSessionId = `text_${effectivePersona}`;
-
-  const [isThinking, setIsThinking] = React.useState(false);
-  const [thinkingStatus, setThinkingStatus] = React.useState<NovaThinkingStatus>('pensando');
+  const conversationId = conversationCache.conversationId;
+  const isThinking = conversationCache.isThinking;
+  const thinkingStatus: NovaThinkingStatus = conversationCache.thinkingStatus;
   // CONTROL OS — Etapa 11C: campo de conversa unificado — o microfone
   // inline do `NovaInput` avisa aqui quando está capturando, e a resposta a
   // um turno iniciado por voz é falada em voz alta (ver `handleSend`). Nem
@@ -307,8 +327,10 @@ export function NovaWorkspace({
       el.scrollTo({ top: 0 });
       return;
     }
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-  }, [messages, isThinking, showCommandOverview]);
+    if (conversationCache.lastMessageMutation !== 'prepend') {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    }
+  }, [messages, isThinking, showCommandOverview, conversationCache.lastMessageMutation]);
 
   // Nunca deixa uma fala em andamento presa em segundo plano se este
   // workspace desmontar (ex.: usuário navega pra outra tela) no meio de uma
@@ -325,6 +347,60 @@ export function NovaWorkspace({
   // divergirem com o tempo.
   const novaContext = useNovaContext();
 
+  const hydrateActiveConversation = React.useCallback(async (persona: NovaPersona, force = false): Promise<void> => {
+    const current = useAppStore.getState().novaConversationByPersona[persona];
+    if (!force && (current.hydrationStatus === 'loading' || current.hydrationStatus === 'ready')) return;
+
+    const requestGeneration = current.requestGeneration + 1;
+    setNovaConversationCache(persona, {
+      hydrationStatus: 'loading',
+      requestGeneration,
+      error: null,
+    });
+
+    try {
+      const serverPersona: NovaConversationPersonaDto = persona === 'nova' ? 'NOVA' : 'LEGENDARY';
+      const conversation = await novaConversationApiClient.getOrCreateActive(serverPersona);
+      const page = await novaConversationApiClient.listMessages(conversation.id, undefined, 100);
+      const latest = useAppStore.getState().novaConversationByPersona[persona];
+      if (latest.requestGeneration !== requestGeneration) return;
+
+      hydrateNovaConversationMessages(persona, page.items);
+      setNovaConversationCache(persona, {
+        conversationId: conversation.id,
+        hydrationStatus: 'ready',
+        nextCursor: page.nextCursor,
+        hasMore: page.hasMore,
+        error: null,
+        isCreatingConversation: false,
+      });
+    } catch (cause) {
+      if (cause instanceof NovaConversationApiError && cause.status === 401) {
+        clearAllNovaConversationCaches();
+        return;
+      }
+      const latest = useAppStore.getState().novaConversationByPersona[persona];
+      if (latest.requestGeneration !== requestGeneration) return;
+      setNovaConversationCache(persona, {
+        hydrationStatus: 'error',
+        error: cause instanceof NovaConversationApiError ? cause.message : 'Não foi possível carregar esta conversa.',
+        isCreatingConversation: false,
+      });
+    }
+  }, [clearAllNovaConversationCaches, hydrateNovaConversationMessages, setNovaConversationCache]);
+
+  React.useEffect(() => {
+    void hydrateActiveConversation(effectivePersona);
+  }, [effectivePersona, hydrateActiveConversation]);
+
+  const setIsThinking = React.useCallback((value: boolean) => {
+    setNovaConversationCache(effectivePersona, { isThinking: value });
+  }, [effectivePersona, setNovaConversationCache]);
+
+  const setThinkingStatus = React.useCallback((value: NovaThinkingStatus) => {
+    setNovaConversationCache(effectivePersona, { thinkingStatus: value });
+  }, [effectivePersona, setNovaConversationCache]);
+
   /**
    * NOVA Proativa (CONTROL OS — Etapa 13): "a Nova pode abrir a conversa
    * sozinha, sem esperar o usuário perguntar" — só quando a conversa ainda
@@ -339,7 +415,7 @@ export function NovaWorkspace({
    * nova, o que recriaria o efeito repetidamente sem esta trava). A checagem
    * de "conversa vazia" lê `useAppStore.getState()` (estado mais recente),
    * não a variável `messages` fechada no closure — mesmo motivo de
-   * `maybeCondenseConversation` abaixo.
+   * O histórico persistido nunca é condensado ou substituído visualmente.
    *
    * Deliberadamente NÃO passa por `conversationService.processTurn` nem por
    * nenhum provedor de IA — é o mesmo `addNovaMessage` direto que qualquer
@@ -349,11 +425,15 @@ export function NovaWorkspace({
    * ou a integração OpenAI — só lê o mesmo `NovaReadOnlyContext` que os
    * outros pontos da tela já leem.
    */
-  const hasCheckedOpeningRef = React.useRef(false);
+  const checkedOpeningsRef = React.useRef(new Set<string>());
   React.useEffect(() => {
-    if (hasCheckedOpeningRef.current) return;
-    if (useAppStore.getState().novaMessagesByPersona[effectivePersona].length > 0) return;
-    hasCheckedOpeningRef.current = true;
+    if (conversationCache.hydrationStatus !== 'ready' || !conversationCache.conversationId) return;
+    const openingKey = `${effectivePersona}:${conversationCache.conversationId}`;
+    if (checkedOpeningsRef.current.has(openingKey)) return;
+    checkedOpeningsRef.current.add(openingKey);
+
+    const currentMessages = useAppStore.getState().novaMessagesByPersona[effectivePersona];
+    if (currentMessages.length > 0) return;
 
     const opening = buildProactiveOpening(toReadOnlyContext(novaContext));
     if (!opening) return;
@@ -363,8 +443,9 @@ export function NovaWorkspace({
       role: 'nova',
       content: opening,
       status: 'success',
+      persistence: 'transient',
     });
-  }, [novaContext, addNovaMessage, effectivePersona]);
+  }, [novaContext, addNovaMessage, effectivePersona, conversationCache.hydrationStatus, conversationCache.conversationId]);
 
   /**
    * `ConversationTask`s pendentes (Fase D — "NOVA como centro da
@@ -491,7 +572,7 @@ export function NovaWorkspace({
     } finally {
       setIsThinking(false);
     }
-  }, [addNovaMessage, effectivePersona]);
+  }, [addNovaMessage, effectivePersona, setIsThinking, setThinkingStatus]);
 
   const presentFieldQuestion = React.useCallback(async (taskId: string, field: FieldKey) => {
     const options = await fetchFieldOptions(field);
@@ -660,52 +741,127 @@ export function NovaWorkspace({
 
   const quickActions = suggestions.length > 0 ? suggestions : QUICK_ACTIONS;
 
-  /**
-   * Resumo automático de conversa (CONTROL OS — Etapa 4): quando o
-   * histórico passa de `CONDENSE_THRESHOLD` mensagens, condensa tudo menos
-   * as últimas `KEEP_RECENT_TURNS` num único resumo — "a arquitetura deve
-   * suportar milhares de mensagens sem crescer indefinidamente". Lê o
-   * estado mais recente via `useAppStore.getState()` (não a variável
-   * `messages` fechada no closure) porque isto roda depois de um `await`,
-   * quando o array já pode ter mudado.
-   */
-  const maybeCondenseConversation = React.useCallback(() => {
-    const latest = useAppStore.getState().novaMessagesByPersona[effectivePersona];
-    if (!shouldCondense(latest.length)) return;
+  const persistCompletedTurn = React.useCallback(async (pending: PendingConversationTurn): Promise<void> => {
+    const current = useAppStore.getState().novaConversationByPersona[pending.persona];
+    if (!isOperationCurrent(current, pending)) return;
 
-    const older = latest.slice(0, latest.length - KEEP_RECENT_TURNS);
-    const recent = latest.slice(latest.length - KEEP_RECENT_TURNS);
-
-    void conversationService.summarizeOlderTurns(older).then((summaryText) => {
-      replaceNovaMessages(effectivePersona, [
-        {
-          id: nextMessageId('summary'),
-          role: 'nova',
-          content: `Resumo da conversa anterior: ${summaryText}`,
-          status: 'success',
-        },
-        ...recent,
-      ]);
+    setNovaConversationCache(pending.persona, {
+      pendingTurns: { ...current.pendingTurns, [pending.clientTurnId]: pending },
     });
-  }, [replaceNovaMessages, effectivePersona]);
+
+    try {
+      const turn = await novaConversationApiClient.persistTurn(pending.conversationId, pending.payload);
+      const latest = useAppStore.getState().novaConversationByPersona[pending.persona];
+      if (!isOperationCurrent(latest, pending)) return;
+      reconcileNovaConversationTurn(pending.persona, pending.clientTurnId, turn);
+      const remaining = { ...latest.pendingTurns };
+      delete remaining[pending.clientTurnId];
+      setNovaConversationCache(pending.persona, { pendingTurns: remaining, error: null });
+    } catch (cause) {
+      if (cause instanceof NovaConversationApiError && cause.status === 401) {
+        clearAllNovaConversationCaches();
+        return;
+      }
+      const latest = useAppStore.getState().novaConversationByPersona[pending.persona];
+      if (!isOperationCurrent(latest, pending)) return;
+      markNovaConversationTurnUnsynced(pending.persona, pending.clientTurnId);
+      setNovaConversationCache(pending.persona, {
+        error: cause instanceof NovaConversationApiError ? cause.message : 'Não foi possível salvar este turno.',
+      });
+    }
+  }, [clearAllNovaConversationCaches, markNovaConversationTurnUnsynced, reconcileNovaConversationTurn, setNovaConversationCache]);
+
+  const handleRetrySync = React.useCallback((clientTurnId: string) => {
+    const pending = useAppStore.getState().novaConversationByPersona[effectivePersona].pendingTurns[clientTurnId];
+    if (pending) void persistCompletedTurn(pending);
+  }, [effectivePersona, persistCompletedTurn]);
+
+  const handleLoadPrevious = React.useCallback(() => {
+    const persona = effectivePersona;
+    const cache = useAppStore.getState().novaConversationByPersona[persona];
+    if (!cache.conversationId || !cache.hasMore || !cache.nextCursor || cache.isLoadingPrevious) return;
+
+    const conversationId = cache.conversationId;
+    const requestGeneration = cache.requestGeneration;
+    setNovaConversationCache(persona, { isLoadingPrevious: true, error: null });
+    void (async () => {
+      try {
+        const page = await novaConversationApiClient.listMessages(conversationId, cache.nextCursor ?? undefined, 100);
+        const latest = useAppStore.getState().novaConversationByPersona[persona];
+        if (!isOperationCurrent(latest, { conversationId, requestGeneration })) return;
+        prependNovaConversationMessages(persona, page.items);
+        setNovaConversationCache(persona, {
+          nextCursor: page.nextCursor,
+          hasMore: page.hasMore,
+          isLoadingPrevious: false,
+        });
+      } catch (cause) {
+        if (cause instanceof NovaConversationApiError && cause.status === 401) {
+          clearAllNovaConversationCaches();
+          return;
+        }
+        const latest = useAppStore.getState().novaConversationByPersona[persona];
+        if (!isOperationCurrent(latest, { conversationId, requestGeneration })) return;
+        setNovaConversationCache(persona, {
+          isLoadingPrevious: false,
+          error: cause instanceof NovaConversationApiError ? cause.message : 'Não foi possível carregar mensagens anteriores.',
+        });
+      }
+    })();
+  }, [clearAllNovaConversationCaches, effectivePersona, prependNovaConversationMessages, setNovaConversationCache]);
+
+  const handleNewConversation = React.useCallback(() => {
+    const persona = effectivePersona;
+    const cache = useAppStore.getState().novaConversationByPersona[persona];
+    if (!cache.conversationId || cache.isThinking || cache.isCreatingConversation) return;
+    const previousConversationId = cache.conversationId;
+    setNovaConversationCache(persona, { isCreatingConversation: true, error: null });
+    void (async () => {
+      try {
+        await novaConversationApiClient.closeConversation(previousConversationId);
+        conversationService.cancelPending(previousConversationId);
+        resetNovaConversationCache(persona);
+        setNovaConversationCache(persona, { isCreatingConversation: true });
+        await hydrateActiveConversation(persona, true);
+      } catch (cause) {
+        setNovaConversationCache(persona, {
+          isCreatingConversation: false,
+          error: cause instanceof NovaConversationApiError ? cause.message : 'Não foi possível iniciar uma nova conversa.',
+        });
+      }
+    })();
+  }, [effectivePersona, hydrateActiveConversation, resetNovaConversationCache, setNovaConversationCache]);
 
   const handleSend = React.useCallback(
     (text: string, source: NovaInputSource = 'text') => {
+      const capturedPersona = effectivePersona;
+      const capturedCache = useAppStore.getState().novaConversationByPersona[capturedPersona];
+      if (capturedCache.hydrationStatus !== 'ready' || !capturedCache.conversationId || capturedCache.isThinking) return;
+
+      const capturedConversationId = capturedCache.conversationId;
+      const capturedGeneration = capturedCache.requestGeneration;
+      const clientTurnId = nextClientTurnId();
       setShowCommandOverview(false);
       const userMessage: ConversationMessage = {
         id: nextMessageId('user'),
         role: 'user',
         content: text,
+        persistence: 'optimistic',
+        clientTurnId,
       };
-      addNovaMessage(effectivePersona, userMessage);
-      setIsThinking(true);
-      setThinkingStatus('pensando');
+      addNovaMessage(capturedPersona, userMessage);
+      setNovaConversationCache(capturedPersona, { isThinking: true, thinkingStatus: 'pensando', lastMessageMutation: 'append' });
 
       void (async () => {
         // A chamada real começa já — o timer só troca a legenda da bolha
         // pra "Executando" se a resposta demorar, e é cancelado assim que
         // ela chega (nunca atrasa nada, só preenche a espera quando existe).
-        const executingTimer = window.setTimeout(() => setThinkingStatus('executando'), EXECUTING_SWITCH_MS);
+        const executingTimer = window.setTimeout(() => {
+          const latest = useAppStore.getState().novaConversationByPersona[capturedPersona];
+          if (latest.conversationId === capturedConversationId && latest.requestGeneration === capturedGeneration) {
+            setNovaConversationCache(capturedPersona, { thinkingStatus: 'executando' });
+          }
+        }, EXECUTING_SWITCH_MS);
 
         // Pedido explícito de arquivo: a NOVA não inventa um link nem expõe
         // arquivos de outra pessoa. Procura somente na biblioteca privada da
@@ -727,14 +883,24 @@ export function NovaWorkspace({
             });
             if (response.ok && document) {
               window.clearTimeout(executingTimer);
-              addNovaMessage(effectivePersona, {
+              const assistantContent = `Encontrei “${document.title}”.`;
+              addNovaMessage(capturedPersona, {
                 id: nextMessageId('nova'),
                 role: 'nova',
-                content: `Encontrei “${document.title}”.`,
+                content: assistantContent,
                 attachment: { label: document.originalFileName, href: `/api/documents/${document.id}/download` },
                 status: 'success',
+                persistence: 'optimistic',
+                clientTurnId,
               });
-              setIsThinking(false);
+              setNovaConversationCache(capturedPersona, { isThinking: false, lastMessageMutation: 'append' });
+              void persistCompletedTurn({
+                clientTurnId,
+                conversationId: capturedConversationId,
+                persona: capturedPersona,
+                requestGeneration: capturedGeneration,
+                payload: buildPersistTurnRequest(clientTurnId, text, assistantContent),
+              });
               return;
             }
           } catch {
@@ -743,36 +909,56 @@ export function NovaWorkspace({
           }
         }
 
-        const result = await conversationService.processTurn(text, novaContext, textSessionId, effectivePersona);
-        window.clearTimeout(executingTimer);
-        addNovaMessage(effectivePersona, {
-          id: nextMessageId('nova'),
-          role: 'nova',
-          content: result.reply,
-          checklist: result.checklist,
-          status: resultStatusToMessageStatus(result.status),
-        });
-        setIsThinking(false);
-        maybeCondenseConversation();
-
-        // CONTROL OS — Etapa 11C: "clique → ouvindo → captura → envia
-        // automaticamente → pensando → falando → idle, sem etapas extras."
-        // Um turno iniciado pelo microfone inline também recebe a resposta
-        // falada em voz alta — turnos por texto continuam silenciosos, como
-        // sempre. Mesmo `VoiceProvider` já usado por `NovaVoiceOverlay`, só
-        // um segundo consumidor.
-        if (source === 'voice' && getVoiceProvider().isSupported) {
-          setIsSpeakingReply(true);
-          getVoiceProvider().speak(result.reply, {
-            persona: effectivePersona,
-            onBoundary: () => setSpeechPulse((tick) => tick + 1),
-            onEnd: () => setIsSpeakingReply(false),
-            onError: () => setIsSpeakingReply(false),
+        try {
+          const result = await conversationService.processTurn(text, novaContext, capturedConversationId, capturedPersona);
+          window.clearTimeout(executingTimer);
+          const shouldPersist = result.status === 'concluido';
+          if (!shouldPersist) updateNovaMessage(capturedPersona, userMessage.id, { persistence: 'transient' });
+          addNovaMessage(capturedPersona, {
+            id: nextMessageId('nova'),
+            role: 'nova',
+            content: result.reply,
+            checklist: result.checklist,
+            status: resultStatusToMessageStatus(result.status),
+            persistence: shouldPersist ? 'optimistic' : 'transient',
+            ...(shouldPersist ? { clientTurnId } : {}),
           });
+          setNovaConversationCache(capturedPersona, { isThinking: false, lastMessageMutation: 'append' });
+
+          if (shouldPersist) {
+            void persistCompletedTurn({
+              clientTurnId,
+              conversationId: capturedConversationId,
+              persona: capturedPersona,
+              requestGeneration: capturedGeneration,
+              payload: buildPersistTurnRequest(clientTurnId, text, result.reply),
+            });
+          }
+
+          if (source === 'voice' && getVoiceProvider().isSupported) {
+            setIsSpeakingReply(true);
+            getVoiceProvider().speak(result.reply, {
+              persona: capturedPersona,
+              onBoundary: () => setSpeechPulse((tick) => tick + 1),
+              onEnd: () => setIsSpeakingReply(false),
+              onError: () => setIsSpeakingReply(false),
+            });
+          }
+        } catch {
+          window.clearTimeout(executingTimer);
+          updateNovaMessage(capturedPersona, userMessage.id, { persistence: 'transient' });
+          addNovaMessage(capturedPersona, {
+            id: nextMessageId('nova'),
+            role: 'nova',
+            content: 'Não consegui concluir esta resposta agora.',
+            status: 'error',
+            persistence: 'transient',
+          });
+          setNovaConversationCache(capturedPersona, { isThinking: false, lastMessageMutation: 'append' });
         }
       })();
     },
-    [novaContext, addNovaMessage, maybeCondenseConversation, effectivePersona, textSessionId]
+    [novaContext, addNovaMessage, effectivePersona, persistCompletedTurn, setNovaConversationCache, updateNovaMessage]
   );
 
   /** Guarda o arquivo na área privada. Um contrato gera somente uma prévia:
@@ -866,10 +1052,11 @@ export function NovaWorkspace({
         }
       })();
     },
-    [addNovaMessage, updateNovaMessage, applyConversationTask, effectivePersona]
+    [addNovaMessage, updateNovaMessage, applyConversationTask, effectivePersona, setIsThinking, setThinkingStatus]
   );
 
   const handleConfirmPending = React.useCallback(() => {
+    if (!conversationId) return;
     setIsThinking(true);
     setThinkingStatus('executando');
 
@@ -877,28 +1064,30 @@ export function NovaWorkspace({
       // A persona ATUAL confirma — se o usuário trocou de identidade entre
       // a pergunta e a confirmação, é a identidade de agora que narra o
       // resultado (ver comentário em `ConversationService.executePending`).
-      const result = await conversationService.confirmPending(novaContext, textSessionId, effectivePersona);
+      const result = await conversationService.confirmPending(novaContext, conversationId, effectivePersona);
       addNovaMessage(effectivePersona, {
         id: nextMessageId('nova'),
         role: 'nova',
         content: result.reply,
         checklist: result.checklist,
         status: resultStatusToMessageStatus(result.status),
+        persistence: 'transient',
       });
       setIsThinking(false);
-      maybeCondenseConversation();
     })();
-  }, [novaContext, addNovaMessage, maybeCondenseConversation, effectivePersona, textSessionId]);
+  }, [novaContext, addNovaMessage, conversationId, effectivePersona, setIsThinking, setThinkingStatus]);
 
   const handleCancelPending = React.useCallback(() => {
-    const result = conversationService.cancelPending(textSessionId);
+    if (!conversationId) return;
+    const result = conversationService.cancelPending(conversationId);
     addNovaMessage(effectivePersona, {
       id: nextMessageId('nova'),
       role: 'nova',
       content: result.reply,
       status: resultStatusToMessageStatus(result.status),
+      persistence: 'transient',
     });
-  }, [addNovaMessage, effectivePersona, textSessionId]);
+  }, [addNovaMessage, conversationId, effectivePersona]);
 
   // CONTROL OS — Etapa 11C: `isListening`/`isSpeakingReply` (microfone
   // inline) têm prioridade sobre `isThinking` na leitura do estado — os
@@ -929,7 +1118,7 @@ export function NovaWorkspace({
       <NovaInput
         onSubmit={handleSend}
         onAttach={handleAttachDocument}
-        disabled={isThinking}
+        disabled={isThinking || conversationCache.hydrationStatus !== 'ready' || conversationCache.isCreatingConversation}
         onListeningChange={setIsListening}
         persona={effectivePersona}
       />
@@ -951,6 +1140,42 @@ export function NovaWorkspace({
   const conversationArea = (
     <>
       <div className="mx-auto w-full max-w-2xl">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            {conversationCache.hydrationStatus === 'loading' && (
+              <span className="text-xs text-text-secondary">Carregando conversa…</span>
+            )}
+            {conversationCache.hydrationStatus === 'error' && (
+              <button
+                type="button"
+                className="text-xs text-red-300 underline underline-offset-4"
+                onClick={() => void hydrateActiveConversation(effectivePersona, true)}
+              >
+                Tentar carregar novamente
+              </button>
+            )}
+            {conversationCache.hasMore && conversationCache.hydrationStatus === 'ready' && (
+              <button
+                type="button"
+                className="text-xs text-text-secondary underline-offset-4 hover:text-text-primary hover:underline disabled:opacity-50"
+                onClick={handleLoadPrevious}
+                disabled={conversationCache.isLoadingPrevious}
+              >
+                {conversationCache.isLoadingPrevious ? 'Carregando…' : 'Carregar mensagens anteriores'}
+              </button>
+            )}
+          </div>
+          {conversationCache.hydrationStatus === 'ready' && conversationCache.conversationId && (
+            <button
+              type="button"
+              className="text-xs text-text-secondary underline-offset-4 hover:text-text-primary hover:underline disabled:opacity-50"
+              onClick={handleNewConversation}
+              disabled={isThinking || conversationCache.isCreatingConversation}
+            >
+              {conversationCache.isCreatingConversation ? 'Criando…' : 'Nova conversa'}
+            </button>
+          )}
+        </div>
         <NovaConversation
           messages={messages}
           isThinking={isThinking}
@@ -959,6 +1184,7 @@ export function NovaWorkspace({
           onCancelPending={handleCancelPending}
           onTaskAction={handleTaskAction}
           onDismissTask={handleDismissTask}
+          onRetrySync={handleRetrySync}
           persona={effectivePersona}
         />
       </div>
