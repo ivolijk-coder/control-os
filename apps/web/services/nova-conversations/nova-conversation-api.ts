@@ -54,6 +54,11 @@ export type PublicNovaConversationTurnDTO = {
   assistant: PublicNovaMessageDTO;
 };
 
+export type ProcessNovaConversationMessageRequest = {
+  clientTurnId: string;
+  content: string;
+};
+
 type ConversationCursorPayload = {
   v: 1;
   lastMessageAt: string;
@@ -213,6 +218,20 @@ export async function parsePersistTurnBody(request: Request): Promise<PersistNov
     user: parseTurnMessage(body.user, 'user'),
     assistant: parseTurnMessage(body.assistant, 'assistant'),
   };
+}
+
+export async function parseProcessMessageBody(request: Request): Promise<ProcessNovaConversationMessageRequest> {
+  const body = record(await request.json().catch(() => undefined));
+  if (!body || Object.keys(body).length !== 2 || !Object.hasOwn(body, 'clientTurnId') || !Object.hasOwn(body, 'content')) {
+    throw new NovaConversationRequestError('Informe somente clientTurnId e content.');
+  }
+  if (typeof body.clientTurnId !== 'string' || !CLIENT_TURN_ID_PATTERN.test(body.clientTurnId)) {
+    throw new NovaConversationRequestError('clientTurnId inválido.');
+  }
+  if (typeof body.content !== 'string' || !body.content.trim()) {
+    throw new NovaConversationRequestError('content é obrigatório.');
+  }
+  return { clientTurnId: body.clientTurnId, content: body.content };
 }
 
 export function toPublicConversation(conversation: NovaConversation): PublicNovaConversationDTO {

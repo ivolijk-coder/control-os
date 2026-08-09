@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { randomUUID } from 'node:crypto';
-import { Prisma, type NovaPendingConfirmationStatus, type NovaTurnStatus } from '@prisma/client';
+import { Prisma, type NovaConversationPersona, type NovaPendingConfirmationStatus, type NovaTurnStatus } from '@prisma/client';
 import type { ActionKind } from '@/services/control-hub';
 import { prisma } from '@/lib/prisma';
 import { sanitizeConversationContent } from '@/services/nova-conversations/conversation-content-sanitizer';
@@ -41,11 +41,26 @@ export interface NovaConfirmationRecord {
 }
 
 export type NovaTurnReplay =
-  | { kind: 'COMPLETED'; turn: NovaTurnRecord; messages: Array<{ role: 'USER' | 'ASSISTANT'; content: string; intent: string | null }> }
+  | { kind: 'COMPLETED'; turn: NovaTurnRecord; messages: NovaPersistedPublicMessage[] }
   | { kind: 'AWAITING_CONFIRMATION'; turn: NovaTurnRecord; confirmation: NovaConfirmationRecord }
   | { kind: 'PROCESSING'; turn: NovaTurnRecord }
   | { kind: 'RECOVERABLE'; turn: NovaTurnRecord }
   | { kind: 'TERMINAL'; turn: NovaTurnRecord };
+
+export interface NovaPersistedPublicMessage {
+  id: string;
+  role: 'USER' | 'ASSISTANT';
+  content: string;
+  intent: string | null;
+  redacted: boolean;
+  createdAt: Date;
+}
+
+export interface NovaAccessibleConversation {
+  id: string;
+  userId: string;
+  persona: NovaConversationPersona;
+}
 
 const isUniqueConflict = (error: unknown) => error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 const samePayload = (left: Record<string, string | number | boolean>, right: Record<string, string | number | boolean>) => JSON.stringify(left) === JSON.stringify(right);
@@ -70,6 +85,23 @@ function confirmationRecord(row: {
 const accessibleConversation = (conversationId: string, userId: string) => ({ id: conversationId, userId, deletedAt: null });
 
 export class PrismaNovaOrchestratorPersistence {
+  async findAccessibleActiveWebConversation(input: { conversationId: string; userId: string }): Promise<NovaAccessibleConversation | null> {
+    return prisma.novaConversation.findFirst({
+      where: { id: input.conversationId, userId: input.userId, channel: 'WEB', status: 'ACTIVE', deletedAt: null },
+      select: { id: true, userId: true, persona: true },
+    });
+  }
+
+  async listRecentMessages(input: { conversationId: string; userId: string; limit?: number }): Promise<Array<{ role: 'USER' | 'ASSISTANT'; content: string; intent: string | null }>> {
+    const messages = await prisma.novaMessage.findMany({
+      where: { conversationId: input.conversationId, userId: input.userId, conversation: { channel: 'WEB', deletedAt: null } },
+      orderBy: { sequence: 'desc' },
+      take: Math.min(Math.max(input.limit ?? 20, 1), 100),
+      select: { role: true, content: true, intent: true },
+    });
+    return messages.reverse();
+  }
+
   async createOrReplayTurn(input: { conversationId: string; userId: string; clientTurnId: string }): Promise<{ turn: NovaTurnRecord; replayed: boolean } | null> {
     const conversation = await prisma.novaConversation.findFirst({ where: accessibleConversation(input.conversationId, input.userId), select: { id: true } });
     if (!conversation) return null;
@@ -129,6 +161,31 @@ export class PrismaNovaOrchestratorPersistence {
     return row ? turnRecord(row) : null;
   }
 
+  async failTurn(input: { turnId: string; conversationId: string; userId: string; expectedVersion: number; owner: string; leaseToken: string; now: Date; errorCode: string }): Promise<boolean> {
+    const result = await prisma.novaTurn.updateMany({
+      where: {
+        id: input.turnId,
+        conversationId: input.conversationId,
+        userId: input.userId,
+        version: input.expectedVersion,
+        status: 'PROCESSING',
+        processingOwner: input.owner,
+        processingLeaseToken: input.leaseToken,
+        conversation: { channel: 'WEB', status: 'ACTIVE', deletedAt: null },
+      },
+      data: {
+        status: 'FAILED',
+        failedAt: input.now,
+        lastErrorCode: input.errorCode,
+        processingOwner: null,
+        processingLeaseToken: null,
+        processingLeaseUntil: null,
+        version: { increment: 1 },
+      },
+    });
+    return result.count === 1;
+  }
+
   async completeTurnWithMessages(input: { turnId: string; conversationId: string; userId: string; expectedVersion: number; owner: string; leaseToken: string; now: Date; user: { content: string; intent?: string | null }; assistant: { content: string; intent?: string | null; provider?: string | null; providerResponseId?: string | null } }): Promise<NovaTurnRecord | null> {
     const user = sanitizeConversationContent(input.user.content);
     const assistant = sanitizeConversationContent(input.assistant.content);
@@ -156,7 +213,7 @@ export class PrismaNovaOrchestratorPersistence {
     if (!turn) return null;
     const record = turnRecord(turn);
     if (turn.status === 'COMPLETED') {
-      const messages = await prisma.novaMessage.findMany({ where: { conversationId: input.conversationId, userId: input.userId, correlationId: input.turnId }, orderBy: { sequence: 'asc' }, select: { role: true, content: true, intent: true } });
+      const messages = await prisma.novaMessage.findMany({ where: { conversationId: input.conversationId, userId: input.userId, correlationId: input.turnId }, orderBy: { sequence: 'asc' }, select: { id: true, role: true, content: true, intent: true, redacted: true, createdAt: true } });
       return { kind: 'COMPLETED', turn: record, messages };
     }
     if (turn.status === 'AWAITING_CONFIRMATION') {
@@ -247,6 +304,103 @@ export class PrismaNovaOrchestratorPersistence {
     }
     const updated = await prisma.novaConversationState.updateMany({ where: { conversationId: input.conversationId, userId: input.userId, version: input.expectedVersion, conversation: { deletedAt: null } }, data: { intentFamily: input.intentFamily, focusCategory: input.focusCategory, focusType: input.focusType, focusReference: focusReference ?? Prisma.JsonNull, sourceTurnId: input.sourceTurnId, expiresAt: new Date(input.now.getTime() + NOVA_ORCHESTRATOR_PERSISTENCE.semanticStateTtlMs), version: { increment: 1 } } });
     return updated.count === 1;
+  }
+
+  async completeReadOnlyTurn(input: {
+    turnId: string;
+    conversationId: string;
+    userId: string;
+    expectedVersion: number;
+    owner: string;
+    leaseToken: string;
+    now: Date;
+    intentFamily: string;
+    focusCategory: string | null;
+    focusType: string | null;
+    focusReference: NovaReferenceSelection | null;
+    userContent: string;
+    assistantContent: string;
+  }): Promise<{ turn: NovaTurnRecord; messages: NovaPersistedPublicMessage[] } | null> {
+    const user = sanitizeConversationContent(input.userContent);
+    const assistant = sanitizeConversationContent(input.assistantContent);
+    const focusReference = validateNovaReferenceSelection(input.focusReference) as Prisma.InputJsonValue | null;
+    return prisma.$transaction(async (tx) => {
+      const owned = await tx.novaTurn.updateMany({
+        where: {
+          id: input.turnId,
+          conversationId: input.conversationId,
+          userId: input.userId,
+          version: input.expectedVersion,
+          status: 'PROCESSING',
+          processingOwner: input.owner,
+          processingLeaseToken: input.leaseToken,
+          processingLeaseUntil: { gt: input.now },
+          conversation: { channel: 'WEB', status: 'ACTIVE', deletedAt: null },
+        },
+        data: {
+          status: 'COMPLETED',
+          intentFamily: input.intentFamily,
+          focusCategory: input.focusCategory,
+          completedAt: input.now,
+          processingOwner: null,
+          processingLeaseToken: null,
+          processingLeaseUntil: null,
+          version: { increment: 1 },
+        },
+      });
+      if (owned.count !== 1) return null;
+
+      await tx.novaMessage.createMany({
+        data: [
+          { conversationId: input.conversationId, userId: input.userId, role: 'USER', content: user.content, intent: input.intentFamily, correlationId: input.turnId, redacted: user.redacted },
+          { conversationId: input.conversationId, userId: input.userId, role: 'ASSISTANT', content: assistant.content, intent: input.intentFamily, correlationId: input.turnId, redacted: assistant.redacted },
+        ],
+      });
+
+      // Serializa apenas a finalização desta conversa; nenhuma chamada externa ocorre na transação.
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM nova_conversations WHERE id = ${input.conversationId}::uuid FOR UPDATE`);
+      const currentState = await tx.novaConversationState.findUnique({ where: { conversationId: input.conversationId } });
+      const currentSource = currentState
+        ? await tx.novaTurn.findUnique({ where: { id: currentState.sourceTurnId }, select: { createdAt: true, id: true } })
+        : null;
+      const thisTurn = await tx.novaTurn.findUniqueOrThrow({ where: { id: input.turnId }, select: { createdAt: true, id: true } });
+      const shouldAdvanceState = !currentSource
+        || currentSource.createdAt < thisTurn.createdAt
+        || (currentSource.createdAt.getTime() === thisTurn.createdAt.getTime() && currentSource.id <= thisTurn.id);
+      if (shouldAdvanceState) {
+        await tx.novaConversationState.upsert({
+          where: { conversationId: input.conversationId },
+          create: {
+            conversationId: input.conversationId,
+            userId: input.userId,
+            intentFamily: input.intentFamily,
+            focusCategory: input.focusCategory,
+            focusType: input.focusType,
+            focusReference: focusReference ?? Prisma.JsonNull,
+            sourceTurnId: input.turnId,
+            expiresAt: new Date(input.now.getTime() + NOVA_ORCHESTRATOR_PERSISTENCE.semanticStateTtlMs),
+          },
+          update: {
+            intentFamily: input.intentFamily,
+            focusCategory: input.focusCategory,
+            focusType: input.focusType,
+            focusReference: focusReference ?? Prisma.JsonNull,
+            sourceTurnId: input.turnId,
+            expiresAt: new Date(input.now.getTime() + NOVA_ORCHESTRATOR_PERSISTENCE.semanticStateTtlMs),
+            version: { increment: 1 },
+          },
+        });
+      }
+
+      const messages = await tx.novaMessage.findMany({
+        where: { conversationId: input.conversationId, correlationId: input.turnId },
+        orderBy: { sequence: 'asc' },
+        select: { id: true, role: true, content: true, intent: true, redacted: true, createdAt: true },
+      });
+      await tx.novaConversation.update({ where: { id: input.conversationId }, data: { lastMessageAt: messages.at(-1)?.createdAt ?? input.now } });
+      const completed = await tx.novaTurn.findUniqueOrThrow({ where: { id: input.turnId } });
+      return { turn: turnRecord(completed), messages };
+    });
   }
 }
 

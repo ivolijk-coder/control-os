@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   listMessages: vi.fn(),
   closeConversation: vi.fn(),
   persistTurn: vi.fn(),
+  processMessage: vi.fn(),
 }));
 
 vi.mock('next/server', () => ({
@@ -27,6 +28,9 @@ vi.mock('@/services/nova-conversations', () => ({
     closeConversation: mocks.closeConversation,
     persistTurn: mocks.persistTurn,
   },
+}));
+vi.mock('@/services/nova-orchestrator', () => ({
+  novaReadOnlyOrchestratorService: { process: mocks.processMessage },
 }));
 
 const conversationId = '11111111-1111-4111-8111-111111111111';
@@ -79,6 +83,10 @@ describe('APIs autenticadas de conversas da NOVA', () => {
     mocks.listMessages.mockResolvedValue({ messages: [], nextCursor: null, hasMore: false });
     mocks.closeConversation.mockResolvedValue({ ...conversation, status: 'CLOSED', closedAt: now });
     mocks.persistTurn.mockResolvedValue({ turn: persistedTurn, replayed: false });
+    mocks.processMessage.mockResolvedValue({
+      kind: 'RESULT',
+      result: { status: 'COMPLETED', turnId: 'turn-id', messages: [] },
+    });
   });
 
   it('retorna 401 em todas as quatro operações sem consultar o serviço', async () => {
@@ -104,6 +112,35 @@ describe('APIs autenticadas de conversas da NOVA', () => {
       clientTurnId: 'client-turn-001', user: { content: 'Pergunta' }, assistant: { content: 'Resposta' },
     }), { params: { id: conversationId } });
     expect(response.status).toBe(401);
+    expect(mocks.persistTurn).not.toHaveBeenCalled();
+  });
+
+  it('protege o endpoint server-side de mensagens e aceita somente o contrato mínimo', async () => {
+    const { POST } = await import('@/app/api/nova/conversations/[id]/messages/route');
+    mocks.userId = undefined;
+    expect((await POST(postRequest(`/api/nova/conversations/${conversationId}/messages`, {
+      clientTurnId: 'client-read-only', content: 'Tenho conta atrasada?',
+    }), { params: { id: conversationId } })).status).toBe(401);
+    mocks.userId = 'user-a';
+    const response = await POST(postRequest(`/api/nova/conversations/${conversationId}/messages`, {
+      clientTurnId: 'client-read-only', content: 'Tenho conta atrasada?',
+    }), { params: { id: conversationId } });
+    expect(response.status).toBe(200);
+    expect(mocks.processMessage).toHaveBeenCalledWith({
+      userId: 'user-a', conversationId, clientTurnId: 'client-read-only', content: 'Tenho conta atrasada?',
+    });
+    expect((await POST(postRequest(`/api/nova/conversations/${conversationId}/messages`, {
+      clientTurnId: 'client-read-only', content: 'A', userId: 'attacker',
+    }), { params: { id: conversationId } })).status).toBe(400);
+  });
+
+  it('não faz fallback quando a flag server-side está desligada', async () => {
+    mocks.processMessage.mockResolvedValueOnce({ kind: 'DISABLED' });
+    const { POST } = await import('@/app/api/nova/conversations/[id]/messages/route');
+    const response = await POST(postRequest(`/api/nova/conversations/${conversationId}/messages`, {
+      clientTurnId: 'client-disabled', content: 'Resumo de hoje',
+    }), { params: { id: conversationId } });
+    expect(response.status).toBe(503);
     expect(mocks.persistTurn).not.toHaveBeenCalled();
   });
 

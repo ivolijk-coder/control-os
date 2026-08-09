@@ -59,7 +59,7 @@ const SOURCE_LABELS: Record<FinancialDataCoverageDTO['source'], string> = {
   CARDS: 'cartões',
 };
 
-function normalizeMessage(text: string): string {
+export function normalizeFinancialMessage(text: string): string {
   return text
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -118,7 +118,8 @@ function formatCurrency(value: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 }
 
-function resolveFocusCategory(normalized: string): FinancialStatusCategoryDTO['type'] | undefined {
+export function resolveFinancialFocusCategory(text: string): FinancialStatusCategoryDTO['type'] | undefined {
+  const normalized = normalizeFinancialMessage(text);
   if (/\bemprestimo(?:s)?\b/.test(normalized)) return 'LOAN';
   if (/\bfinanciamento(?:s)?\b/.test(normalized)) return 'FINANCING';
   if (/\b(?:conta fixa|contas fixas)\b/.test(normalized)) return 'FIXED_ACCOUNT';
@@ -203,14 +204,14 @@ export class FinancialIntentGuard {
   ) {}
 
   classify(text: string): FinancialIntentFamily | undefined {
-    const normalized = normalizeMessage(text);
+    const normalized = normalizeFinancialMessage(text);
     return FINANCIAL_STATUS_PATTERNS.some((pattern) => pattern.test(normalized))
       ? 'FINANCIAL_STATUS'
       : undefined;
   }
 
   async handle(text: string, sessionId: string = 'default'): Promise<NovaTurnResult | undefined> {
-    const normalized = normalizeMessage(text);
+    const normalized = normalizeFinancialMessage(text);
     const family = this.classify(text);
     const previous = this.getFreshContext(sessionId);
     const isFollowUp = previous !== undefined
@@ -218,7 +219,7 @@ export class FinancialIntentGuard {
 
     if (family !== 'FINANCIAL_STATUS' && !isFollowUp) return undefined;
 
-    return this.getStatus(sessionId, resolveFocusCategory(normalized) ?? previous?.focusCategory);
+    return this.getStatus(sessionId, resolveFinancialFocusCategory(normalized) ?? previous?.focusCategory);
   }
 
   /** Executa a consulta obrigatória quando outro resolver já classificou a família financeira. */
