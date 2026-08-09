@@ -10,4 +10,6 @@ export * from './nova-semantic-state.validation';
 export * from './nova-turn-state-machine';
 export * from './nova-read-only-routing';
 export * from './nova-reference-resolver';
+export * from './nova-read-only-prompt';
+export * from './nova-response-provider';
 export * from './nova-read-only-orchestrator.service';

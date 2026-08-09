@@ -107,7 +107,10 @@ export class OpenAILLMProvider implements LLMProvider {
         body: JSON.stringify({
           model,
           input: [{ role: 'user', content: request.prompt }],
-          text: { format: { type: 'json_object' } },
+          // `format` ausente = `'json'`: preserva byte a byte o corpo enviado
+          // antes da PR10.4, para que o Decision Engine não regrida. Nenhum
+          // caminho aqui envia `tools` — em nenhum dos dois formatos.
+          text: { format: { type: request.format === 'text' ? 'text' : 'json_object' } },
           max_output_tokens: MAX_OUTPUT_TOKENS,
         }),
         signal: controller.signal,

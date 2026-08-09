@@ -23,10 +23,26 @@
  * é duplicação reaproveitável — é um caso de uso genuinamente mais estreito.
  */
 
+/**
+ * Formato de saída pedido ao provedor. `'json'` é o default DELIBERADO: o
+ * primeiro consumidor desta camada (`OpenAIDecisionProvider`) depende de
+ * saída JSON e não pode regredir, então quem não declara `format` continua
+ * recebendo exatamente o comportamento anterior a esta adição. `'text'`
+ * existe para consumidores de prosa — o `responseProvider` somente-leitura
+ * da NOVA (PR10.4) compõe resposta para humano, não estrutura de decisão.
+ *
+ * Ampliar o formato NÃO amplia a capacidade: este contrato continua sendo
+ * "texto entra, texto sai", sem `tools`, sem Function Calling, sem qualquer
+ * caminho pelo qual um provider possa propor execução de ação.
+ */
+export type LLMResponseFormat = 'json' | 'text';
+
 /** Pedido de conclusão de texto — o Prompt Builder já entrega o prompt PRONTO; nenhum `LLMProvider` monta prompt sozinho. */
 export interface LLMRequest {
   /** Prompt completo (Capabilities + UserContext + Memory Layer + mensagem atual), já montado por `PromptBuilder`. */
   prompt: string;
+  /** Ausente = `'json'` — ver `LLMResponseFormat`. */
+  format?: LLMResponseFormat;
 }
 
 /** Resposta crua do modelo — texto puro. Quem valida se é JSON válido no formato esperado é o Decision Engine (`parseLLMDecisionResponse`), nunca o `LLMProvider`. */

@@ -2,6 +2,7 @@ import 'server-only';
 
 import { randomUUID } from 'node:crypto';
 import { buildFinancialStatusReply } from '@/services/ai/conversation/FinancialIntentGuard';
+import { contextProvider, type ContextProvider } from '@/services/context-provider';
 import { dailyOverviewService, formatDailyOverviewReply, type DailyOverviewService } from '@/services/daily-overview';
 import type { FinancialIntelligenceService } from '@/services/financial-intelligence';
 import { financialIntelligenceService } from '@/services/financial-intelligence/financial-intelligence.sources';
@@ -14,6 +15,8 @@ import {
 } from './nova-orchestrator-persistence.repository';
 import { resolveReadOnlyFinancialReference, type ResolvedReadOnlyReference } from './nova-reference-resolver';
 import { routeNovaReadOnlyMessage, type NovaReadOnlyRoute } from './nova-read-only-routing';
+import type { NovaReadOnlyPersona, NovaReadOnlyPromptMessage } from './nova-read-only-prompt';
+import { novaReadOnlyResponseProvider, type NovaReadOnlyResponseProvider } from './nova-response-provider';
 import type { NovaOrchestratorResultDTO, NovaPublicMessageDTO, NovaReferenceSelection } from './nova-orchestrator.types';
 
 export type NovaReadOnlyOrchestratorOutcome =
@@ -41,6 +44,10 @@ interface ReadOnlyDependencies {
   persistence: PrismaNovaOrchestratorPersistence;
   finances: Pick<FinancialIntelligenceService, 'getStatus'>;
   overview: Pick<DailyOverviewService, 'getOverview'>;
+  /** Contexto factual autenticado do servidor — nunca estado do navegador. */
+  context: Pick<ContextProvider, 'getUserContext'>;
+  /** Composição de resposta para perguntas de leitura sem rota determinística. */
+  responder: NovaReadOnlyResponseProvider;
   enabled: (input: { userId: string; channel: 'WEB' }) => boolean;
   now: () => Date;
   ownerId: () => string;
@@ -64,6 +71,8 @@ export class NovaReadOnlyOrchestratorService {
     persistence: novaOrchestratorPersistence,
     finances: financialIntelligenceService,
     overview: dailyOverviewService,
+    context: contextProvider,
+    responder: novaReadOnlyResponseProvider,
     enabled: isNovaServerOrchestratorEnabledFor,
     now: () => new Date(),
     ownerId: () => `web:${randomUUID()}`,
@@ -113,7 +122,13 @@ export class NovaReadOnlyOrchestratorService {
       const reference = resolveReadOnlyFinancialReference({ message: input.content, semanticState, recentMessages });
       const initialRoute = routeNovaReadOnlyMessage(input.content);
       const route: NovaReadOnlyRoute = reference ? { kind: 'FINANCIAL_STATUS', focusCategory: reference.focusCategory } : initialRoute;
-      const response = await this.respond(input.userId, route);
+      const response = await this.respond({
+        userId: input.userId,
+        persona: conversation.persona,
+        message: input.content,
+        route,
+        history: recentMessages,
+      });
       const state = reference ?? (route.kind === 'FINANCIAL_STATUS'
         ? { intentFamily: 'FINANCIAL_STATUS' as const, focusCategory: route.focusCategory, focusType: route.focusCategory ? 'CATEGORY' as const : 'SET' as const, setReference: route.focusCategory ?? 'OVERDUE_COMMITMENTS' }
         : null);
@@ -129,6 +144,13 @@ export class NovaReadOnlyOrchestratorService {
         focusCategory: state?.focusCategory ?? null,
         focusType: state?.focusType ?? null,
         focusReference: state ? semanticReference(state) : null,
+        // Turno sem referência financeira resolvida NÃO avança o estado
+        // semântico. Sem isto, uma pergunta aberta entre dois follow-ups
+        // gravaria `intentFamily: 'OPEN_QUESTION'` e `focusCategory: null`,
+        // e como `fromState()` só recupera família `FINANCIAL_STATUS`, o
+        // foco financeiro persistido seria destruído — regressão direta do
+        // comportamento validado em produção nos Testes 2 e 4 do piloto.
+        advanceSemanticState: state !== null,
         userContent: input.content,
         assistantContent: response,
       });
@@ -149,17 +171,36 @@ export class NovaReadOnlyOrchestratorService {
     }
   }
 
-  private async respond(userId: string, route: NovaReadOnlyRoute): Promise<string> {
-    if (route.kind === 'FINANCIAL_STATUS') {
-      return buildFinancialStatusReply(await this.dependencies.finances.getStatus(userId), route.focusCategory);
+  /**
+   * As rotas determinísticas continuam determinísticas: `FINANCIAL_STATUS`,
+   * `DAILY_OVERVIEW` e `BLOCKED_MUTATION` respondem exatamente como antes da
+   * PR10.4, sem passar por nenhum modelo. Só `OPEN_QUESTION` compõe — e por
+   * isso o contexto do usuário é buscado apenas nesse ramo, mantendo o custo
+   * e a latência das rotas já validadas em produção inalterados.
+   */
+  private async respond(input: {
+    userId: string;
+    persona: NovaReadOnlyPersona;
+    message: string;
+    route: NovaReadOnlyRoute;
+    history: readonly NovaReadOnlyPromptMessage[];
+  }): Promise<string> {
+    if (input.route.kind === 'FINANCIAL_STATUS') {
+      return buildFinancialStatusReply(await this.dependencies.finances.getStatus(input.userId), input.route.focusCategory);
     }
-    if (route.kind === 'DAILY_OVERVIEW') {
-      return formatDailyOverviewReply(await this.dependencies.overview.getOverview(userId));
+    if (input.route.kind === 'DAILY_OVERVIEW') {
+      return formatDailyOverviewReply(await this.dependencies.overview.getOverview(input.userId));
     }
-    if (route.kind === 'BLOCKED_MUTATION') {
+    if (input.route.kind === 'BLOCKED_MUTATION') {
       return 'Essa operação não está disponível neste fluxo somente leitura. Nenhuma alteração foi realizada.';
     }
-    return 'Este fluxo seguro ainda atende apenas consultas de situação financeira e resumo operacional.';
+    const context = await this.dependencies.context.getUserContext(input.userId);
+    return this.dependencies.responder.compose({
+      persona: input.persona,
+      message: input.message,
+      context,
+      history: input.history,
+    });
   }
 }
 
