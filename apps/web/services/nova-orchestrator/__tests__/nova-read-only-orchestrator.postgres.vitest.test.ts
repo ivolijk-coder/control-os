@@ -243,6 +243,73 @@ describe.runIf(enabled)('PR10.3 read-only orchestrator — PostgreSQL real', () 
       expect(await prisma.novaConversationState.count({ where: { conversationId: isolated } })).toBe(1);
     });
 
+    // R3 (B4) — a sequência REAL que revelou o defeito em produção, contra
+    // PostgreSQL de verdade. Antes da correção, o quarto turno resolvia
+    // FIXED_ACCOUNT: `Quando vence esse empréstimo?` não casa com nenhum
+    // FINANCIAL_STATUS_PATTERNS (o padrão exige termo de atraso, e `vence` no
+    // presente não está na lista), então a categoria explícita era descartada
+    // e o foco persistido assumia.
+    it('R3 — categoria explícita da mensagem vence o estado persistido divergente', async () => {
+      const { prisma } = await import('@/lib/prisma');
+      const isolated = (await prisma.novaConversation.create({
+        data: { userId, channel: 'WEB', persona: 'NOVA', status: 'ACTIVE', activeKey: `b4-sequencia:${userId}` },
+      })).id;
+      const { service } = await buildService();
+      const perguntas: Array<[string, string]> = [
+        ['Tenho empréstimos em atraso?', 'LOAN'],
+        ['Quando vence esse empréstimo?', 'LOAN'],
+        ['Tenho contas fixas em atraso?', 'FIXED_ACCOUNT'],
+        ['Quando vence esse empréstimo?', 'LOAN'],
+      ];
+
+      for (const [index, [content]] of perguntas.entries()) {
+        await service.process({ userId, conversationId: isolated, clientTurnId: `b4-seq-${index}`, content });
+      }
+
+      const turnos = await prisma.novaTurn.findMany({ where: { conversationId: isolated }, orderBy: { createdAt: 'asc' } });
+      expect(turnos).toHaveLength(4);
+      for (const [index, [, esperado]] of perguntas.entries()) {
+        expect(turnos[index]?.focusCategory).toBe(esperado);
+        expect(turnos[index]?.status).toBe('COMPLETED');
+      }
+      // O estado final segue a última mensagem explícita, não a penúltima.
+      const estado = await prisma.novaConversationState.findUniqueOrThrow({ where: { conversationId: isolated } });
+      expect(estado.focusCategory).toBe('LOAN');
+      expect(await prisma.novaConversationState.count({ where: { conversationId: isolated } })).toBe(1);
+    });
+
+    // R1/R7 (B4b) — contenção em PostgreSQL real: frase de mutação anafórica
+    // com estado financeiro persistido continua sendo recusada. Antes da
+    // correção, a referência resolvida vencia o roteamento e o turno saía
+    // como FINANCIAL_STATUS.
+    it('R7 — mutação anafórica com estado persistido continua bloqueada', async () => {
+      const { prisma } = await import('@/lib/prisma');
+      const isolated = (await prisma.novaConversation.create({
+        data: { userId, channel: 'WEB', persona: 'NOVA', status: 'ACTIVE', activeKey: `b4-contencao:${userId}` },
+      })).id;
+      const { service, finances, responder } = await buildService();
+
+      await service.process({ userId, conversationId: isolated, clientTurnId: 'b4-cont-1', content: 'Tenho empréstimos em atraso?' });
+      const estadoAntes = await prisma.novaConversationState.findUniqueOrThrow({ where: { conversationId: isolated } });
+      finances.getStatus.mockClear();
+
+      await service.process({ userId, conversationId: isolated, clientTurnId: 'b4-cont-2', content: 'Cancele esse empréstimo' });
+
+      const bloqueado = await prisma.novaTurn.findFirstOrThrow({ where: { conversationId: isolated, clientTurnId: 'b4-cont-2' } });
+      expect(bloqueado.status).toBe('COMPLETED');
+      expect(bloqueado.intentFamily).toBe('BLOCKED_MUTATION');
+      expect(bloqueado.focusCategory).toBeNull();
+      expect(finances.getStatus).not.toHaveBeenCalled();
+      expect(responder.compose).not.toHaveBeenCalled();
+
+      // Estado semântico intacto: o pedido recusado não move o foco.
+      const estadoDepois = await prisma.novaConversationState.findUniqueOrThrow({ where: { conversationId: isolated } });
+      expect(estadoDepois.version).toBe(estadoAntes.version);
+      expect(estadoDepois.focusCategory).toBe(estadoAntes.focusCategory);
+      expect(estadoDepois.sourceTurnId).toBe(estadoAntes.sourceTurnId);
+      expect(await prisma.novaPendingConfirmation.count({ where: { conversationId: isolated } })).toBe(0);
+    });
+
     // P9 — idempotência preservada na capacidade nova: replay não paga uma
     // segunda chamada ao provedor externo nem duplica mensagens.
     it('P9 — replay de pergunta aberta não chama o provedor duas vezes nem duplica mensagens', async () => {

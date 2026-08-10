@@ -39,6 +39,30 @@ function fromState(state: NovaConversationSemanticState | null): ResolvedReadOnl
   };
 }
 
+/**
+ * Estado e histórico COMPLEMENTAM uma mensagem anafórica/elíptica; nunca
+ * sobrescrevem uma categoria que a própria mensagem declarou (B4a).
+ *
+ * O caso real que revelou isso: `Quando vence esse empréstimo?` não casa com
+ * nenhum `FINANCIAL_STATUS_PATTERNS` — o padrão que aceitaria a palavra-chave
+ * exige um termo de atraso, e `vence` no presente não está na lista. Logo
+ * `fromMessage()` devolve `null` antes de consultar
+ * `resolveFinancialFocusCategory`, e a palavra "empréstimo", explícita e
+ * inequívoca, era descartada em favor do foco persistido — que em produção
+ * era `FIXED_ACCOUNT`. A resposta falava de contas fixas.
+ *
+ * A correção é aqui, e não em `FinancialIntentGuard`: aquele guard também
+ * alimenta o pipeline legado (`ConversationService`), então alterar seus
+ * padrões mudaria o comportamento dos dois cérebros de uma vez.
+ */
+function withExplicitCategory(
+  reference: ResolvedReadOnlyReference,
+  explicit: FinancialStatusCategoryDTO['type'] | undefined
+): ResolvedReadOnlyReference {
+  if (!explicit || reference.focusCategory === explicit) return reference;
+  return { ...reference, focusCategory: explicit, focusType: 'CATEGORY', setReference: explicit };
+}
+
 export function resolveReadOnlyFinancialReference(input: {
   message: string;
   semanticState: NovaConversationSemanticState | null;
@@ -48,12 +72,13 @@ export function resolveReadOnlyFinancialReference(input: {
   if (direct) return direct;
   const value = normalize(input.message);
   if (!ANAPHORA.test(value) && !ELLIPSIS.test(value)) return null;
+  const explicit = resolveFinancialFocusCategory(input.message);
   const persisted = fromState(input.semanticState);
-  if (persisted) return persisted;
+  if (persisted) return withExplicitCategory(persisted, explicit);
   for (const message of [...input.recentMessages].reverse()) {
     if (message.role !== 'USER') continue;
     const recovered = fromMessage(message.content);
-    if (recovered) return recovered;
+    if (recovered) return withExplicitCategory(recovered, explicit);
   }
   return null;
 }
