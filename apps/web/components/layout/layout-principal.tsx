@@ -33,10 +33,15 @@ const BackgroundNetwork = dynamic(
  * qualquer página (ex.: "Pagar parcela" em Financeiro) renderizava
  * exatamente atrás dele e ficava parcialmente coberta. `md:pb-24` (96px —
  * maior que os 56px do botão + a margem de 24px) garante isso a partir de
- * `md`. Abaixo de `md`, quem cobre o rodapé é a `MobileBottomNav` (barra de
- * largura cheia, ver `mobile-bottom-nav.tsx`) — `pb-28` (112px) cobre a
- * altura dela mais a `safe-area-inset-bottom` do iPhone com folga, sem
- * precisar calcular o valor exato por dispositivo.
+ * `md`. Abaixo de `md`, quem cobre o rodapé é a `MobileBottomNav`.
+ *
+ * `pb-36` (144px) abaixo de `md`, e não mais `pb-28` (112px): a barra deixou
+ * de ser uma faixa de largura cheia e virou uma pílula flutuante com a marca
+ * da persona ELEVADA acima dela (ver `mobile-bottom-nav.tsx`). A conta do
+ * pior caso — pílula ~71px + folga de 8px + `safe-area-inset-bottom` de 34px
+ * do iPhone + 27px que o orb sobe — chega a ~140px, acima dos 112px que
+ * bastavam para a faixa antiga. Sem esta folga, a última linha de uma página
+ * longa passaria por baixo do orb na coluna central.
  *
  * CONTROL OS — Etapa 16F (Art Direction — Orb como coração do sistema): o
  * glow ambiente do fundo (`bg-ambient-glow`) e as partículas de destaque do
@@ -58,10 +63,11 @@ const BackgroundNetwork = dynamic(
  * comportamento.
  *
  * CONTROL OS — "otimização completa da experiência mobile": `MobileBottomNav`
- * (só abaixo de `md`) coloca os 5 destinos de uso diário — IA, Financeiro,
- * Agenda, Metas, Hábitos — a um toque do polegar, sempre visíveis. O resto
- * do produto não sumiu: continua no drawer da Sidebar, atrás do botão de
- * menu do `Topbar`, só deixou de disputar espaço aqui embaixo.
+ * (só abaixo de `md`) coloca os destinos de uso diário — Visão, Financeiro,
+ * Relatórios, Documentos — a um toque do polegar, com a marca da persona
+ * ativa como ponto de acesso central à IA. O resto do produto não sumiu:
+ * continua no drawer da Sidebar, atrás do botão de menu do `Topbar`, só
+ * deixou de disputar espaço aqui embaixo.
  */
 export function LayoutPrincipal({ children }: { children: React.ReactNode }) {
   const { effectivePersona } = useRoutePersona();
@@ -73,7 +79,7 @@ export function LayoutPrincipal({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div className="relative flex min-w-0 flex-1 flex-col">
         <Topbar />
-        <main className="flex-1 overflow-y-auto pb-28 md:pb-24">
+        <main className="flex-1 overflow-y-auto pb-36 md:pb-24">
           <PersonaTransitionStage>{children}</PersonaTransitionStage>
         </main>
       </div>

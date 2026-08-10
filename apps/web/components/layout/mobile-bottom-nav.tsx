@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Check, ChevronUp } from 'lucide-react';
+import { Check } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useRoutePersona } from '@/lib/use-route-persona';
@@ -20,7 +20,7 @@ import { PersonaIdentityMark, type PersonaIdentity } from '@/components/nova/per
  * `Topbar`) — uma lista plana com os 12 destinos do produto, sem hierarquia
  * nenhuma entre eles, exigindo dois toques (abrir menu → escolher) e uma
  * mão alcançando o topo da tela pra qualquer navegação. Essa barra fixa no
- * rodapé coloca os 5 destinos de uso diário a UM toque do polegar, sempre
+ * rodapé coloca os destinos de uso diário a UM toque do polegar, sempre
  * visíveis — "experiência pensada para uso com uma mão".
  *
  * "Todo o restante em segundo plano" não significa removido: Visão geral
@@ -29,9 +29,35 @@ import { PersonaIdentityMark, type PersonaIdentity } from '@/components/nova/per
  * do botão de menu do `Topbar`. Só pararam de disputar espaço aqui embaixo
  * com o que o usuário realmente abre todo dia.
  *
- * Só existe abaixo de `md` (`md:hidden`). A opção IA abre o seletor de NOVA
- * ou LEGENDARY sem ocupar dois espaços da barra.
+ * Só existe abaixo de `md` (`md:hidden`).
+ *
+ * ── Identidade visual (esta etapa) ────────────────────────────────────────
+ *
+ * A marca da persona SEMPRE esteve aqui, mas no lugar errado: 23px, no
+ * primeiro de cinco espaços de peso igual, com o rótulo genérico "IA" — o
+ * canto de MENOR alcance do polegar, disputando atenção com "Documentos".
+ * Agora ela é o ponto de acesso central e elevado, no eixo confortável do
+ * polegar, com halo na cor da persona ativa e SEM rótulo: a marca oficial
+ * (`/personas/*.png`, via `PersonaIdentityMark`) se explica sozinha, do
+ * mesmo jeito que já acontece no outro produto da casa.
+ *
+ * O QUE NÃO MUDOU, de propósito: o comportamento. Um toque no orb continua
+ * abrindo/fechando exatamente a mesma folha de seleção de persona que o
+ * botão "IA" abria, com o mesmo estado, os mesmos destinos (`/nova`,
+ * `/legendary`) e os mesmos atributos de acessibilidade. Esta etapa é
+ * posicionamento e pintura — nenhuma regra nova de navegação.
+ *
+ * O acento ativo dos destinos passou de roxo para `accent-blue`: a marca
+ * oficial da NOVA (`nova-launcher-c-clean.png`) é azul, e este arquivo já
+ * usava azul (`#0c96ff`/`#53ccff`/`#20bfff`) no seletor de persona. O roxo
+ * aqui era o único ponto que contrariava a própria marca.
  */
+
+/** Altura do orb elevado e o quanto ele sobe acima da barra, em px. */
+const ORB_SIZE = 56;
+const ORB_LIFT = 27;
+const ORB_MARK_SIZE = 46;
+
 export function MobileBottomNav() {
   const pathname = usePathname();
   const router = useRouter();
@@ -39,6 +65,7 @@ export function MobileBottomNav() {
   const [personaMenuOpen, setPersonaMenuOpen] = React.useState(false);
 
   const iaActive = routePersona !== undefined;
+  const legendary = effectivePersona === 'legendary';
 
   function choosePersona(href: '/nova' | '/legendary') {
     setPersonaMenuOpen(false);
@@ -55,7 +82,9 @@ export function MobileBottomNav() {
             exit={{ opacity: 0, y: 10, scale: 0.98 }}
             transition={{ duration: 0.18 }}
             className="fixed inset-x-4 z-40 overflow-hidden rounded-2xl border border-white/[0.1] bg-[#090b10]/95 p-2 shadow-2xl backdrop-blur-xl md:hidden"
-            style={{ bottom: 'calc(4.75rem + env(safe-area-inset-bottom))' }}
+            // Sobe a partir do orb, não do canto: precisa limpar a altura da
+            // barra + o quanto o orb se eleva acima dela + a safe area.
+            style={{ bottom: 'calc(6.25rem + env(safe-area-inset-bottom))' }}
           >
             <p className="px-3 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-text-tertiary">Escolha sua IA</p>
             <PersonaMenuOption persona="nova" active={effectivePersona === 'nova'} onClick={() => choosePersona('/nova')} />
@@ -64,31 +93,68 @@ export function MobileBottomNav() {
         )}
       </AnimatePresence>
 
-      <nav
-        aria-label="Navegação principal"
-        className="fixed inset-x-0 bottom-0 z-30 flex items-stretch justify-around border-t border-white/[0.08] bg-bg/90 pb-[max(env(safe-area-inset-bottom),0.5rem)] backdrop-blur-xl md:hidden"
+      {/* Envelope só de posicionamento: `pointer-events-none` para que a
+          faixa vazia ao lado da pílula não capture toques que pertencem ao
+          conteúdo da página. A pílula reativa os eventos. */}
+      <div
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-3 md:hidden"
+        style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 0.5rem)' }}
       >
-        <button
-          type="button"
-          onClick={() => setPersonaMenuOpen((open) => !open)}
-          aria-expanded={personaMenuOpen}
-          aria-label="Escolher NOVA ou LEGENDARY"
-          className={cn(
-            'flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2 text-[11px] font-medium transition-colors active:scale-95',
-            iaActive ? effectivePersona === 'legendary' ? 'text-[#F4D889]' : 'text-accent-purple' : 'text-text-tertiary'
-          )}
+        <nav
+          aria-label="Navegação principal"
+          className="pointer-events-auto relative flex items-center justify-around rounded-[26px] border border-white/[0.08] bg-bg/85 px-1 py-2 shadow-e3-glass backdrop-blur-xl"
         >
-          <span className="relative">
-            <PersonaIdentityMark persona={effectivePersona} size={23} />
-            <ChevronUp className={cn('absolute -right-3 -top-1 h-3 w-3 transition-transform', personaMenuOpen && 'rotate-180')} />
-          </span>
-          <span>IA</span>
-        </button>
-        <MobileNavLink href="/dashboard" label="Visão" Icon={ICON_MAP.LayoutGrid} active={pathname === '/dashboard'} />
-        <MobileNavLink href="/financeiro" label="Financeiro" Icon={ICON_MAP.Wallet} active={pathname?.startsWith('/financeiro') ?? false} />
-        <MobileNavLink href="/relatorios" label="Relatórios" Icon={ICON_MAP.BarChart3} active={pathname?.startsWith('/relatorios') ?? false} />
-        <MobileNavLink href="/documentos" label="Documentos" Icon={ICON_MAP.FileText} active={pathname?.startsWith('/documentos') ?? false} />
-      </nav>
+          <MobileNavLink href="/dashboard" label="Visão" Icon={ICON_MAP.LayoutGrid} active={pathname === '/dashboard'} />
+          <MobileNavLink href="/financeiro" label="Financeiro" Icon={ICON_MAP.Wallet} active={pathname?.startsWith('/financeiro') ?? false} />
+
+          {/* Espaço reservado do orb — mantém os quatro destinos equilibrados,
+              dois de cada lado, sem que nenhum passe por baixo da marca. */}
+          <div className="relative flex min-w-0 flex-1 justify-center" style={{ height: 44 }}>
+            <button
+              type="button"
+              onClick={() => setPersonaMenuOpen((open) => !open)}
+              aria-expanded={personaMenuOpen}
+              aria-label={`Escolher NOVA ou LEGENDARY (ativa: ${legendary ? 'LEGENDARY' : 'NOVA'})`}
+              className={cn(
+                'absolute grid place-items-center rounded-full bg-bg shadow-e3 transition-transform duration-fast ease-out active:scale-95',
+                // O botão antigo não tinha estilo de foco visível — só o
+                // outline padrão do navegador, que some contra o fundo
+                // escuro. Aditivo: não muda nada no toque.
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
+                legendary ? 'focus-visible:ring-accent-gold' : 'focus-visible:ring-accent-blue'
+              )}
+              style={{ width: ORB_SIZE, height: ORB_SIZE, top: -ORB_LIFT }}
+            >
+              {/* Halo da persona ativa. `aria-hidden` implícito: é um span
+                  decorativo sem conteúdo, fora do fluxo de leitura. */}
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute -inset-3 rounded-full blur-[3px]"
+                style={{
+                  background: `radial-gradient(circle, ${legendary ? 'rgba(217,164,85,0.42)' : 'rgba(59,130,246,0.42)'} 0%, transparent 68%)`,
+                }}
+              />
+              <PersonaIdentityMark persona={effectivePersona} size={ORB_MARK_SIZE} className="relative" />
+            </button>
+          </div>
+
+          <MobileNavLink href="/relatorios" label="Relatórios" Icon={ICON_MAP.BarChart3} active={pathname?.startsWith('/relatorios') ?? false} />
+          <MobileNavLink href="/documentos" label="Documentos" Icon={ICON_MAP.FileText} active={pathname?.startsWith('/documentos') ?? false} />
+
+          {/* Indicador de que a IA é a tela atual — a marca já carrega a cor
+              da persona, então aqui basta um traço discreto sob o orb, no
+              lugar do rótulo "IA" que existia antes. */}
+          {iaActive && (
+            <span
+              aria-hidden="true"
+              className={cn(
+                'pointer-events-none absolute bottom-1.5 left-1/2 h-0.5 w-6 -translate-x-1/2 rounded-full',
+                legendary ? 'bg-accent-gold' : 'bg-accent-blue'
+              )}
+            />
+          )}
+        </nav>
+      </div>
     </>
   );
 }
@@ -117,27 +183,27 @@ function MobileNavLink({
   Icon,
   persona,
   active,
-  accent = 'purple',
+  accent = 'blue',
 }: {
   href: string;
   label: string;
   Icon?: LucideIcon;
   persona?: PersonaIdentity;
   active: boolean;
-  accent?: 'purple' | 'gold';
+  accent?: 'blue' | 'gold';
 }) {
   return (
     <Link
       href={href}
       // `py-2` + ícone de 20px + rótulo + gap somam ~56px de altura de
       // toque — acima do mínimo de 44pt recomendado (Apple HIG) mesmo antes
-      // da folga extra de `safe-area-inset-bottom` do `<nav>` pai.
+      // da folga extra de `safe-area-inset-bottom` do envelope pai.
       className={cn(
         'flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2 text-[11px] font-medium transition-colors duration-fast ease-out active:scale-95',
         active
           ? accent === 'gold'
-            ? 'text-[#F4D889]'
-            : 'text-accent-purple'
+            ? 'text-accent-gold'
+            : 'text-accent-blue'
           : 'text-text-tertiary hover:text-text-secondary'
       )}
     >
