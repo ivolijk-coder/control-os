@@ -121,7 +121,20 @@ export class NovaReadOnlyOrchestratorService {
       ]);
       const reference = resolveReadOnlyFinancialReference({ message: input.content, semanticState, recentMessages });
       const initialRoute = routeNovaReadOnlyMessage(input.content);
-      const route: NovaReadOnlyRoute = reference ? { kind: 'FINANCIAL_STATUS', focusCategory: reference.focusCategory } : initialRoute;
+      // Contenção tem precedência ABSOLUTA (B4b). Antes desta correção, uma
+      // referência resolvida vencia o roteamento — então uma frase de mutação
+      // anafórica (`Cancele esse empréstimo`) com estado financeiro persistido
+      // recuperava contexto por `fromState()` e era roteada como
+      // FINANCIAL_STATUS, contornando `BLOCKED_MUTATION`. Nenhuma mutação
+      // chegava a ser executada, porque este fluxo não tem caminho de
+      // execução — mas a contenção declarada estava furada no roteamento, e
+      // isso deixaria de ser inofensivo quando a execução existir.
+      const blockedMutation = initialRoute.kind === 'BLOCKED_MUTATION';
+      const route: NovaReadOnlyRoute = blockedMutation
+        ? initialRoute
+        : reference
+          ? { kind: 'FINANCIAL_STATUS', focusCategory: reference.focusCategory }
+          : initialRoute;
       const response = await this.respond({
         userId: input.userId,
         persona: conversation.persona,
@@ -129,9 +142,11 @@ export class NovaReadOnlyOrchestratorService {
         route,
         history: recentMessages,
       });
-      const state = reference ?? (route.kind === 'FINANCIAL_STATUS'
+      // Mutação bloqueada também não disputa o estado semântico: a conversa
+      // não mudou de foco por causa de um pedido recusado.
+      const state = blockedMutation ? null : (reference ?? (route.kind === 'FINANCIAL_STATUS'
         ? { intentFamily: 'FINANCIAL_STATUS' as const, focusCategory: route.focusCategory, focusType: route.focusCategory ? 'CATEGORY' as const : 'SET' as const, setReference: route.focusCategory ?? 'OVERDUE_COMMITMENTS' }
-        : null);
+        : null));
       const completed = await this.dependencies.persistence.completeReadOnlyTurn({
         turnId: claim.id,
         conversationId: input.conversationId,
