@@ -5,7 +5,14 @@ export type NovaReadOnlyRoute =
   | { kind: 'FINANCIAL_STATUS'; focusCategory?: FinancialStatusCategoryDTO['type'] }
   | { kind: 'DAILY_OVERVIEW' }
   | { kind: 'BLOCKED_MUTATION' }
-  | { kind: 'UNSUPPORTED' };
+  /**
+   * Pergunta de leitura que não casa com nenhuma capacidade determinística.
+   * Antes da PR10.4 chamava-se `UNSUPPORTED` e devolvia recusa fixa; agora é
+   * composta pelo `responseProvider`. O nome mudou porque a semântica mudou:
+   * a mensagem passou a ser atendida, não recusada. Continua sendo o ÚLTIMO
+   * ramo — `BLOCKED_MUTATION` é avaliado antes e permanece intocado.
+   */
+  | { kind: 'OPEN_QUESTION' };
 
 const guard = new FinancialIntentGuard();
 const DAILY_TERMS = /\b(?:resumo|visao|panorama|prioridades|importante|dia|hoje)\b/u;
@@ -24,5 +31,5 @@ export function routeNovaReadOnlyMessage(message: string): NovaReadOnlyRoute {
     return { kind: 'FINANCIAL_STATUS', focusCategory: resolveFinancialFocusCategory(message) };
   }
   if (DAILY_TERMS.test(value) && DAILY_REQUEST.test(value)) return { kind: 'DAILY_OVERVIEW' };
-  return { kind: 'UNSUPPORTED' };
+  return { kind: 'OPEN_QUESTION' };
 }

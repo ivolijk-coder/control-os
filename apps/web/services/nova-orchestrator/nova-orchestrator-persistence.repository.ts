@@ -344,6 +344,16 @@ export class PrismaNovaOrchestratorPersistence {
     focusCategory: string | null;
     focusType: string | null;
     focusReference: NovaReferenceSelection | null;
+    /**
+     * `false` conclui o turno e grava o par de mensagens SEM tocar
+     * `nova_conversation_states`. Existe porque o avanço de estado era
+     * incondicional: um turno sem referência financeira sobrescrevia
+     * `intentFamily`/`focusCategory` e, como `fromState()` só recupera
+     * família `FINANCIAL_STATUS`, apagava o foco persistido da conversa.
+     * Preservar é o comportamento correto para turnos não financeiros; os
+     * financeiros seguem avançando exatamente como antes.
+     */
+    advanceSemanticState: boolean;
     userContent: string;
     assistantContent: string;
   }): Promise<{ turn: NovaTurnRecord; messages: NovaPersistedPublicMessage[] } | null> {
@@ -383,39 +393,45 @@ export class PrismaNovaOrchestratorPersistence {
         ],
       });
 
-      // Serializa apenas a finalização desta conversa; nenhuma chamada externa ocorre na transação.
-      await tx.$queryRaw(Prisma.sql`SELECT id FROM nova_conversations WHERE id = ${input.conversationId}::uuid FOR UPDATE`);
-      const currentState = await tx.novaConversationState.findUnique({ where: { conversationId: input.conversationId } });
-      const currentSource = currentState
-        ? await tx.novaTurn.findUnique({ where: { id: currentState.sourceTurnId }, select: { createdAt: true, id: true } })
-        : null;
-      const thisTurn = await tx.novaTurn.findUniqueOrThrow({ where: { id: input.turnId }, select: { createdAt: true, id: true } });
-      const shouldAdvanceState = !currentSource
-        || currentSource.createdAt < thisTurn.createdAt
-        || (currentSource.createdAt.getTime() === thisTurn.createdAt.getTime() && currentSource.id <= thisTurn.id);
-      if (shouldAdvanceState) {
-        await tx.novaConversationState.upsert({
-          where: { conversationId: input.conversationId },
-          create: {
-            conversationId: input.conversationId,
-            userId: input.userId,
-            intentFamily: input.intentFamily,
-            focusCategory: input.focusCategory,
-            focusType: input.focusType,
-            focusReference: focusReference ?? Prisma.JsonNull,
-            sourceTurnId: input.turnId,
-            expiresAt: new Date(input.now.getTime() + NOVA_ORCHESTRATOR_PERSISTENCE.semanticStateTtlMs),
-          },
-          update: {
-            intentFamily: input.intentFamily,
-            focusCategory: input.focusCategory,
-            focusType: input.focusType,
-            focusReference: focusReference ?? Prisma.JsonNull,
-            sourceTurnId: input.turnId,
-            expiresAt: new Date(input.now.getTime() + NOVA_ORCHESTRATOR_PERSISTENCE.semanticStateTtlMs),
-            version: { increment: 1 },
-          },
-        });
+      // Turno que não resolveu referência financeira não disputa o estado
+      // semântico: não lê, não serializa e não escreve. Além de preservar o
+      // foco da conversa, isso evita tomar o lock desta conversa num turno
+      // que nada tem a decidir sobre ela.
+      if (input.advanceSemanticState) {
+        // Serializa apenas a finalização desta conversa; nenhuma chamada externa ocorre na transação.
+        await tx.$queryRaw(Prisma.sql`SELECT id FROM nova_conversations WHERE id = ${input.conversationId}::uuid FOR UPDATE`);
+        const currentState = await tx.novaConversationState.findUnique({ where: { conversationId: input.conversationId } });
+        const currentSource = currentState
+          ? await tx.novaTurn.findUnique({ where: { id: currentState.sourceTurnId }, select: { createdAt: true, id: true } })
+          : null;
+        const thisTurn = await tx.novaTurn.findUniqueOrThrow({ where: { id: input.turnId }, select: { createdAt: true, id: true } });
+        const shouldAdvanceState = !currentSource
+          || currentSource.createdAt < thisTurn.createdAt
+          || (currentSource.createdAt.getTime() === thisTurn.createdAt.getTime() && currentSource.id <= thisTurn.id);
+        if (shouldAdvanceState) {
+          await tx.novaConversationState.upsert({
+            where: { conversationId: input.conversationId },
+            create: {
+              conversationId: input.conversationId,
+              userId: input.userId,
+              intentFamily: input.intentFamily,
+              focusCategory: input.focusCategory,
+              focusType: input.focusType,
+              focusReference: focusReference ?? Prisma.JsonNull,
+              sourceTurnId: input.turnId,
+              expiresAt: new Date(input.now.getTime() + NOVA_ORCHESTRATOR_PERSISTENCE.semanticStateTtlMs),
+            },
+            update: {
+              intentFamily: input.intentFamily,
+              focusCategory: input.focusCategory,
+              focusType: input.focusType,
+              focusReference: focusReference ?? Prisma.JsonNull,
+              sourceTurnId: input.turnId,
+              expiresAt: new Date(input.now.getTime() + NOVA_ORCHESTRATOR_PERSISTENCE.semanticStateTtlMs),
+              version: { increment: 1 },
+            },
+          });
+        }
       }
 
       const messages = await tx.novaMessage.findMany({

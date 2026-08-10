@@ -32,6 +32,14 @@ const status = {
   ], generatedAt: now.toISOString(),
 };
 
+const userContext = {
+  profile: { id: 'user', name: 'Ivoli' },
+  documents: { total: 2, pendingAnalysis: 0, failedAnalysis: 0 },
+  operationalTasks: { pending: 1, waitingUser: 0 },
+  runtime: { referenceDate: '2026-08-09', generatedAt: now.toISOString(), timezone: 'America/Sao_Paulo' },
+  coverage: [{ domain: 'PROFILE' as const, status: 'AVAILABLE' as const }],
+};
+
 function harness(overrides: Record<string, unknown> = {}) {
   const persisted = [
     { id: 'm-user', role: 'USER' as const, content: 'Tenho empréstimos em atraso?', intent: 'FINANCIAL_STATUS', redacted: false, createdAt: now },
@@ -50,11 +58,14 @@ function harness(overrides: Record<string, unknown> = {}) {
   };
   const finances = { getStatus: vi.fn().mockResolvedValue(status) };
   const overview = { getOverview: vi.fn() };
+  const context = { getUserContext: vi.fn().mockResolvedValue(userContext) };
+  const responder = { compose: vi.fn().mockResolvedValue('Resposta composta pelo provedor.') };
   const service = new NovaReadOnlyOrchestratorService({
     persistence: persistence as never, finances, overview: overview as never,
+    context, responder,
     enabled: () => true, now: () => now, ownerId: () => 'owner',
   });
-  return { service, persistence, finances, overview };
+  return { service, persistence, finances, overview, context, responder };
 }
 
 describe('NovaReadOnlyOrchestratorService', () => {
@@ -62,6 +73,7 @@ describe('NovaReadOnlyOrchestratorService', () => {
     const { persistence } = harness();
     const service = new NovaReadOnlyOrchestratorService({
       persistence: persistence as never, finances: { getStatus: vi.fn() }, overview: { getOverview: vi.fn() } as never,
+      context: { getUserContext: vi.fn() }, responder: { compose: vi.fn() },
       enabled: () => false, now: () => now, ownerId: () => 'owner',
     });
     await expect(service.process({ userId: 'user', conversationId: 'conversation', clientTurnId: 'client', content: 'Tenho dívida?' })).resolves.toEqual({ kind: 'DISABLED' });

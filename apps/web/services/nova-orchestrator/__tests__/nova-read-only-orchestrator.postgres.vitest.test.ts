@@ -51,6 +51,7 @@ describe.runIf(enabled)('PR10.3 read-only orchestrator — PostgreSQL real', () 
       owner: claim!.processingOwner!, leaseToken: claim!.processingLeaseToken!, now: new Date(now.getTime() + 1),
       intentFamily: 'FINANCIAL_STATUS', focusCategory: 'LOAN', focusType: 'CATEGORY',
       focusReference: { kind: 'SET', setReference: 'LOAN', entityType: 'LOAN' },
+      advanceSemanticState: true,
       userContent: 'Minha senha: segredo123. Tenho empréstimo vencido?', assistantContent: 'Consulta real.',
     });
     expect(completed?.messages).toHaveLength(2);
@@ -71,7 +72,7 @@ describe.runIf(enabled)('PR10.3 read-only orchestrator — PostgreSQL real', () 
     await prisma.novaTurn.update({ where: { id: second!.turn.id }, data: { createdAt: new Date('2026-08-09T11:00:00Z') } });
     const claimOld = await repository.claimTurn({ turnId: first!.turn.id, conversationId: isolatedConversationId, userId, expectedVersion: first!.turn.version, owner: 'old', now: new Date('2026-08-09T12:00:00Z') });
     const claimNew = await repository.claimTurn({ turnId: second!.turn.id, conversationId: isolatedConversationId, userId, expectedVersion: second!.turn.version, owner: 'new', now: new Date('2026-08-09T12:00:00Z') });
-    const common = { conversationId: isolatedConversationId, userId, now: new Date('2026-08-09T12:00:01Z'), intentFamily: 'FINANCIAL_STATUS', focusType: 'CATEGORY', userContent: 'Pergunta', assistantContent: 'Resposta' };
+    const common = { conversationId: isolatedConversationId, userId, now: new Date('2026-08-09T12:00:01Z'), intentFamily: 'FINANCIAL_STATUS', focusType: 'CATEGORY', advanceSemanticState: true, userContent: 'Pergunta', assistantContent: 'Resposta' };
     await Promise.all([
       repository.completeReadOnlyTurn({ ...common, turnId: claimNew!.id, expectedVersion: claimNew!.version, owner: 'new', leaseToken: claimNew!.processingLeaseToken!, focusCategory: 'FINANCING', focusReference: { kind: 'SET', setReference: 'FINANCING', entityType: 'FINANCING' } }),
       repository.completeReadOnlyTurn({ ...common, turnId: claimOld!.id, expectedVersion: claimOld!.version, owner: 'old', leaseToken: claimOld!.processingLeaseToken!, focusCategory: 'LOAN', focusReference: { kind: 'SET', setReference: 'LOAN', entityType: 'LOAN' } }),
@@ -105,20 +106,35 @@ describe.runIf(enabled)('PR10.3 read-only orchestrator — PostgreSQL real', () 
       ], generatedAt: new Date('2026-08-09T18:00:00.000Z').toISOString(),
     };
 
-    async function buildService(overrides: { finances?: unknown; overview?: unknown } = {}) {
+    const contextFixture = {
+      profile: { id: userId, name: 'PR10.3' },
+      documents: { total: 0, pendingAnalysis: 0, failedAnalysis: 0 },
+      operationalTasks: { pending: 0, waitingUser: 0 },
+      runtime: { referenceDate: '2026-08-09', generatedAt: new Date('2026-08-09T18:00:00.000Z').toISOString(), timezone: 'America/Sao_Paulo' },
+      coverage: [{ domain: 'PROFILE' as const, status: 'AVAILABLE' as const }],
+    };
+
+    async function buildService(overrides: { finances?: unknown; overview?: unknown; responder?: unknown } = {}) {
       const { NovaReadOnlyOrchestratorService } = await import('../nova-read-only-orchestrator.service');
       const { novaOrchestratorPersistence } = await import('../nova-orchestrator-persistence.repository');
       const finances = (overrides.finances as { getStatus: ReturnType<typeof vi.fn> }) ?? { getStatus: vi.fn().mockResolvedValue(statusFixture) };
       const overview = (overrides.overview as { getOverview: ReturnType<typeof vi.fn> }) ?? { getOverview: vi.fn() };
+      // O provedor externo é sempre falso nos testes: nenhuma suíte deste
+      // repositório pode depender de rede nem de `OPENAI_API_KEY`.
+      const responder = (overrides.responder as { compose: ReturnType<typeof vi.fn> })
+        ?? { compose: vi.fn().mockResolvedValue('Resposta composta em teste.') };
+      const context = { getUserContext: vi.fn().mockResolvedValue(contextFixture) };
       const service = new NovaReadOnlyOrchestratorService({
         persistence: novaOrchestratorPersistence,
         finances: finances as never,
         overview: overview as never,
+        context: context as never,
+        responder,
         enabled: () => true,
         now: () => new Date('2026-08-09T18:00:00.000Z'),
         ownerId: () => `pilot-regression:${Math.random()}`,
       });
-      return { service, finances, overview };
+      return { service, finances, overview, responder, context };
     }
 
     it('process() com content cria exatamente um NovaTurn de verdade (bug original: PrismaClientValidationError antes do INSERT)', async () => {
@@ -188,6 +204,63 @@ describe.runIf(enabled)('PR10.3 read-only orchestrator — PostgreSQL real', () 
       // `PrismaClientValidationError` antes do INSERT. Chegar até aqui já
       // prova, contra o banco real, que a fronteira segura funciona mesmo
       // quando o TypeScript é contornado.
+    });
+
+    // P6 — BLOQUEANTE (PR10.4). Tradução automatizada dos Testes 2 e 4 do
+    // piloto em produção: uma pergunta aberta no meio da conversa não pode
+    // apagar o foco financeiro persistido. Antes desta PR o avanço de estado
+    // era incondicional e este cenário perdia o contexto.
+    it('P6 — pergunta não financeira não apaga o foco financeiro persistido', async () => {
+      const { prisma } = await import('@/lib/prisma');
+      const { novaOrchestratorPersistence: repository } = await import('../nova-orchestrator-persistence.repository');
+      const isolated = (await prisma.novaConversation.create({
+        data: { userId, channel: 'WEB', persona: 'NOVA', status: 'ACTIVE', activeKey: `pr10.4-focus:${userId}` },
+      })).id;
+      const at = new Date('2026-08-09T18:00:00.000Z');
+      const readState = () => repository.getSemanticState({ conversationId: isolated, userId, now: at });
+
+      const { service, responder } = await buildService();
+
+      await service.process({ userId, conversationId: isolated, clientTurnId: 'pr10.4-focus-1', content: 'Tenho contas fixas em atraso?' });
+      const afterFinancial = await readState();
+      expect(afterFinancial?.focusCategory).toBe('FIXED_ACCOUNT');
+
+      await service.process({ userId, conversationId: isolated, clientTurnId: 'pr10.4-focus-2', content: 'Você lembra do que conversamos ontem?' });
+      expect(responder.compose).toHaveBeenCalledOnce();
+      const afterOpen = await readState();
+      // Estado intacto: mesma família, mesmo foco, mesma versão e mesmo
+      // turno de origem — a pergunta aberta não disputou o estado.
+      expect(afterOpen?.intentFamily).toBe('FINANCIAL_STATUS');
+      expect(afterOpen?.focusCategory).toBe('FIXED_ACCOUNT');
+      expect(afterOpen?.version).toBe(afterFinancial?.version);
+      expect(afterOpen?.sourceTurnId).toBe(afterFinancial?.sourceTurnId);
+
+      // E o follow-up anafórico continua recuperando o foco pelo estado.
+      await service.process({ userId, conversationId: isolated, clientTurnId: 'pr10.4-focus-3', content: 'Quais são os valores?' });
+      const followUp = await prisma.novaTurn.findFirstOrThrow({ where: { conversationId: isolated, clientTurnId: 'pr10.4-focus-3' } });
+      expect(followUp.intentFamily).toBe('FINANCIAL_STATUS');
+      expect(followUp.focusCategory).toBe('FIXED_ACCOUNT');
+      expect(await prisma.novaConversationState.count({ where: { conversationId: isolated } })).toBe(1);
+    });
+
+    // P9 — idempotência preservada na capacidade nova: replay não paga uma
+    // segunda chamada ao provedor externo nem duplica mensagens.
+    it('P9 — replay de pergunta aberta não chama o provedor duas vezes nem duplica mensagens', async () => {
+      const { prisma } = await import('@/lib/prisma');
+      const isolated = (await prisma.novaConversation.create({
+        data: { userId, channel: 'WEB', persona: 'NOVA', status: 'ACTIVE', activeKey: `pr10.4-replay:${userId}` },
+      })).id;
+      const responder = { compose: vi.fn().mockResolvedValue('Resposta composta em teste.') };
+      const { service } = await buildService({ responder });
+
+      const first = await service.process({ userId, conversationId: isolated, clientTurnId: 'pr10.4-replay-1', content: 'Como você funciona por aqui?' });
+      const second = await service.process({ userId, conversationId: isolated, clientTurnId: 'pr10.4-replay-1', content: 'Como você funciona por aqui?' });
+
+      expect(responder.compose).toHaveBeenCalledOnce();
+      expect(first.kind === 'RESULT' && first.result.status).toBe('COMPLETED');
+      expect(second.kind === 'RESULT' && second.result.status).toBe('COMPLETED');
+      expect(await prisma.novaTurn.count({ where: { conversationId: isolated, clientTurnId: 'pr10.4-replay-1' } })).toBe(1);
+      expect(await prisma.novaMessage.count({ where: { conversationId: isolated } })).toBe(2);
     });
   });
 });

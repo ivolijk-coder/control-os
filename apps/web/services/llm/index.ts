@@ -4,7 +4,7 @@
  * e `services/action-engine/index.ts` — consumidores importam só daqui.
  */
 export type { LLMProvider } from './llm.interfaces';
-export type { LLMRequest, LLMResponse } from './llm.types';
+export type { LLMRequest, LLMResponse, LLMResponseFormat } from './llm.types';
 export { LLMProviderError } from './errors';
 export type { LLMProviderErrorCode } from './errors';
 export { MockLLMProvider } from './providers/mock-llm-provider';
