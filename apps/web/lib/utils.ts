@@ -50,6 +50,15 @@ export function formatRelativeTime(date: Date): string {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(date);
 }
 
+/**
+ * Primeiro nome, para saudações. "Ivoli Jr" vira "Ivoli" — cumprimentar
+ * pelo nome completo soa a formulário, não a conversa. Devolve string vazia
+ * quando ainda não há nome, e quem consome decide o que fazer com isso.
+ */
+export function firstName(name: string | undefined | null): string {
+  return name?.trim().split(/\s+/)[0] ?? '';
+}
+
 /** Retorna as iniciais de um nome, usadas em avatares de fallback. */
 export function getInitials(name: string): string {
   return name

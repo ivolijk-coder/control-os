@@ -10,7 +10,8 @@ import { Avatar, AvatarFallback, Separator } from '@control-os/ui';
 import { cn, getInitials } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
 import type { NavItem } from '@control-os/types';
-import { MOCK_NAV_ITEMS, MOCK_USER } from '@/lib/mock-data';
+import { MOCK_NAV_ITEMS } from '@/lib/mock-data';
+import { useAccount } from '@/lib/use-account';
 import { ICON_MAP } from './icon-map';
 import { PersonaIdentityMark } from '@/components/nova/persona-identity-mark';
 
@@ -119,6 +120,7 @@ export function Sidebar() {
   const setMobileNavOpen = useAppStore((s) => s.setMobileNavOpen);
   const isMobile = useMediaQuery(MOBILE_BREAKPOINT_QUERY);
   const effectiveCollapsed = isMobile ? false : collapsed;
+  const account = useAccount();
 
   const financeItems = React.useMemo(() => MOCK_NAV_ITEMS.filter((item) => FINANCE_ITEM_IDS.has(item.id)), []);
   const mainItems = React.useMemo(() => MOCK_NAV_ITEMS.filter((item) => !FINANCE_ITEM_IDS.has(item.id)), []);
@@ -160,8 +162,21 @@ export function Sidebar() {
 
         <Separator />
         <div className="flex items-center gap-3 p-3" data-plan="pro">
-          <Avatar className="h-8 w-8 ring-1 ring-white/10"><AvatarFallback>{getInitials(MOCK_USER.name)}</AvatarFallback></Avatar>
-          {!effectiveCollapsed && <div className="flex min-w-0 flex-1 flex-col"><span className="truncate text-sm font-medium text-text-primary">{MOCK_USER.name}</span><span className="truncate text-xs text-text-tertiary">{MOCK_USER.company}</span></div>}
+          {/* Rodapé da sidebar: exibia `MOCK_USER` — nome e empresa de
+              exemplo, fixos no código, para TODA conta. Agora é a sessão
+              real. `company` não existe em `/api/auth/me`; no lugar dele, o
+              e-mail, que é dado de verdade e identifica a conta. */}
+          <Avatar className="h-8 w-8 ring-1 ring-white/10">
+            <AvatarFallback>
+              {account ? getInitials(account.name) : <ICON_MAP.User className="h-4 w-4 text-text-tertiary" />}
+            </AvatarFallback>
+          </Avatar>
+          {!effectiveCollapsed && (
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-sm font-medium text-text-primary">{account?.name ?? '\u00a0'}</span>
+              <span className="truncate text-xs text-text-tertiary">{account?.email ?? '\u00a0'}</span>
+            </div>
+          )}
           {!isMobile && <button type="button" onClick={toggleSidebar} aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'} title={collapsed ? 'Expandir menu' : 'Recolher menu'} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-text-tertiary hover:bg-white/[0.06] hover:text-text-primary">{collapsed ? <ICON_MAP.ChevronsRight className="h-4 w-4" /> : <ICON_MAP.ChevronsLeft className="h-4 w-4" />}</button>}
         </div>
       </motion.aside>

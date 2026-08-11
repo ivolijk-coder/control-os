@@ -2,6 +2,7 @@
 
 import { ArrowUpRight, BookOpenText, Compass, Flame, Target } from 'lucide-react';
 import { useNovaContext } from '@/lib/use-nova-context';
+import { PersonaIdentityMark } from '@/components/nova/persona-identity-mark';
 
 interface LegendaryCommandOverviewProps {
   onAction: (prompt: string) => void;
@@ -29,12 +30,18 @@ export function LegendaryCommandOverview({ onAction }: LegendaryCommandOverviewP
           <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-accent-gold sm:mb-3 sm:text-[11px]">
             <span className="h-1.5 w-1.5 rounded-full bg-accent-gold" /> LEGENDARY · Mentor
           </div>
-          <h1 className="text-[2rem] font-semibold leading-tight tracking-[-0.04em] text-text-primary sm:text-4xl">Visão para avançar, {userName}.</h1>
+          <h1 className="text-[2rem] font-semibold leading-tight tracking-[-0.04em] text-text-primary sm:text-4xl">
+            {userName ? `Visão para avançar, ${userName}.` : 'Visão para avançar.'}
+          </h1>
           <p className="mt-1 text-sm text-text-secondary sm:mt-2">Estratégia, evolução e clareza para sua próxima fase.</p>
         </div>
-        <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border border-accent-gold/30 bg-accent-gold/10 text-sm font-semibold text-accent-gold sm:flex">
-          L
-        </div>
+        {/* `hidden sm:block` num wrapper, e não na própria marca: `block` e
+            `hidden` são a MESMA propriedade no Tailwind, e quem vence não é a
+            ordem na string de classes, é a ordem no CSS gerado. Wrapper deixa
+            a intenção explícita em vez de depender disso. */}
+        <span className="hidden shrink-0 sm:block">
+          <PersonaIdentityMark persona="legendary" size={40} />
+        </span>
       </header>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(17rem,0.75fr)]">

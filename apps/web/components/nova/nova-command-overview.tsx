@@ -4,6 +4,7 @@ import * as React from 'react';
 import { ArrowUpRight, CalendarDays, CheckCircle2, CircleAlert, Sparkles } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { useNovaContext } from '@/lib/use-nova-context';
+import { PersonaIdentityMark } from '@/components/nova/persona-identity-mark';
 import { toLocalDateString } from '@/services/nova';
 
 interface NovaCommandOverviewProps {
@@ -13,6 +14,12 @@ interface NovaCommandOverviewProps {
 /**
  * A primeira tela da NOVA: uma superfície de decisão, não uma apresentação
  * da IA. Mostra só o que pede atenção e oferece uma próxima ação objetiva.
+ *
+ * Identidade visual: o círculo do canto exibia a LETRA `N`, escrita à mão no
+ * JSX. Uma inicial de fonte fazendo papel de marca — exatamente o que a
+ * marca oficial existe para não precisar. Agora é `PersonaIdentityMark`, o
+ * mesmo componente e o mesmo asset (`/personas/nova-launcher-c-clean.png`)
+ * já usados no seletor e na navegação. Letra é pessoa; símbolo é produto.
  */
 export function NovaCommandOverview({ onAction }: NovaCommandOverviewProps) {
   const { userName, debts, habits, agendaEvents, missions } = useNovaContext();
@@ -35,12 +42,20 @@ export function NovaCommandOverview({ onAction }: NovaCommandOverviewProps) {
           <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-accent-blue sm:mb-3 sm:text-[11px]">
             <span className="h-1.5 w-1.5 rounded-full bg-accent-blue" /> NOVA · Online
           </div>
-          <h1 className="text-[2rem] font-semibold leading-tight tracking-[-0.04em] text-text-primary sm:text-4xl">Bom dia, {userName}.</h1>
+          {/* Sem nome ainda (resposta de `/api/auth/me` em voo, ou sessão
+              expirada), cumprimenta sem nome — nunca com um inventado. */}
+          <h1 className="text-[2rem] font-semibold leading-tight tracking-[-0.04em] text-text-primary sm:text-4xl">
+            {userName ? `Bom dia, ${userName}.` : 'Bom dia.'}
+          </h1>
           <p className="mt-1 text-sm text-text-secondary sm:mt-2">Foco no que move seu dia.</p>
         </div>
-        <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border border-accent-blue/30 bg-accent-blue/10 text-sm font-semibold text-accent-blue sm:flex">
-          N
-        </div>
+        {/* `hidden sm:block` num wrapper, e não na própria marca: `block` e
+            `hidden` são a MESMA propriedade no Tailwind, e quem vence não é a
+            ordem na string de classes, é a ordem no CSS gerado. Wrapper deixa
+            a intenção explícita em vez de depender disso. */}
+        <span className="hidden shrink-0 sm:block">
+          <PersonaIdentityMark persona="nova" size={40} />
+        </span>
       </header>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(17rem,0.75fr)]">
