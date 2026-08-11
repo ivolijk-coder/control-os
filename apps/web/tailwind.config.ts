@@ -19,6 +19,44 @@ const config: Config = {
         'text-primary': 'rgb(var(--text-primary-rgb) / <alpha-value>)',
         'text-secondary': 'rgb(var(--text-secondary-rgb) / <alpha-value>)',
         'text-tertiary': 'rgb(var(--text-tertiary-rgb) / <alpha-value>)',
+        // ----------------------------------------------------------------
+        // NAVEGAÇÃO — escura nos dois temas, por construção. Ver o bloco
+        // `--nav-*` em `globals.css`. Use `bg-nav`, `bg-nav-raised`,
+        // `border-nav-line/10`, `text-nav-1/2/3` e `text-nav-active`.
+        // ----------------------------------------------------------------
+        nav: {
+          DEFAULT: 'rgb(var(--nav-rgb) / <alpha-value>)',
+          raised: 'rgb(var(--nav-raised-rgb) / <alpha-value>)',
+          line: 'rgb(var(--nav-line-rgb) / <alpha-value>)',
+          1: 'rgb(var(--nav-1-rgb) / <alpha-value>)',
+          2: 'rgb(var(--nav-2-rgb) / <alpha-value>)',
+          3: 'rgb(var(--nav-3-rgb) / <alpha-value>)',
+          active: 'rgb(var(--nav-active-rgb) / <alpha-value>)',
+        },
+        // ----------------------------------------------------------------
+        // SEMÂNTICOS DE CONTEÚDO — mudam com o tema.
+        // `accent-*` abaixo continua existindo e intocado, mas é hex fixo:
+        // funciona no escuro e desbota no claro. Estes carregam SIGNIFICADO
+        // (marca, bom, atenção, crítico) e cada tema escolhe o tom que tem
+        // contraste nele. Em tela nova, prefira estes.
+        // ----------------------------------------------------------------
+        brand: {
+          DEFAULT: 'rgb(var(--brand-rgb) / <alpha-value>)',
+          soft: 'rgb(var(--brand-soft-rgb) / <alpha-value>)',
+          ink: 'rgb(var(--brand-ink-rgb) / <alpha-value>)',
+        },
+        good: {
+          DEFAULT: 'rgb(var(--good-rgb) / <alpha-value>)',
+          soft: 'rgb(var(--good-soft-rgb) / <alpha-value>)',
+        },
+        warn: {
+          DEFAULT: 'rgb(var(--warn-rgb) / <alpha-value>)',
+          soft: 'rgb(var(--warn-soft-rgb) / <alpha-value>)',
+        },
+        crit: {
+          DEFAULT: 'rgb(var(--crit-rgb) / <alpha-value>)',
+          soft: 'rgb(var(--crit-soft-rgb) / <alpha-value>)',
+        },
         accent: {
           green: '#22C55E',
           blue: '#3B82F6',
@@ -61,11 +99,16 @@ const config: Config = {
         full: '999px',
       },
       boxShadow: {
-        e1: '0 1px 2px rgba(0,0,0,.4)',
-        e2: '0 2px 8px rgba(0,0,0,.45)',
-        e3: '0 8px 24px rgba(0,0,0,.5)',
-        e4: '0 16px 48px rgba(0,0,0,.55)',
-        e5: '0 24px 64px rgba(0,0,0,.6)',
+        // Elevação agora vem do token, não de um hex fixo. Os valores do
+        // ESCURO são idênticos aos que estavam aqui — nada muda nele. O que
+        // isso resolve é o CLARO: uma sombra de `rgba(0,0,0,.4)` sobre papel
+        // branco não parece elevação, parece sujeira. Ver `--e1..--e5` em
+        // `globals.css`, onde cada tema define a sua.
+        e1: 'var(--e1)',
+        e2: 'var(--e2)',
+        e3: 'var(--e3)',
+        e4: 'var(--e4)',
+        e5: 'var(--e5)',
         // CONTROL OS — Etapa 10A: glow colorido e discreto para hover de
         // cards/botões premium — sempre combinado com uma sombra e1/e2 de
         // base (nunca substitui a elevação, só adiciona um halo de cor).
@@ -82,8 +125,10 @@ const config: Config = {
         // — dá a MESMA "espessura de vidro" pra toda superfície elevada do
         // sistema, não só o chrome de navegação. Aditivo — `e3`/`e5`
         // continuam intocados para quem ainda os usa diretamente.
-        'e3-glass': '0 8px 24px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05)',
-        'e5-glass': '0 24px 64px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.06)',
+        // Mesma história das variantes "vidro": a linha de luz por dentro é
+        // branca, o que some no claro; lá ela vira uma linha escura sutil.
+        'e3-glass': 'var(--e3-glass)',
+        'e5-glass': 'var(--e5-glass)',
       },
       backdropBlur: {
         sm: '8px',
