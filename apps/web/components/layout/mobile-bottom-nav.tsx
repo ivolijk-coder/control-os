@@ -81,7 +81,10 @@ export function MobileBottomNav() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.98 }}
             transition={{ duration: 0.18 }}
-            className="fixed inset-x-4 z-40 overflow-hidden rounded-2xl border border-nav-line/[0.1] bg-nav-raised/95 p-2 shadow-2xl backdrop-blur-xl md:hidden"
+            // Opaco pelo mesmo motivo da pílula abaixo (ver comentário lá):
+            // sobre conteúdo claro, o vidro lava a própria casca e derruba
+            // o contraste do subtítulo.
+            className="fixed inset-x-4 z-40 overflow-hidden rounded-2xl border border-nav-line/[0.1] bg-nav-raised p-2 shadow-2xl md:hidden"
             // Sobe a partir do orb, não do canto: precisa limpar a altura da
             // barra + o quanto o orb se eleva acima dela + a safe area.
             style={{ bottom: 'calc(6.25rem + env(safe-area-inset-bottom))' }}
@@ -102,7 +105,13 @@ export function MobileBottomNav() {
       >
         <nav
           aria-label="Navegação principal"
-          className="pointer-events-auto relative flex items-center justify-around rounded-[26px] border border-nav-line/[0.08] bg-nav/95 px-1 py-2 shadow-e3-glass backdrop-blur-xl"
+          // A pílula era `bg-nav/95` com desfoque atrás. Vidro só funciona
+          // quando o que está atrás é escuro: com conteúdo claro rolando por
+          // baixo, 5% da página vaza para dentro da casca, sobe a superfície
+          // e derruba `nav-3` para 4.50:1 — no limite, e piorando conforme o
+          // conteúdo por trás fica mais claro. Opaco, a casca é sempre a
+          // casca. No escuro a diferença é imperceptível.
+          className="pointer-events-auto relative flex items-center justify-around rounded-[26px] border border-nav-line/[0.08] bg-nav px-1 py-2 shadow-e3-glass"
         >
           <MobileNavLink href="/dashboard" label="Visão" Icon={ICON_MAP.LayoutGrid} active={pathname === '/dashboard'} />
           <MobileNavLink href="/financeiro" label="Financeiro" Icon={ICON_MAP.Wallet} active={pathname?.startsWith('/financeiro') ?? false} />

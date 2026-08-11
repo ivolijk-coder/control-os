@@ -35,7 +35,10 @@ export default function ConfiguracoesPage() {
   const [voicePreferences, setVoicePreferences] = React.useState<Record<NovaPersona, OpenAIVoice>>({ nova: 'nova', legendary: 'onyx' });
   const [testingVoice, setTestingVoice] = React.useState<NovaPersona | null>(null);
   const [voiceMessage, setVoiceMessage] = React.useState<string | null>(null);
-  const [theme, setTheme] = React.useState<AppTheme>('dark');
+  // Semente igual ao padrão do produto (ver `getThemePreference`): com o
+  // claro virando padrão, deixar `'dark'` aqui faria o cartão "Escuro"
+  // nascer marcado por um quadro antes de o efeito corrigir.
+  const [theme, setTheme] = React.useState<AppTheme>('light');
 
   React.useEffect(() => {
     fetch('/api/account/whatsapp')
@@ -163,7 +166,7 @@ export default function ConfiguracoesPage() {
               );
             })}
           </div>
-          <p className="text-xs text-text-tertiary">A preferência é salva neste dispositivo. Você pode voltar ao escuro quando quiser.</p>
+          <p className="text-xs text-text-tertiary">O claro é o padrão. A preferência é salva neste dispositivo e você pode trocar quando quiser.</p>
         </GlassCard>
       </FadeIn>
 

@@ -209,7 +209,11 @@ export function NovaInput({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 6, scale: 0.98 }}
             transition={transitionOut(0.2)}
-            className="absolute bottom-full left-1/2 mb-3 max-w-[90%] -translate-x-1/2 rounded-2xl bg-white px-4 py-2 text-sm font-medium text-black shadow-e4"
+            // A bolha era `bg-white text-black` fixo — uma ilha branca que
+            // no tema claro se perdia contra a própria página. Agora é a
+            // mesma superfície das bolhas da conversa (`bg-card`), com a
+            // borda dando o recorte que a cor sozinha dava antes.
+            className="absolute bottom-full left-1/2 mb-3 max-w-[90%] -translate-x-1/2 rounded-2xl border border-tint/10 bg-card px-4 py-2 text-sm font-medium text-text-primary shadow-e4"
           >
             {displayValue}
           </motion.div>
@@ -219,14 +223,21 @@ export function NovaInput({
       <form
         onSubmit={handleSubmit}
         className={cn(
-          'group relative flex items-center gap-3 rounded-xl border bg-card/75 px-4 py-3 shadow-e4 backdrop-blur-xl transition-colors duration-base ease-out',
+          // O campo era `bg-card/75`: no escuro isso dá quase a cor do
+          // cartão, mas no claro deixava branco translúcido sobre um rodapé
+          // quase branco — o campo perdia a borda. Sólido resolve, e no
+          // escuro a diferença é imperceptível (#101010 contra ~#0d0d0d).
+          // A sombra desce de `e4` para `e2` pelo mesmo motivo: no claro,
+          // `e4` num campo de texto é bloom, não elevação.
+          'group relative flex items-center gap-3 rounded-xl border bg-card px-4 py-3 shadow-e2 transition-colors duration-base ease-out',
           // CONTROL OS — Etapa 16E: o brilho de foco do campo (a "casa" da
-          // conversa) segue a mesma dualidade roxo/dourado do avatar e do
-          // seletor — antes era sempre roxo, mesmo com LEGENDARY ativo.
+          // conversa) segue a dualidade da persona ativa. O roxo saiu: a
+          // marca oficial da NOVA é azul (ver `nova-launcher-c-clean.png`),
+          // e este era um dos pontos que contrariavam a própria marca.
           focused || isListening
             ? isLegendary
               ? 'border-accent-gold/40'
-              : 'border-accent-purple/40'
+              : 'border-brand/40'
             : 'border-tint/[0.08] hover:border-tint/[0.14]',
           className
         )}
@@ -273,13 +284,16 @@ export function NovaInput({
             // botão mais importante do produto — a NOVA é o centro absoluto
             // da experiência, e este é o gatilho de voz dela.
             'flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors duration-fast ease-out disabled:cursor-not-allowed disabled:opacity-30',
+            // Ativo, o microfone da NOVA era `bg-accent-purple text-white`
+            // — 3.60:1, reprova. `brand`/`brand-ink` acerta os dois temas
+            // (5.96:1 no escuro, 5.99:1 no claro) e é a cor da marca.
             isLegendary
               ? isListening
                 ? 'bg-accent-gold text-black'
                 : 'text-accent-gold hover:bg-accent-gold/10'
               : isListening
-                ? 'bg-accent-purple text-white'
-                : 'text-accent-purple hover:bg-accent-purple/10'
+                ? 'bg-brand text-brand-ink'
+                : 'text-brand hover:bg-brand/10'
           )}
         >
           <Mic className="h-4 w-4" />
@@ -335,12 +349,16 @@ export function NovaInput({
           // CONTROL OS — Etapa 12B: h-9/w-9 (36px) → h-11/w-11 (44px), o
           // alvo de toque confortável de referência (Apple HIG) — ação de
           // envio é a mais frequente do campo, merece o maior botão dos dois.
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-black transition-opacity duration-fast ease-out disabled:opacity-30"
+          // Era `bg-white text-black`: um círculo branco que só tinha forma
+          // porque o fundo atrás dele era preto. No tema claro ele some
+          // contra o próprio campo. Agora é a cor da marca, igual ao botão
+          // primário do `packages/ui`.
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand text-brand-ink shadow-e1 transition-opacity duration-fast ease-out hover:bg-brand-hover disabled:opacity-30"
         >
           {justSent ? <Check className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
         </motion.button>
       </form>
-      {voiceError && <p role="status" className="mt-2 px-1 text-xs text-accent-red">{voiceError}</p>}
+      {voiceError && <p role="status" className="mt-2 px-1 text-xs text-crit">{voiceError}</p>}
     </div>
   );
 }

@@ -1396,7 +1396,13 @@ export function NovaWorkspace({
             {conversationArea}
           </div>
         </div>
-        <div className="shrink-0 border-t border-tint/[0.07] bg-[#060708]/95 px-4 py-3 backdrop-blur-xl sm:px-6">
+        {/* O rodapé do compositor era `bg-[#060708]/95` — um preto absoluto
+            escrito na mão, que nenhum tema conseguia acompanhar. Contra o
+            conteúdo claro ele virava uma faixa preta atravessando o painel.
+            Agora usa a mesma superfície do rodapé do `variant="docked"`
+            (`bg-bg/95`): no escuro o valor é praticamente o de antes
+            (#050505 contra #060708), no claro acompanha a página. */}
+        <div className="shrink-0 border-t border-tint/[0.07] bg-bg/95 px-4 py-3 backdrop-blur-xl sm:px-6">
           {inputRow}
         </div>
       </div>
