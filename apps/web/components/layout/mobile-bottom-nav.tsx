@@ -81,12 +81,12 @@ export function MobileBottomNav() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.98 }}
             transition={{ duration: 0.18 }}
-            className="fixed inset-x-4 z-40 overflow-hidden rounded-2xl border border-white/[0.1] bg-[#090b10]/95 p-2 shadow-2xl backdrop-blur-xl md:hidden"
+            className="fixed inset-x-4 z-40 overflow-hidden rounded-2xl border border-nav-line/[0.1] bg-nav-raised/95 p-2 shadow-2xl backdrop-blur-xl md:hidden"
             // Sobe a partir do orb, não do canto: precisa limpar a altura da
             // barra + o quanto o orb se eleva acima dela + a safe area.
             style={{ bottom: 'calc(6.25rem + env(safe-area-inset-bottom))' }}
           >
-            <p className="px-3 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-text-tertiary">Escolha sua IA</p>
+            <p className="px-3 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-nav-3">Escolha sua IA</p>
             <PersonaMenuOption persona="nova" active={effectivePersona === 'nova'} onClick={() => choosePersona('/nova')} />
             <PersonaMenuOption persona="legendary" active={effectivePersona === 'legendary'} onClick={() => choosePersona('/legendary')} />
           </motion.div>
@@ -102,7 +102,7 @@ export function MobileBottomNav() {
       >
         <nav
           aria-label="Navegação principal"
-          className="pointer-events-auto relative flex items-center justify-around rounded-[26px] border border-white/[0.08] bg-bg/85 px-1 py-2 shadow-e3-glass backdrop-blur-xl"
+          className="pointer-events-auto relative flex items-center justify-around rounded-[26px] border border-nav-line/[0.08] bg-nav/95 px-1 py-2 shadow-e3-glass backdrop-blur-xl"
         >
           <MobileNavLink href="/dashboard" label="Visão" Icon={ICON_MAP.LayoutGrid} active={pathname === '/dashboard'} />
           <MobileNavLink href="/financeiro" label="Financeiro" Icon={ICON_MAP.Wallet} active={pathname?.startsWith('/financeiro') ?? false} />
@@ -116,12 +116,12 @@ export function MobileBottomNav() {
               aria-expanded={personaMenuOpen}
               aria-label={`Escolher NOVA ou LEGENDARY (ativa: ${legendary ? 'LEGENDARY' : 'NOVA'})`}
               className={cn(
-                'absolute grid place-items-center rounded-full bg-bg shadow-e3 transition-transform duration-fast ease-out active:scale-95',
+                'absolute grid place-items-center rounded-full bg-nav shadow-e3 transition-transform duration-fast ease-out active:scale-95',
                 // O botão antigo não tinha estilo de foco visível — só o
                 // outline padrão do navegador, que some contra o fundo
                 // escuro. Aditivo: não muda nada no toque.
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
-                legendary ? 'focus-visible:ring-accent-gold' : 'focus-visible:ring-accent-blue'
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-nav',
+                legendary ? 'focus-visible:ring-accent-gold' : 'focus-visible:ring-nav-active'
               )}
               style={{ width: ORB_SIZE, height: ORB_SIZE, top: -ORB_LIFT }}
             >
@@ -149,7 +149,7 @@ export function MobileBottomNav() {
               aria-hidden="true"
               className={cn(
                 'pointer-events-none absolute bottom-1.5 left-1/2 h-0.5 w-6 -translate-x-1/2 rounded-full',
-                legendary ? 'bg-accent-gold' : 'bg-accent-blue'
+                legendary ? 'bg-accent-gold' : 'bg-nav-active'
               )}
             />
           )}
@@ -165,12 +165,12 @@ function PersonaMenuOption({ persona, active, onClick }: { persona: PersonaIdent
     <button
       type="button"
       onClick={onClick}
-      className={cn('flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors', active ? legendary ? 'bg-[#ff8d20]/10' : 'bg-[#0c96ff]/10' : 'hover:bg-white/[0.05]')}
+      className={cn('flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors', active ? legendary ? 'bg-accent-gold/10' : 'bg-nav-active/10' : 'hover:bg-nav-line/[0.05]')}
     >
       <PersonaIdentityMark persona={persona} size={34} />
       <span className="min-w-0 flex-1">
         <span className={cn('block text-xs font-semibold tracking-[0.14em]', legendary ? 'text-[#ffd770]' : 'text-[#53ccff]')}>{legendary ? 'LEGENDARY' : 'NOVA'}</span>
-        <span className="mt-0.5 block text-[11px] text-text-tertiary">{legendary ? 'Mentor estratégico' : 'Inteligência operacional'}</span>
+        <span className="mt-0.5 block text-[11px] text-nav-3">{legendary ? 'Mentor estratégico' : 'Inteligência operacional'}</span>
       </span>
       {active && <Check className={cn('h-4 w-4', legendary ? 'text-[#ff9a22]' : 'text-[#20bfff]')} strokeWidth={3} />}
     </button>
@@ -203,8 +203,8 @@ function MobileNavLink({
         active
           ? accent === 'gold'
             ? 'text-accent-gold'
-            : 'text-accent-blue'
-          : 'text-text-tertiary hover:text-text-secondary'
+            : 'text-nav-active'
+          : 'text-nav-3 hover:text-nav-2'
       )}
     >
       {persona ? <PersonaIdentityMark persona={persona} size={21} /> : Icon ? <Icon className="h-5 w-5" /> : null}
