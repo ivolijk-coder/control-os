@@ -20,12 +20,18 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
+        // O primário era um botão BRANCO com texto preto. No tema escuro
+        // funciona; no claro é branco sobre branco — invisível. E o modelo
+        // aprovado da identidade mostra a ação principal na cor da marca.
+        // Passa a `brand`, que é azul no claro e azul mais claro no escuro,
+        // com `brand-ink` garantindo o contraste do texto nos dois.
+        // Esta É uma mudança visível também no escuro, e é intencional.
         primary:
-          'bg-gradient-to-b from-white to-white/90 text-black shadow-e1 hover:shadow-glow-purple active:scale-[0.98]',
+          'bg-brand text-brand-ink shadow-e1 hover:bg-brand-hover active:scale-[0.98]',
         secondary:
-          'bg-white/[0.06] text-text-primary border border-white/10 hover:border-white/20 hover:bg-white/[0.1] active:scale-[0.98]',
-        ghost: 'text-text-secondary hover:text-text-primary hover:bg-white/[0.06]',
-        danger: 'bg-accent-red text-white hover:bg-accent-red/90 active:scale-[0.98]',
+          'bg-tint/[0.06] text-text-primary border border-tint/10 hover:border-tint/20 hover:bg-tint/[0.1] active:scale-[0.98]',
+        ghost: 'text-text-secondary hover:text-text-primary hover:bg-tint/[0.06]',
+        danger: 'bg-crit text-crit-ink hover:bg-crit/90 active:scale-[0.98]',
         link: 'text-text-primary underline-offset-4 hover:underline',
       },
       size: {

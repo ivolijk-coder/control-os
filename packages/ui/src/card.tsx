@@ -67,9 +67,14 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
     <div
       ref={ref}
       className={cn(
-        'relative overflow-hidden rounded-xl border border-white/[0.08] bg-card/60 shadow-e3-glass backdrop-blur-md transition-all duration-base ease-out',
+        'relative overflow-hidden rounded-xl border border-tint/[0.08] bg-card/60 shadow-e3-glass backdrop-blur-md transition-all duration-base ease-out',
+        // Linha de luz no topo do cartão. Fica em `white` de propósito, e
+        // NÃO vira `tint`: é um realce de vidro escuro. Sobre o cartão
+        // branco do tema claro ela simplesmente não aparece — que é o
+        // comportamento certo, porque lá a elevação já vem da sombra
+        // (`--e3-glass`, que no claro traz a sua própria linha interna).
         'before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/20 before:to-transparent',
-        'hover:border-white/[0.14] hover:shadow-e4',
+        'hover:border-tint/[0.14] hover:shadow-e4',
         className
       )}
       {...props}
