@@ -52,7 +52,7 @@ export function CommandCenter() {
       title="Command Center"
       description="Busque e navegue pelo CONTROL OS"
     >
-      <div className="border-b border-white/[0.08] px-4 py-3">
+      <div className="border-b border-tint/[0.08] px-4 py-3">
         <input
           autoFocus
           value={query}
@@ -73,7 +73,7 @@ export function CommandCenter() {
               <button
                 type="button"
                 onClick={() => goTo(item.href)}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-text-secondary transition-colors duration-fast ease-out hover:bg-white/[0.06] hover:text-text-primary"
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-text-secondary transition-colors duration-fast ease-out hover:bg-tint/[0.06] hover:text-text-primary"
               >
                 <Icon className="h-4 w-4 shrink-0" aria-hidden />
                 {item.label}

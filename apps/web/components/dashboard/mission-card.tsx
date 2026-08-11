@@ -11,7 +11,7 @@ export function MissionCard({ mission }: { mission: Mission }) {
   const dueLabel = formatDueDate(mission.dueDate);
 
   return (
-    <Card className="p-4 transition-colors duration-fast ease-out hover:border-white/20">
+    <Card className="p-4 transition-colors duration-fast ease-out hover:border-tint/20">
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-medium leading-snug text-text-primary">{mission.title}</p>
         <MissionStatusBadge status={mission.status} />

@@ -47,7 +47,7 @@ export function TransactionDetailContent({
         <p className="mt-2 font-mono text-xl text-text-primary">{formatCurrency(transaction.amount)}</p>
       </div>
 
-      <dl className="grid gap-3 rounded-xl border border-border-subtle bg-white/[0.025] p-4 sm:grid-cols-2">
+      <dl className="grid gap-3 rounded-xl border border-border-subtle bg-tint/[0.025] p-4 sm:grid-cols-2">
         <DetailItem label="Categoria" value={transaction.category} />
         <DetailItem label="Conta" value={accountName} />
         <DetailItem label="Tipo" value={transaction.type} />

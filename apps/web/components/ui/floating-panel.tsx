@@ -40,6 +40,10 @@ export function FloatingPanel({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay
           className={cn(
+            // Véu do modal: preto nos DOIS temas, de propósito. A função
+            // dele é escurecer o que está atrás para destacar o que está na
+            // frente — no tema claro isso continua sendo escurecer, não
+            // clarear. Por isso NÃO vira `tint`.
             'fixed inset-0 z-50 bg-black/60 backdrop-blur-sm',
             'data-[state=open]:animate-in data-[state=closed]:animate-out',
             'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0'
@@ -47,7 +51,7 @@ export function FloatingPanel({
         />
         <DialogPrimitive.Content
           className={cn(
-            'fixed left-1/2 top-24 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 overflow-hidden rounded-2xl border border-white/[0.08] bg-card/80 shadow-e5-glass backdrop-blur-xl focus:outline-none',
+            'fixed left-1/2 top-24 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 overflow-hidden rounded-2xl border border-tint/[0.08] bg-card/80 shadow-e5-glass backdrop-blur-xl focus:outline-none',
             'data-[state=open]:animate-in data-[state=closed]:animate-out',
             'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
             'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',

@@ -42,7 +42,7 @@ export function MiniBarChart({ data }: { data: MiniBarChartDatum[] }) {
             <span className="text-text-secondary">{datum.label}</span>
             <span className="font-mono text-text-tertiary">{datum.displayValue}</span>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-tint/[0.06]">
             <div
               className={cn('h-full rounded-full transition-[width] duration-slow ease-out', BAR_ACCENT[datum.accent ?? 'purple'])}
               style={{ width: `${Math.max(4, (datum.value / max) * 100)}%` }}
@@ -125,7 +125,7 @@ export function WeekHeatmap({
                 title={dayLabels[dayIndex]}
                 className={cn(
                   'h-5 flex-1 rounded-[4px]',
-                  done ? 'bg-accent-green/70' : 'bg-white/[0.06]'
+                  done ? 'bg-accent-green/70' : 'bg-tint/[0.06]'
                 )}
               />
             ))}

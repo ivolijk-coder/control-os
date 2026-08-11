@@ -74,7 +74,7 @@ export default function HabitosPage() {
                 value={`${longestStreak} dia${longestStreak === 1 ? '' : 's'}`}
                 accent="purple"
               />
-              <div className="flex items-center gap-4 rounded-xl border border-white/[0.08] bg-card/60 p-5 shadow-e3 backdrop-blur-md">
+              <div className="flex items-center gap-4 rounded-xl border border-tint/[0.08] bg-card/60 p-5 shadow-e3 backdrop-blur-md">
                 <ProgressRing value={averageSuccessRate} size={52} strokeWidth={5} accent="blue">
                   <span className="font-mono text-xs font-semibold text-text-primary">{Math.round(averageSuccessRate)}%</span>
                 </ProgressRing>
@@ -119,7 +119,7 @@ export default function HabitosPage() {
                 {habits.map((habit) => (
                   <div
                     key={habit.id}
-                    className="flex items-center gap-4 rounded-xl border border-white/[0.08] bg-card/60 p-4 shadow-e2 backdrop-blur-sm"
+                    className="flex items-center gap-4 rounded-xl border border-tint/[0.08] bg-card/60 p-4 shadow-e2 backdrop-blur-sm"
                   >
                     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <p className="text-sm text-text-primary">{habit.title}</p>

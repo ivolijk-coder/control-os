@@ -198,7 +198,7 @@ export default function ParcelamentosPage() {
             <button
               type="button"
               onClick={() => setFormOpen((value) => !value)}
-              className="flex items-center gap-2 rounded-lg bg-accent-blue px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-blue/90"
+              className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-sm font-medium text-brand-ink hover:bg-brand-hover"
             >
               <Plus className="h-4 w-4" /> Adicionar contrato
             </button>
@@ -338,10 +338,10 @@ function SmartBlock({
 
 function StatusBadge({ status }: { status: FinancialInstallmentWithContractDto['status'] }) {
   const map: Record<typeof status, { label: string; className: string }> = {
-    PENDING: { label: 'Pendente', className: 'bg-white/[0.06] text-text-secondary' },
+    PENDING: { label: 'Pendente', className: 'bg-tint/[0.06] text-text-secondary' },
     OVERDUE: { label: 'Atrasada', className: 'bg-accent-red/10 text-accent-red' },
     PAID: { label: 'Paga', className: 'bg-accent-green/10 text-accent-green' },
-    CANCELLED: { label: 'Cancelada', className: 'bg-white/[0.06] text-text-tertiary' },
+    CANCELLED: { label: 'Cancelada', className: 'bg-tint/[0.06] text-text-tertiary' },
   };
   const { label, className } = map[status];
   return <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-xs font-medium', className)}>{label}</span>;
@@ -350,7 +350,7 @@ function StatusBadge({ status }: { status: FinancialInstallmentWithContractDto['
 function OriginBadge({ source }: { source: FinancialContractSource }) {
   const className =
     source === 'MANUAL'
-      ? 'bg-white/[0.06] text-text-tertiary'
+      ? 'bg-tint/[0.06] text-text-tertiary'
       : source === 'NOVA'
         ? 'bg-accent-purple/10 text-accent-purple'
         : 'bg-accent-blue/10 text-accent-blue';
@@ -525,12 +525,12 @@ function ContractDetailPanel({
       description="Progresso de quitação, valores e timeline das parcelas."
       className="max-h-[calc(100vh-8rem)] max-w-2xl overflow-y-auto"
     >
-      <div className="flex items-center justify-between border-b border-white/[0.08] px-5 py-4">
+      <div className="flex items-center justify-between border-b border-tint/[0.08] px-5 py-4">
         <div>
           <p className="text-sm font-semibold text-text-primary">Detalhe do contrato</p>
           <p className="mt-0.5 text-xs text-text-tertiary">Ciclo de vida completo das parcelas</p>
         </div>
-        <button type="button" onClick={onClose} aria-label="Fechar detalhes" className="rounded-lg p-2 text-text-secondary transition-colors hover:bg-white/[0.06] hover:text-text-primary">
+        <button type="button" onClick={onClose} aria-label="Fechar detalhes" className="rounded-lg p-2 text-text-secondary transition-colors hover:bg-tint/[0.06] hover:text-text-primary">
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -564,7 +564,7 @@ function ContractDetailPanel({
               <span>{contract.paidInstallments}/{contract.totalInstallments} pagas</span>
               <span>{progressPct}%</span>
             </div>
-            <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-white/[0.06]">
+            <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-tint/[0.06]">
               <div className="h-full rounded-full bg-accent-green transition-all" style={{ width: `${progressPct}%` }} />
             </div>
           </div>
@@ -646,7 +646,7 @@ function TimelineRow({
           </button>
         )}
         {installment.status === 'PAID' && (
-          <button type="button" disabled={undoSubmitting} onClick={onUndo} className="rounded-lg px-2.5 py-1 text-xs text-text-secondary hover:bg-white/[0.05] disabled:opacity-50">
+          <button type="button" disabled={undoSubmitting} onClick={onUndo} className="rounded-lg px-2.5 py-1 text-xs text-text-secondary hover:bg-tint/[0.05] disabled:opacity-50">
             Reverter pagamento
           </button>
         )}
@@ -744,10 +744,10 @@ function NewContractForm({
           </div>
         )}
         <div className="flex gap-2 sm:col-span-2">
-          <button disabled={saving} type="submit" className="rounded-lg bg-accent-blue px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-blue/90 disabled:opacity-50">
+          <button disabled={saving} type="submit" className="rounded-lg bg-brand px-4 py-2.5 text-sm font-medium text-brand-ink hover:bg-brand-hover disabled:opacity-50">
             {saving ? 'Criando…' : 'Criar contrato'}
           </button>
-          <button type="button" onClick={onCancel} className="rounded-lg px-3 py-2.5 text-sm text-text-secondary hover:bg-white/[0.05]">Cancelar</button>
+          <button type="button" onClick={onCancel} className="rounded-lg px-3 py-2.5 text-sm text-text-secondary hover:bg-tint/[0.05]">Cancelar</button>
         </div>
       </form>
     </GlassCard>

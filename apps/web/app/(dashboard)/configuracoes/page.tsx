@@ -120,7 +120,7 @@ export default function ConfiguracoesPage() {
 
       <FadeIn delay={0.05}>
         <GlassCard interactive={false} className="flex items-center gap-4 p-5">
-          <Avatar className="h-12 w-12 ring-1 ring-white/10">
+          <Avatar className="h-12 w-12 ring-1 ring-tint/10">
             <AvatarFallback>{getInitials(account?.name ?? 'Sua conta')}</AvatarFallback>
           </Avatar>
           <div className="flex min-w-0 flex-1 flex-col">
@@ -141,7 +141,7 @@ export default function ConfiguracoesPage() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             {([
-              { id: 'dark' as const, label: 'Escuro', description: 'Identidade CONTROL OS', Icon: Moon, preview: 'bg-[#080808] border-white/10' },
+              { id: 'dark' as const, label: 'Escuro', description: 'Identidade CONTROL OS', Icon: Moon, preview: 'bg-[#080808] border-tint/10' },
               { id: 'light' as const, label: 'Claro', description: 'Leve, limpo e estilo iPhone', Icon: Sun, preview: 'bg-[#f6f7fb] border-slate-200' },
             ]).map(({ id, label, description, Icon, preview }) => {
               const selected = theme === id;
@@ -150,7 +150,7 @@ export default function ConfiguracoesPage() {
                   key={id}
                   type="button"
                   onClick={() => updateTheme(id)}
-                  className={`relative flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${selected ? 'border-accent-blue bg-accent-blue/10' : 'border-border hover:bg-white/[0.04]'}`}
+                  className={`relative flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${selected ? 'border-accent-blue bg-accent-blue/10' : 'border-border hover:bg-tint/[0.04]'}`}
                   aria-pressed={selected}
                 >
                   <span className={`flex h-11 w-11 items-center justify-center rounded-lg border ${preview}`}><Icon className={`h-5 w-5 ${id === 'light' ? 'text-slate-700' : 'text-accent-blue'}`} /></span>
@@ -173,7 +173,7 @@ export default function ConfiguracoesPage() {
             <ICON_MAP.Settings className="h-4 w-4 shrink-0 text-text-tertiary" />
             <span className="text-sm font-medium text-text-primary">WhatsApp</span>
           </div>
-          <div className="flex flex-col gap-3 rounded-md bg-white/[0.04] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex flex-col gap-3 rounded-md bg-tint/[0.04] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div className="flex min-w-0 flex-col gap-1">
               <span className="text-xs text-text-tertiary">Status da conexão</span>
               <span className="text-sm text-text-primary">{whatsAppContent}</span>
@@ -181,7 +181,7 @@ export default function ConfiguracoesPage() {
             {whatsApp.status === 'active' ? (
               <span className="w-fit rounded-full bg-accent-green/15 px-2.5 py-1 text-xs font-medium text-accent-green">Vinculado</span>
             ) : (
-              <span className="w-fit rounded-full bg-white/[0.08] px-2.5 py-1 text-xs text-text-secondary">Pendente</span>
+              <span className="w-fit rounded-full bg-tint/[0.08] px-2.5 py-1 text-xs text-text-secondary">Pendente</span>
             )}
           </div>
           <p className="text-xs text-text-tertiary">Mensagens recebidas por um número vinculado são registradas somente na conta correspondente.</p>
@@ -214,7 +214,7 @@ export default function ConfiguracoesPage() {
           {(['nova', 'legendary'] as const).map((persona) => {
             const label = persona === 'nova' ? 'NOVA' : 'LEGENDARY';
             return (
-              <div key={persona} className="flex flex-col gap-3 rounded-md bg-white/[0.04] p-4 sm:flex-row sm:items-center">
+              <div key={persona} className="flex flex-col gap-3 rounded-md bg-tint/[0.04] p-4 sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-text-primary">{label}</p>
                   <p className="text-xs text-text-tertiary">Voz usada quando você fala com a {label}.</p>
@@ -222,7 +222,7 @@ export default function ConfiguracoesPage() {
                 <select
                   value={voicePreferences[persona]}
                   onChange={(event) => updateVoice(persona, event.target.value as OpenAIVoice)}
-                  className="rounded-md border border-white/[0.1] bg-black/20 px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-purple/60"
+                  className="rounded-md border border-tint/[0.1] bg-tint/[0.03] px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-purple/60"
                   aria-label={`Voz da ${label}`}
                 >
                   {OPENAI_VOICE_OPTIONS.map((voice) => <option key={voice.id} value={voice.id}>{voice.label} — {voice.description}</option>)}
@@ -231,7 +231,7 @@ export default function ConfiguracoesPage() {
                   type="button"
                   onClick={() => testVoice(persona)}
                   disabled={testingVoice !== null}
-                  className="rounded-md border border-white/[0.12] px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-md border border-tint/[0.12] px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-tint/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {testingVoice === persona ? 'Tocando…' : 'Ouvir voz'}
                 </button>

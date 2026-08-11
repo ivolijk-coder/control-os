@@ -23,7 +23,7 @@ const ACTOR_LABEL: Record<TimelineEvent['actor'], string> = {
 const ACTOR_CLASSES: Record<TimelineEvent['actor'], string> = {
   user: 'bg-accent-blue/15 text-accent-blue',
   nova: 'bg-accent-purple/15 text-accent-purple',
-  sistema: 'bg-white/[0.08] text-text-secondary',
+  sistema: 'bg-tint/[0.08] text-text-secondary',
 };
 
 /** Prévia da Timeline Inteligente (Control Feed™) exibida no Dashboard Vivo™. */

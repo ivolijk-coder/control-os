@@ -20,7 +20,7 @@ const ICON_COMPONENTS: Record<string, LucideIcon> = {
 
 function CategoryGlyph({ icon, color }: Pick<FinanceCategory, 'icon' | 'color'>) {
   const Icon = ICON_COMPONENTS[icon] ?? Tag;
-  return <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/[0.06]" style={{ color }}><Icon size={17} strokeWidth={1.9} /></span>;
+  return <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-tint/[0.06]" style={{ color }}><Icon size={17} strokeWidth={1.9} /></span>;
 }
 
 export default function FinanceCategoriesPage() {
@@ -115,14 +115,14 @@ export default function FinanceCategoriesPage() {
         <p className="mt-2 max-w-2xl text-sm text-text-secondary">Organize receitas e despesas. Arquivar preserva todos os lançamentos já registrados.</p>
       </header>
 
-      <section className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-5 shadow-sm">
+      <section className="rounded-2xl border border-tint/[0.09] bg-tint/[0.035] p-5 shadow-sm">
         <h2 className="text-base font-semibold text-text-primary">Nova categoria</h2>
         <form className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_150px_155px_auto]" onSubmit={createCategory}>
-          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Assinaturas" maxLength={80} className="h-11 rounded-xl border border-white/[0.1] bg-black/20 px-3 text-sm text-text-primary outline-none placeholder:text-text-tertiary focus:border-cyan-400/60" />
-          <select value={kind} onChange={(event) => setKind(event.target.value as CategoryKind)} className="h-11 rounded-xl border border-white/[0.1] bg-black/20 px-3 text-sm text-text-primary outline-none focus:border-cyan-400/60">
+          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Assinaturas" maxLength={80} className="h-11 rounded-xl border border-tint/[0.1] bg-tint/[0.03] px-3 text-sm text-text-primary outline-none placeholder:text-text-tertiary focus:border-cyan-400/60" />
+          <select value={kind} onChange={(event) => setKind(event.target.value as CategoryKind)} className="h-11 rounded-xl border border-tint/[0.1] bg-tint/[0.03] px-3 text-sm text-text-primary outline-none focus:border-cyan-400/60">
             <option value="despesa">Despesa</option><option value="receita">Receita</option>
           </select>
-          <select value={icon} onChange={(event) => setIcon(event.target.value)} aria-label="Ícone da categoria" className="h-11 rounded-xl border border-white/[0.1] bg-black/20 px-3 text-sm text-text-primary outline-none focus:border-cyan-400/60">
+          <select value={icon} onChange={(event) => setIcon(event.target.value)} aria-label="Ícone da categoria" className="h-11 rounded-xl border border-tint/[0.1] bg-tint/[0.03] px-3 text-sm text-text-primary outline-none focus:border-cyan-400/60">
             {CATEGORY_ICONS.map((option) => <option key={option} value={option}>{option}</option>)}
           </select>
           <button disabled={saving} className="h-11 rounded-xl bg-cyan-400 px-5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-50">{saving ? 'Salvando...' : 'Adicionar'}</button>
@@ -136,20 +136,20 @@ export default function FinanceCategoriesPage() {
       {editing && <section className="rounded-2xl border border-cyan-400/25 bg-cyan-400/[0.035] p-5">
         <div className="flex items-start justify-between gap-4"><div><h2 className="text-base font-semibold text-text-primary">Editar categoria</h2><p className="mt-1 text-sm text-text-secondary">O tipo não muda para preservar a consistência das movimentações.</p></div><button type="button" onClick={() => setEditing(null)} className="text-sm text-text-secondary hover:text-text-primary">Cancelar</button></div>
         <form className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_155px_auto]" onSubmit={updateCategory}>
-          <input value={editName} onChange={(event) => setEditName(event.target.value)} maxLength={80} className="h-11 rounded-xl border border-white/[0.1] bg-black/20 px-3 text-sm text-text-primary outline-none focus:border-cyan-400/60" />
-          <select value={editIcon} onChange={(event) => setEditIcon(event.target.value)} aria-label="Ícone da categoria" className="h-11 rounded-xl border border-white/[0.1] bg-black/20 px-3 text-sm text-text-primary outline-none focus:border-cyan-400/60">{CATEGORY_ICONS.map((option) => <option key={option} value={option}>{option}</option>)}</select>
+          <input value={editName} onChange={(event) => setEditName(event.target.value)} maxLength={80} className="h-11 rounded-xl border border-tint/[0.1] bg-tint/[0.03] px-3 text-sm text-text-primary outline-none focus:border-cyan-400/60" />
+          <select value={editIcon} onChange={(event) => setEditIcon(event.target.value)} aria-label="Ícone da categoria" className="h-11 rounded-xl border border-tint/[0.1] bg-tint/[0.03] px-3 text-sm text-text-primary outline-none focus:border-cyan-400/60">{CATEGORY_ICONS.map((option) => <option key={option} value={option}>{option}</option>)}</select>
           <button disabled={saving} className="h-11 rounded-xl bg-cyan-400 px-5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-50">Salvar</button>
         </form>
         <div className="mt-4 flex flex-wrap items-center gap-4"><div className="flex flex-wrap gap-2" aria-label="Cor da categoria">{CATEGORY_COLORS.map((option) => <button key={option} type="button" onClick={() => setEditColor(option)} aria-label={`Usar cor ${option}`} className={`h-6 w-6 rounded-full border-2 ${editColor === option ? 'border-white' : 'border-transparent'}`} style={{ backgroundColor: option }} />)}</div><label className="flex items-center gap-2 text-sm text-text-secondary"><input type="checkbox" checked={editFavorite} onChange={(event) => setEditFavorite(event.target.checked)} /> Categoria favorita</label></div>
       </section>}
 
-      <section className="overflow-hidden rounded-2xl border border-white/[0.09] bg-white/[0.025]">
-        <div className="flex items-center justify-between border-b border-white/[0.08] px-5 py-4"><h2 className="font-semibold text-text-primary">Seu catálogo</h2><span className="text-sm text-text-tertiary">{categories.filter((category) => category.status === 'ativa').length} ativas</span></div>
-        {loading ? <p className="px-5 py-8 text-sm text-text-secondary">Carregando categorias...</p> : <ul className="divide-y divide-white/[0.07]">
+      <section className="overflow-hidden rounded-2xl border border-tint/[0.09] bg-tint/[0.025]">
+        <div className="flex items-center justify-between border-b border-tint/[0.08] px-5 py-4"><h2 className="font-semibold text-text-primary">Seu catálogo</h2><span className="text-sm text-text-tertiary">{categories.filter((category) => category.status === 'ativa').length} ativas</span></div>
+        {loading ? <p className="px-5 py-8 text-sm text-text-secondary">Carregando categorias...</p> : <ul className="divide-y divide-tint/[0.07]">
           {categories.map((category) => <li key={category.id} className="flex items-center gap-3 px-5 py-3.5">
             <CategoryGlyph icon={category.icon} color={category.color} />
             <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-text-primary">{category.isFavorite ? '★ ' : ''}{category.name}</p><p className="text-xs text-text-tertiary">{category.kind === 'receita' ? 'Receita' : 'Despesa'}{category.isDefault ? ' · padrão do sistema' : category.status === 'arquivada' ? ' · arquivada' : ''}</p></div>
-            {!category.isDefault && <div className="flex items-center gap-1"><button type="button" onClick={() => void toggleFavorite(category)} className="rounded-lg px-2 py-1.5 text-xs font-medium text-text-secondary transition hover:bg-white/[0.07] hover:text-text-primary" aria-label={category.isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}>{category.isFavorite ? '★' : '☆'}</button><button type="button" onClick={() => startEditing(category)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-text-secondary transition hover:bg-white/[0.07] hover:text-text-primary">Editar</button><button type="button" onClick={() => void changeStatus(category, category.status === 'ativa' ? 'archive' : 'restore')} className="rounded-lg px-3 py-1.5 text-xs font-medium text-text-secondary transition hover:bg-white/[0.07] hover:text-text-primary">{category.status === 'ativa' ? 'Arquivar' : 'Restaurar'}</button></div>}
+            {!category.isDefault && <div className="flex items-center gap-1"><button type="button" onClick={() => void toggleFavorite(category)} className="rounded-lg px-2 py-1.5 text-xs font-medium text-text-secondary transition hover:bg-tint/[0.07] hover:text-text-primary" aria-label={category.isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}>{category.isFavorite ? '★' : '☆'}</button><button type="button" onClick={() => startEditing(category)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-text-secondary transition hover:bg-tint/[0.07] hover:text-text-primary">Editar</button><button type="button" onClick={() => void changeStatus(category, category.status === 'ativa' ? 'archive' : 'restore')} className="rounded-lg px-3 py-1.5 text-xs font-medium text-text-secondary transition hover:bg-tint/[0.07] hover:text-text-primary">{category.status === 'ativa' ? 'Arquivar' : 'Restaurar'}</button></div>}
           </li>)}
         </ul>}
       </section>

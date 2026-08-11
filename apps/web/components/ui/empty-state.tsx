@@ -21,7 +21,7 @@ export function EmptyState({ icon: Icon, title, description, className }: EmptyS
   return (
     <GlassCard interactive={false} className={cn('flex flex-col items-center gap-2 p-10 text-center', className)}>
       {Icon && (
-        <span className="mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.06] text-text-tertiary">
+        <span className="mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-tint/[0.06] text-text-tertiary">
           <Icon className="h-4 w-4" />
         </span>
       )}

@@ -39,7 +39,7 @@ export function NovaThinking({ status = 'pensando', persona = 'nova' }: NovaThin
       >
         <Sparkles className="h-4 w-4" />
       </span>
-      <div className="flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-card/60 px-4 py-3.5 backdrop-blur-md">
+      <div className="flex items-center gap-2 rounded-2xl border border-tint/[0.08] bg-card/60 px-4 py-3.5 backdrop-blur-md">
         <span className="text-xs text-text-tertiary">{STATUS_LABEL[status]}</span>
         <div className="flex items-center gap-1.5">
           {DOTS.map((index) => (

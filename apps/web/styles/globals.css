@@ -239,25 +239,19 @@ html[data-theme='light'] {
   --ring: 221 83% 53% / 0.35;
 }
 
-/* ---------------------------------------------------------------------
-   PONTE TEMPORÁRIA — para morrer, não para crescer.
+/* A PONTE DE `!important` MORREU AQUI.
 
-   Restam 40 arquivos de CONTEÚDO que escrevem cor escura na mão
-   (`bg-black`, `text-white`, `white/[0.0x]`) em vez de usar token. No tema
-   claro eles ficariam ilegíveis, e é isso que estas regras seguram.
+   Ela existiu para segurar as telas que escreviam cor escura na mão, e era
+   a razão de o tema claro parecer "bugado": `!important` acerta o caso
+   comum e erra os outros. Com os 41 arquivos migrados para token, nada mais
+   depende dela — e o tema claro passa a ser o que os tokens dizem que ele
+   é, sem exceção nenhuma.
 
-   Elas são o motivo de o tema claro parecer "bugado" hoje: `!important`
-   acerta o caso comum e erra os outros. NÃO acrescente regras aqui. Cada
-   tela migrada para token remove a sua dependência desta ponte, e quando a
-   última cair este bloco inteiro sai junto — e só então o claro vira
-   padrão do produto.
-   --------------------------------------------------------------------- */
-html[data-theme='light'] .bg-black { background-color: #fff !important; }
-html[data-theme='light'] .bg-black\/20 { background-color: rgba(15, 23, 42, 0.04) !important; }
-html[data-theme='light'] .text-white { color: var(--text-primary) !important; }
-html[data-theme='light'] .border-white\/\[0\.08\],
-html[data-theme='light'] .border-white\/\[0\.1\],
-html[data-theme='light'] .border-white\/\[0\.12\] { border-color: rgba(15, 23, 42, 0.12) !important; }
+   Restam três usos deliberados de cor absoluta no produto, e nenhum é
+   descuido: o véu do modal (`bg-black/60`, que escurece nos dois temas por
+   definição), a linha de luz no topo dos cartões (branca, que some sozinha
+   sobre o cartão claro) e o texto branco sobre preenchimentos coloridos,
+   onde branco é a tinta certa. Todos estão comentados no lugar de uso. */
 
 /* A navegação continua escura no tema claro — mas isso deixou de ser um
    bloco de `!important` reescrevendo tokens dentro de `.control-sidebar`.

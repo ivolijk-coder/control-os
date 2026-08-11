@@ -60,11 +60,11 @@ export function NovaFloatingPanel() {
       description={isLegendary ? 'Converse com a LEGENDARY sem sair da tela.' : 'Converse com a Nova sem sair da tela.'}
       className="max-w-xl"
     >
-      <div className="flex items-center justify-between border-b border-white/[0.08] px-4 py-3">
+      <div className="flex items-center justify-between border-b border-tint/[0.08] px-4 py-3">
         <span className="text-sm font-medium text-text-primary">{isLegendary ? 'LEGENDARY' : 'Nova'}</span>
         <DialogPrimitive.Close
           aria-label="Fechar"
-          className="flex h-7 w-7 items-center justify-center rounded-md text-text-tertiary transition-colors duration-fast ease-out hover:bg-white/[0.06] hover:text-text-primary"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-text-tertiary transition-colors duration-fast ease-out hover:bg-tint/[0.06] hover:text-text-primary"
         >
           <X className="h-4 w-4" />
         </DialogPrimitive.Close>

@@ -102,11 +102,11 @@ export default function ViagensPage() {
                 </div>
 
                 {/* Rota ilustrativa — sem geolocalização real, só reforça o "planner". */}
-                <div className="mt-4 flex items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+                <div className="mt-4 flex items-center gap-2 rounded-lg border border-tint/[0.06] bg-tint/[0.02] px-4 py-3">
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-text-tertiary" />
-                  <span className="h-px flex-1 bg-gradient-to-r from-white/20 via-white/10 to-transparent" />
+                  <span className="h-px flex-1 bg-gradient-to-r from-tint/20 via-tint/10 to-transparent" />
                   <Plane className="h-3.5 w-3.5 shrink-0 -rotate-45 text-accent-purple" />
-                  <span className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-white/20" />
+                  <span className="h-px flex-1 bg-gradient-to-r from-transparent via-tint/10 to-tint/20" />
                   <MapPin className="h-3.5 w-3.5 shrink-0 text-accent-purple" />
                   <span className="shrink-0 text-xs text-text-secondary">{trip.destination}</span>
                 </div>
@@ -147,12 +147,12 @@ export default function ViagensPage() {
                     <button
                       key={item.id}
                       onClick={() => toggleTripChecklistItem(trip.id, item.id)}
-                      className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors duration-fast ease-out hover:bg-white/[0.04]"
+                      className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors duration-fast ease-out hover:bg-tint/[0.04]"
                     >
                       <span
                         className={cn(
                           'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
-                          item.done ? 'border-accent-green bg-accent-green/20' : 'border-white/20'
+                          item.done ? 'border-accent-green bg-accent-green/20' : 'border-tint/20'
                         )}
                       >
                         {item.done && <Check className="h-3 w-3 text-accent-green" />}

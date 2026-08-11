@@ -37,7 +37,7 @@ export function NovaPersonaSwitch({ persona, onChange, className }: NovaPersonaS
       role="tablist"
       aria-label="Escolher identidade da conversa"
       className={cn(
-        'inline-flex items-center gap-0.5 rounded-full border border-white/10 bg-white/[0.04] p-1 backdrop-blur-sm',
+        'inline-flex items-center gap-0.5 rounded-full border border-tint/10 bg-tint/[0.04] p-1 backdrop-blur-sm',
         className
       )}
     >

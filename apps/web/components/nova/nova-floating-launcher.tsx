@@ -64,7 +64,7 @@ export function NovaFloatingLauncher() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 8 }}
             transition={transitionSpring}
-            className="w-72 overflow-hidden rounded-[22px] border border-white/[0.1] bg-[#0b0e13]/95 p-2 shadow-e5-glass backdrop-blur-xl"
+            className="w-72 overflow-hidden rounded-[22px] border border-tint/[0.1] bg-[#0b0e13]/95 p-2 shadow-e5-glass backdrop-blur-xl"
           >
             {ENVIRONMENT_OPTIONS.map((option) => {
               const active = option.href === activeHref;
@@ -81,7 +81,7 @@ export function NovaFloatingLauncher() {
                       ? isLegendary
                         ? 'bg-[linear-gradient(105deg,rgba(255,119,19,0.14),rgba(255,184,65,0.045))]'
                         : 'bg-[linear-gradient(105deg,rgba(12,150,255,0.16),rgba(70,92,255,0.04))]'
-                      : 'hover:bg-white/[0.05]'
+                      : 'hover:bg-tint/[0.05]'
                   )}
                 >
                   <span className={cn('absolute bottom-3 left-0 top-3 w-0.5 rounded-full transition-opacity', active ? 'opacity-100' : 'opacity-0', isLegendary ? 'bg-[#ff8d20]' : 'bg-[#22b8ff]')} />

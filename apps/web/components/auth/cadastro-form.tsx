@@ -124,7 +124,7 @@ export function CadastroForm() {
             />
           </div>
 
-          <fieldset className="flex flex-col gap-3 rounded-md border border-white/[0.08] bg-white/[0.02] p-4">
+          <fieldset className="flex flex-col gap-3 rounded-md border border-tint/[0.08] bg-tint/[0.02] p-4">
             <div>
               <p className="text-sm font-medium text-text-primary">Como as IAs devem falar?</p>
               <p className="mt-1 text-xs text-text-tertiary">Você poderá mudar isso depois em Configurações.</p>
@@ -135,7 +135,7 @@ export function CadastroForm() {
                 id="nova-voice"
                 value={novaVoice}
                 onChange={(event) => setNovaVoice(event.target.value as OpenAIVoice)}
-                className="rounded-md border border-white/[0.1] bg-black/20 px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-purple/60"
+                className="rounded-md border border-tint/[0.1] bg-tint/[0.03] px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-purple/60"
               >
                 {OPENAI_VOICE_OPTIONS.map((voice) => <option key={voice.id} value={voice.id}>{voice.label} — {voice.description}</option>)}
               </select>
@@ -146,7 +146,7 @@ export function CadastroForm() {
                 id="legendary-voice"
                 value={legendaryVoice}
                 onChange={(event) => setLegendaryVoice(event.target.value as OpenAIVoice)}
-                className="rounded-md border border-white/[0.1] bg-black/20 px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-gold/60"
+                className="rounded-md border border-tint/[0.1] bg-tint/[0.03] px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-gold/60"
               >
                 {OPENAI_VOICE_OPTIONS.map((voice) => <option key={voice.id} value={voice.id}>{voice.label} — {voice.description}</option>)}
               </select>
@@ -202,7 +202,7 @@ export function CadastroForm() {
                     <span
                       className={cn(
                         'flex h-3.5 w-3.5 items-center justify-center rounded-full border',
-                        met ? 'border-accent-green bg-accent-green/15' : 'border-white/15'
+                        met ? 'border-accent-green bg-accent-green/15' : 'border-tint/15'
                       )}
                     >
                       {met && <Check className="h-2.5 w-2.5" />}
