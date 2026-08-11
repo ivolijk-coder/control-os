@@ -1,6 +1,8 @@
 import * as React from 'react';
 import type { NovaContext } from '@/services/nova';
 import { useDataStore } from '@/lib/data-store';
+import { useAccount } from '@/lib/use-account';
+import { firstName } from '@/lib/utils';
 
 // Sem seletor de Space na conversa ainda — toda ação criada pela Nova cai
 // num Space padrão (ver mesma constante em `nova-workspace.tsx`).
@@ -37,6 +39,14 @@ export function useNovaContext(): NovaContext {
   const addAsset = useDataStore((state) => state.addAsset);
   const addTrip = useDataStore((state) => state.addTrip);
   const addNote = useDataStore((state) => state.addNote);
+  // `userName` era a string literal `'Usuário'`. Não era um placeholder
+  // esquecido de propósito: era a razão pela qual a saudação da NOVA e a da
+  // LEGENDARY cumprimentavam o usuário pelo nome errado em produção. Agora
+  // vem da sessão real, pelo mesmo `GET /api/auth/me` que `/configuracoes`
+  // já usava. Enquanto a resposta não chega, fica vazio — e quem exibe
+  // omite o nome em vez de inventar um.
+  const account = useAccount();
+  const userName = firstName(account?.name);
   return React.useMemo(
     () => ({
       actions: {
@@ -67,9 +77,10 @@ export function useNovaContext(): NovaContext {
       assets: [],
       notes: [],
       timeline: [],
-      userName: 'Usuário',
+      userName,
     }),
     [
+      userName,
       addMission,
       updateMission,
       addTimelineEvent,

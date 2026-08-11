@@ -4,8 +4,9 @@ import * as React from 'react';
 import { usePathname } from 'next/navigation';
 import { Avatar, AvatarFallback, Button } from '@control-os/ui';
 import { getInitials } from '@/lib/utils';
-import { MOCK_NAV_ITEMS, MOCK_USER } from '@/lib/mock-data';
+import { MOCK_NAV_ITEMS } from '@/lib/mock-data';
 import { useAppStore } from '@/lib/store';
+import { useAccount } from '@/lib/use-account';
 import { ICON_MAP } from './icon-map';
 
 function pageTitleFromPath(pathname: string | null): string {
@@ -38,6 +39,11 @@ export function Topbar() {
   const title = pageTitleFromPath(pathname);
   const setCommandCenterOpen = useAppStore((s) => s.setCommandCenterOpen);
   const setMobileNavOpen = useAppStore((s) => s.setMobileNavOpen);
+  // O avatar lia `MOCK_USER` — dado de exemplo fixo no código. As iniciais
+  // exibidas nunca foram as de quem estava logado. Agora vêm da sessão
+  // real; enquanto a resposta não chega, um ícone neutro no lugar de
+  // iniciais erradas.
+  const account = useAccount();
 
   return (
     // CONTROL OS — Etapa 16C (Design System premium): mesmo tratamento de
@@ -95,8 +101,13 @@ export function Topbar() {
           <ICON_MAP.Bell className="h-4 w-4" />
           <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-accent-red shadow-[0_0_6px_2px_rgba(239,68,68,0.4)]" />
         </button>
-        <Avatar className="hidden h-8 w-8 cursor-pointer ring-1 ring-white/10 transition-all duration-fast ease-out hover:scale-105 hover:ring-white/20 active:scale-95 sm:flex">
-          <AvatarFallback>{getInitials(MOCK_USER.name)}</AvatarFallback>
+        <Avatar
+          className="hidden h-8 w-8 cursor-pointer ring-1 ring-white/10 transition-all duration-fast ease-out hover:scale-105 hover:ring-white/20 active:scale-95 sm:flex"
+          title={account?.name}
+        >
+          <AvatarFallback>
+            {account ? getInitials(account.name) : <ICON_MAP.User className="h-4 w-4 text-text-tertiary" />}
+          </AvatarFallback>
         </Avatar>
       </div>
     </header>
