@@ -59,7 +59,7 @@ export function NovaCommandOverview({ onAction }: NovaCommandOverviewProps) {
       </header>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(17rem,0.75fr)]">
-        <section className="rounded-2xl border border-white/[0.09] bg-card/55 p-5 shadow-e2 backdrop-blur-xl sm:p-7">
+        <section className="rounded-2xl border border-tint/[0.09] bg-card/55 p-5 shadow-e2 backdrop-blur-xl sm:p-7">
           <div className="flex items-center gap-2 text-xs font-medium text-text-tertiary">
             <Sparkles className="h-3.5 w-3.5 text-accent-blue" /> Prioridade agora
           </div>
@@ -75,9 +75,9 @@ export function NovaCommandOverview({ onAction }: NovaCommandOverviewProps) {
           </button>
         </section>
 
-        <aside className="hidden rounded-2xl border border-white/[0.09] bg-white/[0.025] p-5 lg:block">
+        <aside className="hidden rounded-2xl border border-tint/[0.09] bg-tint/[0.025] p-5 lg:block">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-tertiary">Hoje</p>
-          <div className="mt-5 flex flex-col divide-y divide-white/[0.07]">
+          <div className="mt-5 flex flex-col divide-y divide-tint/[0.07]">
             <button type="button" onClick={() => onAction('Ver meus compromissos de hoje')} className="flex items-center gap-3 py-3 text-left">
               <CalendarDays className="h-4 w-4 text-accent-blue" />
               <span className="flex-1 text-sm text-text-primary">Agenda</span>

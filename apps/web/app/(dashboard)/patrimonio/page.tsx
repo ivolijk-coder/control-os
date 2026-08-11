@@ -129,7 +129,7 @@ export default function PatrimonioPage() {
                   return (
                     <div
                       key={asset.id}
-                      className="flex items-center gap-3 rounded-xl border border-white/[0.08] bg-card/60 p-4 shadow-e2 backdrop-blur-sm"
+                      className="flex items-center gap-3 rounded-xl border border-tint/[0.08] bg-card/60 p-4 shadow-e2 backdrop-blur-sm"
                     >
                       <span
                         className={

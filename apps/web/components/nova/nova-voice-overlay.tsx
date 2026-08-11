@@ -306,7 +306,7 @@ export function NovaVoiceOverlay() {
               type="button"
               onClick={handleClose}
               aria-label="Fechar Modo Conversa"
-              className="flex h-10 w-10 items-center justify-center rounded-full text-text-tertiary transition-colors duration-fast ease-out hover:bg-white/[0.06] hover:text-text-primary"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-text-tertiary transition-colors duration-fast ease-out hover:bg-tint/[0.06] hover:text-text-primary"
             >
               <X className="h-5 w-5" />
             </button>

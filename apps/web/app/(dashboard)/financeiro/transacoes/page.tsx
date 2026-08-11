@@ -211,7 +211,7 @@ export default function FinanceTransactionsPage() {
         description="Dados persistidos e histórico disponível da transação selecionada."
         className="max-h-[calc(100vh-8rem)] overflow-y-auto"
       >
-        <div className="flex items-center justify-between border-b border-white/[0.08] px-5 py-4">
+        <div className="flex items-center justify-between border-b border-tint/[0.08] px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-text-primary">Detalhes da transação</p>
             <p className="mt-0.5 text-xs text-text-tertiary">Dados e ações disponíveis</p>
@@ -220,7 +220,7 @@ export default function FinanceTransactionsPage() {
             type="button"
             onClick={() => setSelectedId(undefined)}
             aria-label="Fechar detalhes"
-            className="rounded-lg p-2 text-text-secondary transition-colors hover:bg-white/[0.06] hover:text-text-primary"
+            className="rounded-lg p-2 text-text-secondary transition-colors hover:bg-tint/[0.06] hover:text-text-primary"
           >
             <X className="h-4 w-4" />
           </button>
@@ -453,7 +453,7 @@ function TransactionRow({
   const positive = transaction.type === 'receita'
     || (transaction.type === 'transferencia' && transaction.transferDirection === 'entrada');
   return (
-    <tr className="transition-colors hover:bg-white/[0.025]">
+    <tr className="transition-colors hover:bg-tint/[0.025]">
       <td className="px-4 py-3">
         <button
           type="button"

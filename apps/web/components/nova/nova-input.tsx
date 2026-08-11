@@ -227,7 +227,7 @@ export function NovaInput({
             ? isLegendary
               ? 'border-accent-gold/40'
               : 'border-accent-purple/40'
-            : 'border-white/[0.08] hover:border-white/[0.14]',
+            : 'border-tint/[0.08] hover:border-tint/[0.14]',
           className
         )}
       >
@@ -249,7 +249,7 @@ export function NovaInput({
             disabled={disabled}
             aria-label="Anexar documento para a NOVA"
             title="Anexar documento"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-text-tertiary transition-colors hover:bg-white/[0.08] hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-30"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-text-tertiary transition-colors hover:bg-tint/[0.08] hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-30"
           >
             <Paperclip className="h-4 w-4" />
           </button>

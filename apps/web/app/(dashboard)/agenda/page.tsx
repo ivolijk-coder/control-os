@@ -184,7 +184,7 @@ export default function AgendaPage() {
                     day === null && 'invisible',
                     day !== null && day === selectedDay && daysWithEvents.has(day) ? 'bg-accent-gold text-black font-semibold' : '',
                     day !== null && day === selectedDay && !daysWithEvents.has(day) ? 'bg-accent-purple text-white font-semibold' : '',
-                    day !== selectedDay && day === todayDay ? 'border border-accent-purple/50 text-accent-purple' : 'text-text-secondary hover:bg-white/[0.06]',
+                    day !== selectedDay && day === todayDay ? 'border border-accent-purple/50 text-accent-purple' : 'text-text-secondary hover:bg-tint/[0.06]',
                     day !== null && day !== selectedDay && daysWithEvents.has(day) && 'bg-accent-gold/15 font-semibold text-accent-gold'
                   )}
                 >
@@ -199,7 +199,7 @@ export default function AgendaPage() {
             {selectedEvents.length > 0 ? (
               <div className="flex flex-col gap-2">
                 {selectedEvents.map((event) => (
-                  <article key={event.id} className="rounded-xl border border-white/[0.08] bg-black/20 p-3">
+                  <article key={event.id} className="rounded-xl border border-tint/[0.08] bg-tint/[0.03] p-3">
                     <div className="flex items-start gap-3">
                       <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-gold/15 text-accent-gold"><CalendarClock className="h-4 w-4" /></span>
                       <div className="min-w-0 flex-1">
@@ -211,8 +211,8 @@ export default function AgendaPage() {
                       </div>
                       {pendingDeleteId === event.id ? (
                         <span className="flex shrink-0 items-center gap-1">
-                          <button type="button" onClick={() => { deleteAgendaEvent(event.id); setPendingDeleteId(null); }} className="rounded-lg bg-accent-red px-2 py-1.5 text-[11px] font-medium text-white">Excluir</button>
-                          <button type="button" onClick={() => setPendingDeleteId(null)} className="rounded-lg border border-white/[0.1] px-2 py-1.5 text-[11px] text-text-secondary">Cancelar</button>
+                          <button type="button" onClick={() => { deleteAgendaEvent(event.id); setPendingDeleteId(null); }} className="rounded-lg bg-crit px-2 py-1.5 text-[11px] font-medium text-crit-ink">Excluir</button>
+                          <button type="button" onClick={() => setPendingDeleteId(null)} className="rounded-lg border border-tint/[0.1] px-2 py-1.5 text-[11px] text-text-secondary">Cancelar</button>
                         </span>
                       ) : (
                         <button type="button" onClick={() => setPendingDeleteId(event.id)} aria-label={`Excluir ${event.title}`} className="rounded-lg p-2 text-text-tertiary transition-colors hover:bg-accent-red/10 hover:text-accent-red"><Trash2 className="h-4 w-4" /></button>

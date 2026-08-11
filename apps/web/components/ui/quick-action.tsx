@@ -26,7 +26,7 @@ export function QuickAction({ icon: Icon, label, onClick, className }: QuickActi
       onClick={onClick}
       {...hoverSubtle}
       className={cn(
-        'flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-text-secondary backdrop-blur-sm transition-colors duration-fast ease-out hover:border-white/20 hover:bg-white/[0.08] hover:text-text-primary',
+        'flex items-center gap-2 rounded-full border border-tint/10 bg-tint/[0.04] px-3.5 py-2 text-xs font-medium text-text-secondary backdrop-blur-sm transition-colors duration-fast ease-out hover:border-tint/20 hover:bg-tint/[0.08] hover:text-text-primary',
         className
       )}
     >

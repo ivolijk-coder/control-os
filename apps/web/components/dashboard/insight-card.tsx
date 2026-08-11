@@ -28,7 +28,7 @@ export function InsightCard({ icon: Icon, title, description, accent = 'purple',
   return (
     <div
       className={cn(
-        'flex items-start gap-3 rounded-lg border border-white/[0.08] bg-white/[0.03] p-3.5 text-left backdrop-blur-sm',
+        'flex items-start gap-3 rounded-lg border border-tint/[0.08] bg-tint/[0.03] p-3.5 text-left backdrop-blur-sm',
         className
       )}
     >

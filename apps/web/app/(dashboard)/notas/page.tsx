@@ -66,7 +66,7 @@ export default function NotasPage() {
     return (
       <GlassCard key={note.id} interactive={false} className="p-4">
         <div className="flex items-start gap-3">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-text-secondary">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-tint/[0.06] text-text-secondary">
             <NotebookText className="h-4 w-4" />
           </span>
           <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -77,7 +77,7 @@ export default function NotasPage() {
                 <button
                   onClick={() => togglePinned(note.id)}
                   aria-label={isPinned ? 'Desafixar' : 'Fixar'}
-                  className="rounded-md p-1 text-text-tertiary transition-colors duration-fast ease-out hover:bg-white/[0.06] hover:text-text-primary"
+                  className="rounded-md p-1 text-text-tertiary transition-colors duration-fast ease-out hover:bg-tint/[0.06] hover:text-text-primary"
                 >
                   <Pin className={cn('h-3.5 w-3.5', isPinned && 'fill-accent-purple text-accent-purple')} />
                 </button>
@@ -94,12 +94,12 @@ export default function NotasPage() {
                   <button
                     key={item.id}
                     onClick={() => toggleNoteChecklistItem(note.id, item.id)}
-                    className="flex items-center gap-2 rounded px-1 py-1 text-left text-xs transition-colors duration-fast ease-out hover:bg-white/[0.04]"
+                    className="flex items-center gap-2 rounded px-1 py-1 text-left text-xs transition-colors duration-fast ease-out hover:bg-tint/[0.04]"
                   >
                     <span
                       className={cn(
                         'flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border',
-                        item.done ? 'border-accent-green bg-accent-green/20' : 'border-white/20'
+                        item.done ? 'border-accent-green bg-accent-green/20' : 'border-tint/20'
                       )}
                     >
                       {item.done && <Check className="h-2.5 w-2.5 text-accent-green" />}

@@ -140,14 +140,14 @@ export function NovaMessageBubble({ message, onConfirm, onCancel, onTaskAction, 
       <div
         className={cn(
           'max-w-md rounded-2xl border px-4 py-3 text-sm leading-relaxed backdrop-blur-md',
-          isUser && 'border-white/[0.1] bg-white/[0.08] text-text-primary',
-          !isUser && !isError && 'border-white/[0.08] bg-card/60 text-text-primary',
+          isUser && 'border-tint/[0.1] bg-tint/[0.08] text-text-primary',
+          !isUser && !isError && 'border-tint/[0.08] bg-card/60 text-text-primary',
           !isUser && isError && 'border-accent-red/20 bg-accent-red/10 text-text-primary'
         )}
       >
         <p className="whitespace-pre-line">{message.content}</p>
         {message.persistence === 'unsynced' && message.role === 'nova' && message.clientTurnId && (
-          <div className="mt-3 border-t border-white/[0.08] pt-2">
+          <div className="mt-3 border-t border-tint/[0.08] pt-2">
             <p className="mb-2 text-xs text-text-tertiary">Este turno ainda não foi salvo no histórico.</p>
             <Button size="sm" variant="ghost" onClick={() => onRetrySync?.(message.clientTurnId as string)}>
               Tentar salvar novamente

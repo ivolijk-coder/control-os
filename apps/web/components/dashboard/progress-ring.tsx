@@ -41,7 +41,7 @@ export function ProgressRing({ value, size = 64, strokeWidth = 6, accent = 'purp
           cy={size / 2}
           r={radius}
           strokeWidth={strokeWidth}
-          className="fill-none stroke-white/[0.08]"
+          className="fill-none stroke-tint/[0.08]"
         />
         <circle
           cx={size / 2}

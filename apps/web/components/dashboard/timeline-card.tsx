@@ -37,12 +37,12 @@ export function TimelineCard({ items }: { items: TimelineCardItem[] }) {
               <span
                 className={cn(
                   'flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
-                  item.accent ? ACCENT_WRAP[item.accent] : 'bg-white/[0.06] text-text-secondary'
+                  item.accent ? ACCENT_WRAP[item.accent] : 'bg-tint/[0.06] text-text-secondary'
                 )}
               >
                 <Icon className="h-3.5 w-3.5" />
               </span>
-              {index < items.length - 1 && <span className="my-1 h-full w-px flex-1 bg-white/[0.08]" />}
+              {index < items.length - 1 && <span className="my-1 h-full w-px flex-1 bg-tint/[0.08]" />}
             </div>
             <div className="min-w-0 flex-1 pb-5">
               <p className={cn('text-sm leading-snug text-text-primary', item.done && 'text-text-tertiary line-through')}>

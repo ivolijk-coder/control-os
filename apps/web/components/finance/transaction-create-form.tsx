@@ -19,7 +19,7 @@ import {
   type CreateTransactionType,
 } from '@/lib/finance/transaction-create-model';
 
-const SELECT_CLASS = 'mt-1.5 h-11 w-full rounded-md border border-white/10 bg-surface-0 px-3 text-sm text-text-primary outline-none focus:border-accent-purple/40 focus:shadow-glow-purple disabled:cursor-not-allowed disabled:opacity-40';
+const SELECT_CLASS = 'mt-1.5 h-11 w-full rounded-md border border-tint/10 bg-surface-0 px-3 text-sm text-text-primary outline-none focus:border-accent-purple/40 focus:shadow-glow-purple disabled:cursor-not-allowed disabled:opacity-40';
 
 export function TransactionCreateForm() {
   const accountsQuery = useFinanceAccounts();
@@ -102,7 +102,7 @@ export function TransactionCreateForm() {
                 type="button"
                 onClick={() => changeType(type)}
                 aria-pressed={values.type === type}
-                className={`rounded-lg border px-3 py-2.5 text-sm font-medium transition ${values.type === type ? 'border-accent-blue/50 bg-accent-blue/10 text-accent-blue' : 'border-border-subtle bg-white/[0.025] text-text-secondary hover:bg-white/[0.05]'}`}
+                className={`rounded-lg border px-3 py-2.5 text-sm font-medium transition ${values.type === type ? 'border-accent-blue/50 bg-accent-blue/10 text-accent-blue' : 'border-border-subtle bg-tint/[0.025] text-text-secondary hover:bg-tint/[0.05]'}`}
               >
                 {label}
               </button>

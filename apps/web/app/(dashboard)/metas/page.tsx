@@ -117,7 +117,7 @@ export default function MetasPage() {
                 return (
                   <div
                     key={meta.id}
-                    className="flex flex-col gap-3 rounded-xl border border-white/[0.08] bg-card/60 p-4 shadow-e3 backdrop-blur-md"
+                    className="flex flex-col gap-3 rounded-xl border border-tint/[0.08] bg-card/60 p-4 shadow-e3 backdrop-blur-md"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <p className="text-sm font-medium leading-snug text-text-primary">{meta.title}</p>

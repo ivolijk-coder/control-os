@@ -43,7 +43,7 @@ interface PriorityItem {
 
 const TONE_STYLES: Record<PriorityItem['tone'], string> = {
   attention: 'border-accent-red/20 bg-accent-red/10 text-accent-red',
-  neutral: 'border-white/[0.08] bg-white/[0.03] text-text-secondary',
+  neutral: 'border-tint/[0.08] bg-tint/[0.03] text-text-secondary',
   positive: 'border-accent-green/20 bg-accent-green/10 text-accent-green',
 };
 
@@ -183,7 +183,7 @@ export default function DashboardPage() {
           <NovaWorkspace lockedPersona="nova" conversationFirst showQuickActions={false} containedConversation />
         </div>
 
-        <aside className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5 sm:p-6">
+        <aside className="rounded-xl border border-tint/[0.07] bg-tint/[0.02] p-5 sm:p-6">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-medium uppercase tracking-[0.16em] text-text-tertiary">Agora</p>
@@ -192,7 +192,7 @@ export default function DashboardPage() {
             <CircleAlert className="h-5 w-5 text-text-tertiary" />
           </div>
 
-          <div className="divide-y divide-white/[0.06]">
+          <div className="divide-y divide-tint/[0.06]">
             {priorities.map((priority) => {
               const Icon = priority.icon;
               return (
@@ -212,7 +212,7 @@ export default function DashboardPage() {
         </aside>
       </section>
 
-      <section className="border-y border-white/[0.07] py-6 sm:py-7">
+      <section className="border-y border-tint/[0.07] py-6 sm:py-7">
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-text-tertiary">Visão rápida</p>
@@ -227,7 +227,7 @@ export default function DashboardPage() {
           <FinanceMetric label="Entradas" value={formatCurrency(financialSnapshot.income)} tone="positive" />
           <FinanceMetric label="Saídas" value={formatCurrency(financialSnapshot.expenses)} tone="attention" />
           <FinanceMetric label="Disponível" value={formatCurrency(financialSnapshot.available)} tone={financialSnapshot.available >= 0 ? 'positive' : 'attention'} />
-          <div className="min-h-24 border-l border-white/[0.07] pl-5 md:col-span-1">
+          <div className="min-h-24 border-l border-tint/[0.07] pl-5 md:col-span-1">
             <div className="mb-2 flex items-center gap-2 text-xs text-text-tertiary"><Wallet className="h-3.5 w-3.5" /> Fluxo acumulado</div>
             <MiniSparkline values={financialSnapshot.flowValues} accent={financialSnapshot.available >= 0 ? 'green' : 'red'} />
           </div>

@@ -61,9 +61,9 @@ export function LegendaryCommandOverview({ onAction }: LegendaryCommandOverviewP
           </button>
         </section>
 
-        <aside className="hidden rounded-2xl border border-white/[0.09] bg-white/[0.025] p-5 lg:block">
+        <aside className="hidden rounded-2xl border border-tint/[0.09] bg-tint/[0.025] p-5 lg:block">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-tertiary">Mentoria</p>
-          <div className="mt-5 flex flex-col divide-y divide-white/[0.07]">
+          <div className="mt-5 flex flex-col divide-y divide-tint/[0.07]">
             <button type="button" onClick={() => onAction('Me indique um livro para produtividade e diga como aplicar esta semana')} className="flex items-center gap-3 py-3 text-left">
               <BookOpenText className="h-4 w-4 text-accent-gold" />
               <span className="flex-1 text-sm text-text-primary">Leitura</span>

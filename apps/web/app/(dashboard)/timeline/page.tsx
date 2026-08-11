@@ -80,7 +80,7 @@ export default function TimelinePage() {
             <FadeIn key={event.id} delay={0.03 * index}>
               <GlassCard interactive={false} className="p-4">
                 <div className="flex items-start gap-3">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-text-secondary">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-tint/[0.06] text-text-secondary">
                     <Icon className="h-4 w-4" />
                   </span>
                   <div className="flex min-w-0 flex-1 flex-col gap-1">

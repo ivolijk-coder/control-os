@@ -42,8 +42,8 @@ export const GlassCard = React.forwardRef<HTMLDivElement, GlassCardProps>(
       ref={ref}
       variants={scaleIn}
       className={cn(
-        'relative overflow-hidden rounded-xl border border-white/[0.08] bg-card/60 shadow-e3-glass backdrop-blur-md',
-        'before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:z-10 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/20 before:to-transparent',
+        'relative overflow-hidden rounded-xl border border-tint/[0.08] bg-card/60 shadow-e3-glass backdrop-blur-md',
+        'before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:z-10 before:h-px before:bg-gradient-to-r before:from-transparent before:via-tint/20 before:to-transparent',
         interactive && 'cursor-pointer hover:shadow-e4',
         className
       )}
