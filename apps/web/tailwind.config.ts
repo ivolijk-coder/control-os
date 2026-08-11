@@ -24,6 +24,10 @@ const config: Config = {
         // `--nav-*` em `globals.css`. Use `bg-nav`, `bg-nav-raised`,
         // `border-nav-line/10`, `text-nav-1/2/3` e `text-nav-active`.
         // ----------------------------------------------------------------
+        // Sobreposição neutra que acompanha o tema: branca no escuro,
+        // ardósia no claro. Ver `--tint-rgb` em `globals.css`. Substitui
+        // `white/[0.0x]` em fundo, borda e anel — no escuro, valor idêntico.
+        tint: 'rgb(var(--tint-rgb) / <alpha-value>)',
         nav: {
           DEFAULT: 'rgb(var(--nav-rgb) / <alpha-value>)',
           raised: 'rgb(var(--nav-raised-rgb) / <alpha-value>)',
@@ -42,6 +46,7 @@ const config: Config = {
         // ----------------------------------------------------------------
         brand: {
           DEFAULT: 'rgb(var(--brand-rgb) / <alpha-value>)',
+          hover: 'rgb(var(--brand-hover-rgb) / <alpha-value>)',
           soft: 'rgb(var(--brand-soft-rgb) / <alpha-value>)',
           ink: 'rgb(var(--brand-ink-rgb) / <alpha-value>)',
         },
@@ -55,6 +60,11 @@ const config: Config = {
         },
         crit: {
           DEFAULT: 'rgb(var(--crit-rgb) / <alpha-value>)',
+          // Texto sobre o preenchimento crítico. No CLARO o vermelho é
+          // escuro e a tinta é branca; no ESCURO o vermelho é claro e a
+          // tinta precisa ser escura. Branco nos dois — que era o que
+          // existia — dá 3.12:1 no escuro, abaixo do piso.
+          ink: 'rgb(var(--crit-ink-rgb) / <alpha-value>)',
           soft: 'rgb(var(--crit-soft-rgb) / <alpha-value>)',
         },
         accent: {

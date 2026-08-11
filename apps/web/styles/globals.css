@@ -59,12 +59,25 @@
   --nav-active-rgb: 46 125 255;
 
   /* ------------------------------------------------------------------
+     TINTA NEUTRA — o token que faltava para a migração das telas.
+     Quase toda cor crua do produto é uma sobreposição neutra sobre a
+     superfície: `bg-white/[0.06]`, `border-white/[0.08]`, `ring-white/10`.
+     No escuro isso é branco; no claro tem de virar ardósia, ou some.
+
+     Com `--tint-rgb` a troca vira mecânica e sem perda: `white/[0.06]`
+     passa a `tint/[0.06]`, e o valor no ESCURO é idêntico ao de antes
+     (255 255 255). É o que torna as próximas etapas seguras de revisar.
+     ------------------------------------------------------------------ */
+  --tint-rgb: 255 255 255;
+
+  /* ------------------------------------------------------------------
      SEMÂNTICOS DE CONTEÚDO — estes SIM mudam com o tema.
      `accent-*` continua existindo e intocado, mas é um hex fixo: serve
      para o escuro e desbota no claro. Estes carregam significado (marca,
      bom, atenção, crítico) e cada tema escolhe o tom que funciona nele.
      ------------------------------------------------------------------ */
   --brand-rgb: 76 141 255;
+  --brand-hover-rgb: 107 161 255;
   --brand-soft-rgb: 19 32 58;
   --brand-ink-rgb: 6 16 31;
   --good-rgb: 23 185 138;
@@ -72,6 +85,7 @@
   --warn-rgb: 224 160 58;
   --warn-soft-rgb: 44 33 19;
   --crit-rgb: 242 99 95;
+  --crit-ink-rgb: 36 9 10;
   --crit-soft-rgb: 46 22 24;
 
   /* Trilho e polegar da barra de rolagem — antes brancos fixos, o que
@@ -180,6 +194,7 @@ html[data-theme='light'] {
      são passos escolhidos para ter contraste sobre papel branco. Cada par
      foi conferido contra a superfície clara antes de entrar aqui. */
   --brand-rgb: 19 85 233;
+  --brand-hover-rgb: 15 69 196;
   --brand-soft-rgb: 232 239 254;
   --brand-ink-rgb: 255 255 255;
   --good-rgb: 6 122 85;
@@ -187,7 +202,10 @@ html[data-theme='light'] {
   --warn-rgb: 178 94 0;
   --warn-soft-rgb: 252 240 223;
   --crit-rgb: 196 43 43;
+  --crit-ink-rgb: 255 255 255;
   --crit-soft-rgb: 253 236 236;
+
+  --tint-rgb: 15 23 42;
 
   --scroll-thumb: rgba(15, 23, 42, 0.16);
   --scroll-thumb-hover: rgba(15, 23, 42, 0.26);
