@@ -70,10 +70,49 @@ export class PrismaFinanceRepository implements FinanceRepository {
    */
   constructor(private readonly transactionClient?: Prisma.TransactionClient) {}
 
+  /**
+   * O cliente a usar para uma operação avulsa: o transacional, quando este
+   * repositório foi construído dentro de uma transação; o global, quando não.
+   *
+   * Isto existia como `(this.transactionClient ?? prisma)` em três lugares e
+   * como `prisma` direto em vinte e três — e essa diferença não era estilo,
+   * era um defeito: uma escrita feita pelo cliente global de dentro de uma
+   * transação de fora acontece em OUTRA conexão. Ou seja, se a transação de
+   * fora falhasse e voltasse atrás, aquilo continuava gravado.
+   */
+  private get db() {
+    return this.transactionClient ?? prisma;
+  }
+
+  /**
+   * Roda `fn` numa transação — mas REAPROVEITA a transação de fora quando ela
+   * existe, em vez de abrir uma segunda por dentro dela.
+   *
+   * Duas consequências, e as duas importam:
+   *
+   * 1. CONEXÕES. O pool do Prisma neste container é de três conexões
+   *    (`núcleos × 2 + 1`, com `cpus: "1.00"`). Cada `$transaction` aninhado
+   *    ocupava uma segunda conexão enquanto a de fora ainda segurava a
+   *    primeira — dois fluxos simultâneos esgotavam o pool inteiro e o
+   *    terceiro esperava até estourar. Reaproveitando, é uma conexão por
+   *    fluxo.
+   *
+   * 2. ATOMICIDADE. Uma transação aninhada em outra conexão NÃO é atômica
+   *    com a de fora. `confirmDocumentImportProposal` promete, em comentário,
+   *    que "se qualquer etapa falhar, o status volta a PENDING" — e isso era
+   *    falso para tudo o que este repositório gravava. Agora é verdade.
+   *
+   * Sem transação de fora, o comportamento é idêntico ao de antes.
+   */
+  private async inTransaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    if (this.transactionClient) return fn(this.transactionClient);
+    return prisma.$transaction(fn);
+  }
+
   // --- Transações -------------------------------------------------------
 
   async create(userId: string, input: CreateFinanceTransactionInput): Promise<FinanceEntry> {
-    const row = await prisma.transaction.create({ data: toCreateData(userId, input) });
+    const row = await this.db.transaction.create({ data: toCreateData(userId, input) });
     return toFinanceEntry(row);
   }
 
@@ -82,6 +121,11 @@ export class PrismaFinanceRepository implements FinanceRepository {
    * queries", não a de callback) — todas as pernas de uma transferência ou
    * todas as parcelas de um parcelamento são criadas atomicamente: se uma
    * falhar, nenhuma fica gravada. "Usar transações quando necessário."
+   *
+   * Este é o ÚNICO ponto do arquivo que continua chamando `prisma` direto, e
+   * é de propósito: a variante de array exige promises do cliente base, que
+   * o cliente transacional não expõe. O `if` abaixo já fazia a coisa certa
+   * antes desta etapa — quando existe transação de fora, ele reaproveita.
    */
   async createMany(userId: string, inputs: CreateFinanceTransactionInput[]): Promise<FinanceEntry[]> {
     if (this.transactionClient) {
@@ -98,7 +142,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async createWithAudit(userId: string, input: CreateFinanceTransactionInput, audit: TransactionAuditCommand): Promise<FinanceEntry> {
-    const row = await prisma.$transaction(async (tx) => {
+    const row = await this.inTransaction(async (tx) => {
       const created = await tx.transaction.create({ data: toCreateData(userId, input) });
       await createTransactionAudit(tx, userId, created, audit, 'after');
       return created;
@@ -107,7 +151,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async createManyWithAudit(userId: string, inputs: CreateFinanceTransactionInput[], audit: TransactionAuditCommand): Promise<FinanceEntry[]> {
-    const rows = await prisma.$transaction(async (tx) => {
+    const rows = await this.inTransaction(async (tx) => {
       const created = [];
       for (const input of inputs) created.push(await tx.transaction.create({ data: toCreateData(userId, input) }));
       for (const row of created) await createTransactionAudit(tx, userId, row, audit, 'after');
@@ -117,7 +161,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async updateWithAudit(userId: string, input: UpdateFinanceTransactionInput, audit: TransactionAuditCommand): Promise<FinanceEntry | undefined> {
-    const row = await prisma.$transaction(async (tx) => {
+    const row = await this.inTransaction(async (tx) => {
       const before = await tx.transaction.findFirst({ where: { id: input.id, userId } });
       if (!before) return undefined;
       const after = await tx.transaction.update({ where: { id: input.id }, data: toUpdateData(input) });
@@ -128,7 +172,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async transitionWithAudit(userId: string, id: string, status: import('@control-os/types').FinanceTransactionStatus, audit: TransactionAuditCommand): Promise<FinanceEntry | undefined> {
-    const row = await prisma.$transaction(async (tx) => {
+    const row = await this.inTransaction(async (tx) => {
       const before = await tx.transaction.findFirst({ where: { id, userId } });
       if (!before) return undefined;
       const now = new Date();
@@ -145,7 +189,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async reverseWithAudit(userId: string, originals: FinanceEntry[], reversals: CreateFinanceTransactionInput[], audit: TransactionAuditCommand): Promise<FinanceEntry[] | undefined> {
-    const rows = await prisma.$transaction(async (tx) => {
+    const rows = await this.inTransaction(async (tx) => {
       const before = await tx.transaction.findMany({ where: { userId, id: { in: originals.map((entry) => entry.id) } } });
       if (before.length !== originals.length) return undefined;
       const changed = [];
@@ -166,15 +210,15 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async findByIdempotencyKey(userId: string, key: string): Promise<FinanceEntry | undefined> {
-    const row = await (this.transactionClient ?? prisma).transaction.findFirst({ where: { userId, idempotencyKey: key } });
+    const row = await this.db.transaction.findFirst({ where: { userId, idempotencyKey: key } });
     return row ? toFinanceEntry(row) : undefined;
   }
 
   async update(userId: string, input: UpdateFinanceTransactionInput): Promise<FinanceEntry | undefined> {
-    const existing = await prisma.transaction.findFirst({ where: { id: input.id, userId } });
+    const existing = await this.db.transaction.findFirst({ where: { id: input.id, userId } });
     if (!existing) return undefined;
 
-    const row = await prisma.transaction.update({
+    const row = await this.db.transaction.update({
       where: { id: input.id },
       data: toUpdateData(input),
     });
@@ -182,20 +226,20 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async delete(userId: string, id: string): Promise<FinanceEntry | undefined> {
-    const existing = await prisma.transaction.findFirst({ where: { id, userId } });
+    const existing = await this.db.transaction.findFirst({ where: { id, userId } });
     if (!existing) return undefined;
 
-    const row = await prisma.transaction.delete({ where: { id } });
+    const row = await this.db.transaction.delete({ where: { id } });
     return toFinanceEntry(row);
   }
 
   async findById(userId: string, id: string): Promise<FinanceEntry | undefined> {
-    const row = await prisma.transaction.findFirst({ where: { id, userId } });
+    const row = await this.db.transaction.findFirst({ where: { id, userId } });
     return row ? toFinanceEntry(row) : undefined;
   }
 
   async list(userId: string, filter?: FinanceTransactionFilter): Promise<FinanceEntry[]> {
-    const rows = await (this.transactionClient ?? prisma).transaction.findMany({
+    const rows = await this.db.transaction.findMany({
       where: buildWhere(userId, filter),
       orderBy: { date: 'desc' },
     });
@@ -203,7 +247,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async listPaginated(userId: string, query: FinanceTransactionPageQuery): Promise<FinanceTransactionPage> {
-    const client = this.transactionClient ?? prisma;
+    const client = this.db;
     if (query.cursor) {
       const ownedCursor = await client.transaction.findFirst({
         where: { id: query.cursor.id, userId, date: new Date(query.cursor.date) },
@@ -227,7 +271,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async getRecent(userId: string, limit: number): Promise<FinanceEntry[]> {
-    const rows = await prisma.transaction.findMany({
+    const rows = await this.db.transaction.findMany({
       where: { userId },
       orderBy: { date: 'desc' },
       take: limit,
@@ -248,7 +292,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   async getSummary(userId: string, filter?: FinanceTransactionFilter): Promise<FinanceSummary> {
     const where = buildWhere(userId, filter);
     where.status = TransactionStatus.CONFIRMED;
-    const rows = await prisma.transaction.groupBy({
+    const rows = await this.db.transaction.groupBy({
       by: ['type'],
       where,
       _sum: { amount: true },
@@ -268,7 +312,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
     where.type = toPersistedType(type);
     where.status = TransactionStatus.CONFIRMED;
 
-    const rows = await prisma.transaction.groupBy({
+    const rows = await this.db.transaction.groupBy({
       by: ['category'],
       where,
       _sum: { amount: true },
@@ -282,7 +326,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   // --- Contas (CONTROL OS — Fase 7) ------------------------------------------
 
   async createAccount(userId: string, input: CreateFinanceAccountInput): Promise<FinanceAccount> {
-    const row = await prisma.$transaction(async (tx) => {
+    const row = await this.inTransaction(async (tx) => {
       const account = await tx.account.create({
         data: {
           userId,
@@ -350,7 +394,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async listAccounts(userId: string, options?: { includeArchived?: boolean }): Promise<FinanceAccount[]> {
-    const rows = await prisma.account.findMany({
+    const rows = await this.db.account.findMany({
       where: { userId, ...(options?.includeArchived ? {} : { status: AccountStatus.ACTIVE }) },
       orderBy: { createdAt: 'asc' },
     });
@@ -358,18 +402,18 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async findAccountById(userId: string, id: string): Promise<FinanceAccount | undefined> {
-    const row = await (this.transactionClient ?? prisma).account.findFirst({ where: { id, userId } });
+    const row = await this.db.account.findFirst({ where: { id, userId } });
     return row ? toFinanceAccount(row) : undefined;
   }
 
   async findAccountByName(userId: string, name: string): Promise<FinanceAccount | undefined> {
     // Postgres `mode: 'insensitive'` — "Nubank" e "nubank" resolvem pra mesma conta, mesmo comportamento de `InMemoryFinanceRepository` (comparação com `.toLowerCase()`).
-    const row = await prisma.account.findFirst({ where: { userId, name: { equals: name, mode: 'insensitive' } } });
+    const row = await this.db.account.findFirst({ where: { userId, name: { equals: name, mode: 'insensitive' } } });
     return row ? toFinanceAccount(row) : undefined;
   }
 
   async updateAccount(userId: string, input: UpdateFinanceAccountInput): Promise<FinanceAccount | undefined> {
-    return prisma.$transaction(async (tx) => {
+    return this.inTransaction(async (tx) => {
       const before = await tx.account.findFirst({ where: { id: input.id, userId } });
       if (!before) return undefined;
       const after = await tx.account.update({
@@ -393,7 +437,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async setAccountStatus(userId: string, input: SetFinanceAccountStatusInput): Promise<FinanceAccount | undefined> {
-    return prisma.$transaction(async (tx) => {
+    return this.inTransaction(async (tx) => {
       const before = await tx.account.findFirst({ where: { id: input.id, userId } });
       if (!before) return undefined;
       const after = await tx.account.update({
@@ -417,7 +461,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async hasAccountMovements(userId: string, accountId: string): Promise<boolean> {
-    return (await prisma.transaction.count({ where: { userId, accountId } })) > 0;
+    return (await this.db.transaction.count({ where: { userId, accountId } })) > 0;
   }
 
   /**
@@ -427,7 +471,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
    * todos os lançamentos da conta e somar" (que não escalaria).
    */
   async getAccountBalance(userId: string, accountId: string): Promise<number> {
-    const rows = await prisma.transaction.groupBy({
+    const rows = await this.db.transaction.groupBy({
       by: ['type', 'transferDirection'],
       where: { userId, accountId, status: TransactionStatus.CONFIRMED },
       _sum: { amount: true },
@@ -442,8 +486,8 @@ export class PrismaFinanceRepository implements FinanceRepository {
    */
   async listAccountBalances(userId: string): Promise<FinanceAccountBalance[]> {
     const [accounts, rows] = await Promise.all([
-      prisma.account.findMany({ where: { userId, status: AccountStatus.ACTIVE }, orderBy: { createdAt: 'asc' } }),
-      prisma.transaction.groupBy({
+      this.db.account.findMany({ where: { userId, status: AccountStatus.ACTIVE }, orderBy: { createdAt: 'asc' } }),
+      this.db.transaction.groupBy({
         by: ['accountId', 'type', 'transferDirection'],
         where: { userId, status: TransactionStatus.CONFIRMED },
         _sum: { amount: true },
@@ -462,7 +506,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   // --- Categorias -------------------------------------------------------------
 
   async createCategory(userId: string, input: CreateFinanceCategoryInput): Promise<FinanceCategory> {
-    return prisma.$transaction(async (tx) => {
+    return this.inTransaction(async (tx) => {
       const row = await tx.category.create({ data: { userId, name: input.name, kind: toPersistedType(input.kind), icon: input.icon, color: input.color, sortOrder: input.sortOrder ?? 0, isFavorite: input.isFavorite ?? false } });
       await tx.financeAuditEvent.create({ data: { userId, actorUserId: userId, operation: 'category.created', source: 'manual', entityType: 'category', entityId: row.id, after: categoryAuditSnapshot(row) } });
       return toFinanceCategory(row);
@@ -470,22 +514,22 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async listCategories(userId: string, options?: { includeArchived?: boolean }): Promise<FinanceCategory[]> {
-    const rows = await prisma.category.findMany({ where: { userId, ...(options?.includeArchived ? {} : { status: CategoryStatus.ACTIVE }) }, orderBy: [{ status: 'asc' }, { isFavorite: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }] });
+    const rows = await this.db.category.findMany({ where: { userId, ...(options?.includeArchived ? {} : { status: CategoryStatus.ACTIVE }) }, orderBy: [{ status: 'asc' }, { isFavorite: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }] });
     return rows.map(toFinanceCategory);
   }
 
   async findCategoryById(userId: string, id: string): Promise<FinanceCategory | undefined> {
-    const row = await (this.transactionClient ?? prisma).category.findFirst({ where: { id, userId } });
+    const row = await this.db.category.findFirst({ where: { id, userId } });
     return row ? toFinanceCategory(row) : undefined;
   }
 
   async findCategoryByName(userId: string, name: string): Promise<FinanceCategory | undefined> {
-    const row = await prisma.category.findFirst({ where: { userId, name: { equals: name, mode: 'insensitive' } } });
+    const row = await this.db.category.findFirst({ where: { userId, name: { equals: name, mode: 'insensitive' } } });
     return row ? toFinanceCategory(row) : undefined;
   }
 
   async updateCategory(userId: string, input: UpdateFinanceCategoryInput): Promise<FinanceCategory | undefined> {
-    return prisma.$transaction(async (tx) => {
+    return this.inTransaction(async (tx) => {
       const before = await tx.category.findFirst({ where: { id: input.id, userId } });
       if (!before) return undefined;
       const after = await tx.category.update({ where: { id: input.id }, data: { name: input.name, icon: input.icon, color: input.color, sortOrder: input.sortOrder, isFavorite: input.isFavorite } });
@@ -495,7 +539,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async setCategoryStatus(userId: string, input: SetFinanceCategoryStatusInput): Promise<FinanceCategory | undefined> {
-    return prisma.$transaction(async (tx) => {
+    return this.inTransaction(async (tx) => {
       const before = await tx.category.findFirst({ where: { id: input.id, userId } });
       if (!before) return undefined;
       const after = await tx.category.update({ where: { id: input.id }, data: { status: input.status === 'arquivada' ? CategoryStatus.ARCHIVED : CategoryStatus.ACTIVE, archivedAt: input.status === 'arquivada' ? new Date() : null } });
@@ -505,11 +549,11 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async hasCategoryTransactions(userId: string, categoryId: string): Promise<boolean> {
-    return (await prisma.transaction.count({ where: { userId, categoryId } })) > 0;
+    return (await this.db.transaction.count({ where: { userId, categoryId } })) > 0;
   }
 
   async createFixedAccount(userId: string, input: CreateFixedAccountRepositoryInput): Promise<FixedAccount> {
-    const row = await prisma.$transaction(async (tx) => {
+    const row = await this.inTransaction(async (tx) => {
       const created = await tx.fixedAccount.create({ data: fixedAccountData(userId, input) });
       await tx.financeAuditEvent.create({ data: { userId, actorUserId: userId, operation: 'fixed_account.created', source: input.source, entityType: 'fixed_account', entityId: created.id, after: fixedAccountSnapshot(created) } });
       return created;
@@ -518,17 +562,17 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async listFixedAccounts(userId: string, options?: { includeArchived?: boolean }): Promise<FixedAccount[]> {
-    const rows = await prisma.fixedAccount.findMany({ where: { userId, ...(options?.includeArchived ? {} : { archivedAt: null }) }, orderBy: [{ active: 'desc' }, { name: 'asc' }] });
+    const rows = await this.db.fixedAccount.findMany({ where: { userId, ...(options?.includeArchived ? {} : { archivedAt: null }) }, orderBy: [{ active: 'desc' }, { name: 'asc' }] });
     return rows.map(toFixedAccount);
   }
 
   async findFixedAccountById(userId: string, id: string): Promise<FixedAccount | undefined> {
-    const row = await prisma.fixedAccount.findFirst({ where: { id, userId } });
+    const row = await this.db.fixedAccount.findFirst({ where: { id, userId } });
     return row ? toFixedAccount(row) : undefined;
   }
 
   async updateFixedAccount(userId: string, input: UpdateFixedAccountRepositoryInput): Promise<FixedAccount | undefined> {
-    const row = await prisma.$transaction(async (tx) => {
+    const row = await this.inTransaction(async (tx) => {
       const before = await tx.fixedAccount.findFirst({ where: { id: input.id, userId } });
       if (!before) return undefined;
       const after = await tx.fixedAccount.update({ where: { id: input.id }, data: fixedAccountUpdateData(input) });
@@ -539,7 +583,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async setFixedAccountArchived(userId: string, id: string, archived: boolean, source: FinanceAuditSource): Promise<FixedAccount | undefined> {
-    const row = await prisma.$transaction(async (tx) => {
+    const row = await this.inTransaction(async (tx) => {
       const before = await tx.fixedAccount.findFirst({ where: { id, userId } });
       if (!before) return undefined;
       const after = await tx.fixedAccount.update({ where: { id }, data: { active: archived ? false : true, archivedAt: archived ? new Date() : null } });
@@ -551,7 +595,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
 
   async createFixedAccountOccurrences(userId: string, rows: CreateFixedAccountOccurrenceInput[], source: FinanceAuditSource): Promise<FixedAccountOccurrence[]> {
     if (!rows.length) return [];
-    return prisma.$transaction(async (tx) => {
+    return this.inTransaction(async (tx) => {
       const created: PrismaFixedOccurrenceRow[] = [];
       for (const input of rows) {
         try {
@@ -570,17 +614,17 @@ export class PrismaFinanceRepository implements FinanceRepository {
 
   async listFixedAccountOccurrences(userId: string, filter?: FixedAccountOccurrenceFilter): Promise<FixedAccountOccurrence[]> {
     const now = new Date();
-    const rows = await prisma.fixedAccountOccurrence.findMany({ where: { fixedAccount: { userId }, ...(filter?.fixedAccountId ? { fixedAccountId: filter.fixedAccountId } : {}), ...(filter?.competence ? (() => { const [year, month] = filter.competence.split('-').map(Number); return { competenceYear: year, competenceMonth: month }; })() : {}), ...(filter?.from || filter?.to ? { dueDate: { ...(filter.from ? { gte: new Date(filter.from) } : {}), ...(filter.to ? { lte: new Date(filter.to) } : {}) } } : {}) }, include: { payments: true }, orderBy: { dueDate: 'asc' } });
+    const rows = await this.db.fixedAccountOccurrence.findMany({ where: { fixedAccount: { userId }, ...(filter?.fixedAccountId ? { fixedAccountId: filter.fixedAccountId } : {}), ...(filter?.competence ? (() => { const [year, month] = filter.competence.split('-').map(Number); return { competenceYear: year, competenceMonth: month }; })() : {}), ...(filter?.from || filter?.to ? { dueDate: { ...(filter.from ? { gte: new Date(filter.from) } : {}), ...(filter.to ? { lte: new Date(filter.to) } : {}) } } : {}) }, include: { payments: true }, orderBy: { dueDate: 'asc' } });
     return rows.map((row) => toFixedAccountOccurrence(row, now)).filter((row) => !filter?.status || row.displayStatus === filter.status);
   }
 
   async findFixedAccountOccurrenceById(userId: string, id: string): Promise<FixedAccountOccurrence | undefined> {
-    const row = await prisma.fixedAccountOccurrence.findFirst({ where: { id, fixedAccount: { userId } }, include: { payments: true } });
+    const row = await this.db.fixedAccountOccurrence.findFirst({ where: { id, fixedAccount: { userId } }, include: { payments: true } });
     return row ? toFixedAccountOccurrence(row) : undefined;
   }
 
   async recordFixedAccountOccurrencePayment(userId: string, input: FixedAccountOccurrenceSettlementInput): Promise<{ occurrence: FixedAccountOccurrence; transaction: FinanceEntry } | undefined> {
-    return prisma.$transaction(async (tx) => {
+    return this.inTransaction(async (tx) => {
       const occurrence = await tx.fixedAccountOccurrence.findFirst({ where: { id: input.occurrenceId, fixedAccount: { userId } }, include: { payments: true } });
       if (!occurrence || occurrence.status === FixedAccountOccurrenceStatus.CANCELLED || occurrence.status === FixedAccountOccurrenceStatus.PAID) return undefined;
       if (input.idempotencyKey) {
@@ -601,7 +645,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
   }
 
   async cancelFixedAccountOccurrence(userId: string, id: string, source: FinanceAuditSource): Promise<FixedAccountOccurrence | undefined> {
-    return prisma.$transaction(async (tx) => {
+    return this.inTransaction(async (tx) => {
       const before = await tx.fixedAccountOccurrence.findFirst({ where: { id, fixedAccount: { userId } } });
       if (!before || before.status !== FixedAccountOccurrenceStatus.PENDING) return undefined;
       const after = await tx.fixedAccountOccurrence.update({ where: { id }, data: { status: FixedAccountOccurrenceStatus.CANCELLED } });
