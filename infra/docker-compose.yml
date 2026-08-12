@@ -331,7 +331,23 @@ services:
       clamav:
         condition: service_healthy
     environment:
-      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+      # POOL DE CONEXÕES — declarado, não herdado.
+      #
+      # Sem `connection_limit` na URL, o Prisma calcula o pool como
+      # `núcleos × 2 + 1`. Com o `cpus: "1.00"` deste serviço (ver
+      # `deploy.resources`, mais abaixo), isso dá TRÊS conexões para o site
+      # inteiro — um número que ninguém escolheu e que ninguém sabia existir.
+      #
+      # Doze é conservador de propósito: o Postgres está no `max_connections`
+      # padrão de 100 e a API em Python já consome até 15. Doze aqui deixa
+      # folga larga e ainda assim quadruplica o teto de hoje. Quando entrar a
+      # segunda réplica do web, este número e o `max_connections` do Postgres
+      # sobem juntos — nunca um sem o outro.
+      #
+      # `pool_timeout=20` é quanto uma requisição espera por conexão livre
+      # antes de desistir com `P2024`. O padrão é 10s; 20s absorve um pico
+      # curto sem virar timeout na cara do usuário.
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public&connection_limit=12&pool_timeout=20"
       AI_PROVIDER: ${AI_PROVIDER:-mock}
       NEXT_PUBLIC_AI_PROVIDER: ${AI_PROVIDER:-mock}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
