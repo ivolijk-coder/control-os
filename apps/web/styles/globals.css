@@ -55,7 +55,14 @@
   --nav-line-rgb: 255 255 255;
   --nav-1-rgb: 242 245 250;
   --nav-2-rgb: 155 166 182;
-  --nav-3-rgb: 114 125 140;
+  /* 114 125 140 dava 4.60:1 sobre `--nav`, mas só 4.18:1 sobre
+     `--nav-raised` — e `nav-raised` é justamente o fundo dos dois menus de
+     persona (o flutuante do computador e o do celular), onde `nav-3` é o
+     texto do subtítulo. Era uma reprova que eu mesmo deixei passar na etapa
+     dos tokens, porque só conferi contra `nav`. 120 131 147 passa nas duas:
+     4.55:1 sobre `nav-raised` e 5.00:1 sobre `nav`. É 5% mais claro — muda
+     de leve o cinza dos rótulos secundários da casca, nos dois temas. */
+  --nav-3-rgb: 120 131 147;
   --nav-active-rgb: 46 125 255;
 
   /* ------------------------------------------------------------------
@@ -69,6 +76,17 @@
      (255 255 255). É o que torna as próximas etapas seguras de revisar.
      ------------------------------------------------------------------ */
   --tint-rgb: 255 255 255;
+
+  /* Brilho que varre o `Skeleton`. Declarado UMA vez: como `--tint-rgb` é
+     substituído no momento do uso, esta mesma linha dá branco no escuro e
+     ardósia no claro. Antes era branco fixo — e branco varrendo superfície
+     branca não varre nada. */
+  --shimmer: linear-gradient(
+    110deg,
+    rgb(var(--tint-rgb) / 0.06) 40%,
+    rgb(var(--tint-rgb) / 0.14) 50%,
+    rgb(var(--tint-rgb) / 0.06) 60%
+  );
 
   /* ------------------------------------------------------------------
      SEMÂNTICOS DE CONTEÚDO — estes SIM mudam com o tema.
@@ -92,6 +110,11 @@
      deixava um rastro claro sobre fundo claro. */
   --scroll-thumb: rgba(255, 255, 255, 0.14);
   --scroll-thumb-hover: rgba(255, 255, 255, 0.24);
+  /* A folga de 2px em volta do polegar é pintada na cor da SUPERFÍCIE onde
+     a barra vive — não na cor da página. Enquanto tudo era escuro os dois
+     valores coincidiam; com a casca escura sobre conteúdo claro, não mais.
+     Ver a sobrescrita em `.control-sidebar`, mais abaixo. */
+  --scroll-gutter: var(--bg);
   --selection-bg: rgba(76, 141, 255, 0.32);
   --selection-fg: #ffffff;
 
@@ -199,7 +222,11 @@ html[data-theme='light'] {
   --brand-ink-rgb: 255 255 255;
   --good-rgb: 6 122 85;
   --good-soft-rgb: 227 245 238;
-  --warn-rgb: 178 94 0;
+  /* 178 94 0 dava 4.53:1 sobre o CARTÃO branco e eu parei aí — mas sobre o
+     fundo da PÁGINA (#f4f6fa) dava 4.32:1, reprova. 164 86 0 passa nas
+     duas superfícies (4.96:1 na página, 5.37:1 no cartão) e ainda sobra
+     margem sobre o `warn-soft`. Só o tema claro muda. */
+  --warn-rgb: 164 86 0;
   --warn-soft-rgb: 252 240 223;
   --crit-rgb: 196 43 43;
   --crit-ink-rgb: 255 255 255;
@@ -209,6 +236,7 @@ html[data-theme='light'] {
 
   --scroll-thumb: rgba(15, 23, 42, 0.16);
   --scroll-thumb-hover: rgba(15, 23, 42, 0.26);
+  --scroll-gutter: var(--bg);
   --selection-bg: rgba(19, 85, 233, 0.2);
   --selection-fg: #0a0e16;
 
@@ -301,11 +329,25 @@ p {
 ::-webkit-scrollbar-thumb {
   background: var(--scroll-thumb);
   border-radius: var(--r-full);
-  border: 2px solid var(--bg);
+  border: 2px solid var(--scroll-gutter);
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--scroll-thumb-hover);
+}
+
+/* A barra de rolagem do menu lateral vive sobre a casca, que é escura nos
+   dois temas. Herdava `--scroll-gutter: var(--bg)` e `--scroll-thumb`
+   ardósia do tema claro, e o resultado era um traço claro descendo colado
+   na divisa entre a lateral e o conteúdo — o "risco branco" do print.
+
+   Estas são propriedades customizadas comuns, herdadas pelo elemento que
+   rola e lidas pelos pseudo-elementos da barra. Nada de `!important`: a
+   ponte morreu na etapa passada e não volta. */
+.control-sidebar {
+  --scroll-gutter: rgb(var(--nav-rgb));
+  --scroll-thumb: rgb(var(--nav-line-rgb) / 0.16);
+  --scroll-thumb-hover: rgb(var(--nav-line-rgb) / 0.26);
 }
 
 .glass-panel {
